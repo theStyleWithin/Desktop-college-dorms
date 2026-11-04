@@ -85,6 +85,9 @@ Then create or import a character and start a chat.
 - **Verification status**: the Linux AppImage, the portable (single-file) build and the whole app are covered by an automated end-to-end suite
   that drives the real packaged app (card import/export, editing, GIF/video/VRM, real model chat, channels with bots, downloads, cloud and
   Other API paths). The **Windows installer/portable and the Android APK are built by CI but have not been run on a real device by the author**.
+  The live 3D (VRM) viewer is exercised by local runs of that suite but is skipped in CI, whose bare virtual machines have no usable graphics stack
+  (the viewer froze the web view there). If your graphics drivers can't run WebGL, the app notices an unfinished 3D attempt on the next launch and
+  shows a placeholder with a "Try again" button instead of repeating a crash.
   The Flatpak and AUR files are untested hand-offs.
 
 ## Build from source

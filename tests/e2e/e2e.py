@@ -26,6 +26,7 @@ if os.environ.get("E2E_PORTABLE"):  # portable build keeps its data beside the e
 os.makedirs(os.path.join(DATA, "models"), exist_ok=True)
 shutil.copy(MODEL, os.path.join(DATA, "models", "tiny.gguf"))
 
+SKIP3D = bool(os.environ.get("E2E_SKIP_3D"))  # CI VMs have no usable GPU stack; the live 3D viewer is covered by local runs
 results = []
 def check(name, ok, detail=""):
     results.append((name, bool(ok)))
@@ -63,7 +64,9 @@ env = dict(os.environ, XDG_DATA_HOME=os.path.join(WORK, "data"), XDG_CONFIG_HOME
            WEBKIT_DISABLE_COMPOSITING_MODE="1", WEBKIT_DISABLE_DMABUF_RENDERER="1")
 if not os.environ.get("E2E_BUNDLED_ENGINE"):  # default: point at a dev build of the engine
     env["DORMS_LLAMA_SERVER"] = LLAMA
-drv = subprocess.Popen(["tauri-driver"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+os.makedirs(WORK, exist_ok=True)
+drv_log = open(os.path.join(WORK, "driver.log"), "w")
+drv = subprocess.Popen(["tauri-driver"], env=env, stdout=drv_log, stderr=subprocess.STDOUT)
 time.sleep(2)
 opts = ArgOptions(); opts.set_capability("browserName", "wry"); opts.set_capability("tauri:options", {"application": APP})
 d = connect(opts)
@@ -162,7 +165,20 @@ try:
     check("edit keeps unknown extensions", saved["card"]["extensions"].get("unknown_ext") == {"keep": [1, 2, 3]} and saved["card"].get("future_field") == {"hello": "world"})
 
     # ---- media: gif / video / vrm ------------------------------------------------
+    def set_media_ipc(char_id, path):
+        b64 = base64.b64encode(open(path, "rb").read()).decode()
+        r = d.execute_async_script("const done=arguments[arguments.length-1];const b=Uint8Array.from(atob(arguments[0]),c=>c.charCodeAt(0));window.__TAURI_INTERNALS__.invoke('set_media', b, {headers:{'x-char-id':arguments[1],'x-file-name':arguments[2]}}).then(v=>done({ok:v})).catch(e=>done({err:String(e)}));", b64, char_id, os.path.basename(path))
+        if "err" in r: raise RuntimeError(r["err"])
+        return r["ok"]
     for label, fname, kind in [("GIF", "avatar.gif", "gif"), ("video", "clip.mp4", "video"), ("VRM", "sample.vrm", "vrm")]:
+        if kind == "vrm" and SKIP3D:
+            c = set_media_ipc(mira["id"], os.path.join(FIX, fname))  # no editor re-render, so no WebGL starts
+            check("VRM upload is stored as 'vrm' (live 3D viewer skipped on this machine)", c["media"] and c["media"]["kind"] == "vrm", str(c["media"]))
+            # guard logic is plain backend code: arm, refuse a second attempt, release
+            check("crash guard arms once", invoke("vrm_guard_begin") is True and invoke("vrm_guard_begin") is False)
+            invoke("vrm_guard_end"); check("crash guard releases", invoke("vrm_guard_begin") is True); invoke("vrm_guard_end")
+            set_media_ipc(mira["id"], os.path.join(FIX, "avatar.gif"))  # later steps open this character; keep WebGL out of them
+            continue
         inp = d.find_elements(By.CSS_SELECTOR, "input[type=file]")[0]
         d.execute_script("arguments[0].hidden=false;arguments[0].style.display='block';", inp)
         inp.send_keys(os.path.join(FIX, fname)); time.sleep(2.2)
@@ -182,20 +198,21 @@ try:
             has_canvas = d.execute_script("return !!document.querySelector('.editor-media canvas')")
             msg = d.execute_script("const e=document.querySelector('.editor-media');return e?e.innerText:''")
             check("VRM model loads into the 3D viewer", has_canvas and "Loading" not in msg and "isn't" not in msg, msg)
-    # crash guard: simulate "the previous 3D attempt never finished", then recover with Try again
-    time.sleep(2)
-    check("a healthy 3D run clears the crash guard", invoke("vrm_guard_begin") is True)  # marker was gone, so this arms it again
-    reload_ui(); nav("Characters")
-    d.execute_script("[...document.querySelectorAll('.ccard h3')].find(x=>x.textContent==='Mira Okafor').click()"); time.sleep(2)
-    check("after an unfinished 3D attempt the viewer is replaced by a safe placeholder", "crashed the window" in page_text() and not d.execute_script("return !!document.querySelector('.editor-media canvas')"))
-    d.execute_script("[...document.querySelectorAll('button')].find(b=>b.textContent==='Try again').click()")
-    for _ in range(20):
-        time.sleep(0.5)
-        if d.execute_script("return !!document.querySelector('.editor-media canvas')"): break
-    check("'Try again' re-enables the 3D viewer", d.execute_script("return !!document.querySelector('.editor-media canvas')"))
-    time.sleep(3)
-    check("the guard is released again after a good run", invoke("vrm_guard_begin") is True)
-    invoke("vrm_guard_end")
+    if not SKIP3D:
+        # crash guard: simulate "the previous 3D attempt never finished", then recover with Try again
+        time.sleep(2)
+        check("a healthy 3D run clears the crash guard", invoke("vrm_guard_begin") is True)  # marker was gone, so this arms it again
+        reload_ui(); nav("Characters")
+        d.execute_script("[...document.querySelectorAll('.ccard h3')].find(x=>x.textContent==='Mira Okafor').click()"); time.sleep(2)
+        check("after an unfinished 3D attempt the viewer is replaced by a safe placeholder", "crashed the window" in page_text() and not d.execute_script("return !!document.querySelector('.editor-media canvas')"))
+        d.execute_script("[...document.querySelectorAll('button')].find(b=>b.textContent==='Try again').click()")
+        for _ in range(20):
+            time.sleep(0.5)
+            if d.execute_script("return !!document.querySelector('.editor-media canvas')"): break
+        check("'Try again' re-enables the 3D viewer", d.execute_script("return !!document.querySelector('.editor-media canvas')"))
+        time.sleep(3)
+        check("the guard is released again after a good run", invoke("vrm_guard_begin") is True)
+        invoke("vrm_guard_end")
     ext_media = invoke("get_character", {"id": mira["id"]})["media_path"]
     check("old media files are cleaned up on replace", len([f for f in os.listdir(os.path.join(DATA, "media")) if f.startswith(mira["id"])]) == 1)
 
