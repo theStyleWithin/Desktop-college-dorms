@@ -802,6 +802,30 @@ pub async fn list_remote_models(state: State<'_, Shared>, profile: ApiProfile) -
 }
 
 // ---------------------------------------------------------------------------
+// 3D crash guard
+// ---------------------------------------------------------------------------
+
+/// WebGL can hard-crash the web view on unsupported graphics setups, which JavaScript can't catch.
+/// Before the first 3D attempt we drop a marker file; once a frame has rendered it is removed. If the
+/// window dies in between, the next launch finds the marker and skips live 3D instead of crashing again.
+/// Returns `false` when a previous attempt never finished.
+#[tauri::command]
+pub fn vrm_guard_begin(state: State<'_, Shared>) -> bool {
+    let p = state.data_dir.join("vrm-guard");
+    if p.exists() {
+        return false;
+    }
+    let _ = std::fs::write(&p, b"1");
+    true
+}
+
+/// `reset` is the user pressing "Try again"; otherwise the first frame rendered fine.
+#[tauri::command]
+pub fn vrm_guard_end(state: State<'_, Shared>) {
+    let _ = std::fs::remove_file(state.data_dir.join("vrm-guard"));
+}
+
+// ---------------------------------------------------------------------------
 // Auto chat (bots talking to each other)
 // ---------------------------------------------------------------------------
 

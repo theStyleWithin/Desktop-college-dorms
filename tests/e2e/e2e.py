@@ -49,6 +49,15 @@ class Fake(BaseHTTPRequestHandler):
         self.wfile.write(b"data: [DONE]\n\n")
 srv = HTTPServer(("127.0.0.1", 18999), Fake); threading.Thread(target=srv.serve_forever, daemon=True).start()
 
+def connect(opts, timeout=90):
+    """Remote driver with a per-command timeout, so a hung web view fails fast instead of blocking forever."""
+    try:
+        from selenium.webdriver.remote.client_config import ClientConfig
+        cc = ClientConfig(remote_server_addr="http://127.0.0.1:4444", timeout=timeout)
+        return webdriver.Remote(command_executor="http://127.0.0.1:4444", options=opts, client_config=cc)
+    except ImportError:  # older Selenium
+        return webdriver.Remote(command_executor="http://127.0.0.1:4444", options=opts)
+
 env = dict(os.environ, XDG_DATA_HOME=os.path.join(WORK, "data"), XDG_CONFIG_HOME=os.path.join(WORK, "cfg"),
            XDG_CACHE_HOME=os.path.join(WORK, "cache"), GDK_BACKEND="x11", APPIMAGE_EXTRACT_AND_RUN="1",
            WEBKIT_DISABLE_COMPOSITING_MODE="1", WEBKIT_DISABLE_DMABUF_RENDERER="1")
@@ -57,7 +66,11 @@ if not os.environ.get("E2E_BUNDLED_ENGINE"):  # default: point at a dev build of
 drv = subprocess.Popen(["tauri-driver"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(2)
 opts = ArgOptions(); opts.set_capability("browserName", "wry"); opts.set_capability("tauri:options", {"application": APP})
-d = webdriver.Remote(command_executor="http://127.0.0.1:4444", options=opts)
+d = connect(opts)
+try:
+    d.set_script_timeout(60); d.set_page_load_timeout(60)
+except Exception:
+    pass
 d.file_detector = UselessFileDetector()  # driver runs locally; send paths as-is
 d.set_window_size(1280, 860)
 wait = lambda t=20: WebDriverWait(d, t)
@@ -169,6 +182,20 @@ try:
             has_canvas = d.execute_script("return !!document.querySelector('.editor-media canvas')")
             msg = d.execute_script("const e=document.querySelector('.editor-media');return e?e.innerText:''")
             check("VRM model loads into the 3D viewer", has_canvas and "Loading" not in msg and "isn't" not in msg, msg)
+    # crash guard: simulate "the previous 3D attempt never finished", then recover with Try again
+    time.sleep(2)
+    check("a healthy 3D run clears the crash guard", invoke("vrm_guard_begin") is True)  # marker was gone, so this arms it again
+    reload_ui(); nav("Characters")
+    d.execute_script("[...document.querySelectorAll('.ccard h3')].find(x=>x.textContent==='Mira Okafor').click()"); time.sleep(2)
+    check("after an unfinished 3D attempt the viewer is replaced by a safe placeholder", "crashed the window" in page_text() and not d.execute_script("return !!document.querySelector('.editor-media canvas')"))
+    d.execute_script("[...document.querySelectorAll('button')].find(b=>b.textContent==='Try again').click()")
+    for _ in range(20):
+        time.sleep(0.5)
+        if d.execute_script("return !!document.querySelector('.editor-media canvas')"): break
+    check("'Try again' re-enables the 3D viewer", d.execute_script("return !!document.querySelector('.editor-media canvas')"))
+    time.sleep(3)
+    check("the guard is released again after a good run", invoke("vrm_guard_begin") is True)
+    invoke("vrm_guard_end")
     ext_media = invoke("get_character", {"id": mira["id"]})["media_path"]
     check("old media files are cleaned up on replace", len([f for f in os.listdir(os.path.join(DATA, "media")) if f.startswith(mira["id"])]) == 1)
 
@@ -382,8 +409,8 @@ finally:
     except Exception: pass
     drv.terminate()
     subprocess.run(["pkill", "-f", "^/[^ ]*(dorms-engine|llama-server)"], check=False)
-    for name in ("WebKitWebDriver", "desktop-college-dorms"):  # nothing may outlive the test run
-        subprocess.run(["pkill", "-x", name], check=False)
+    subprocess.run(["pkill", "-x", "WebKitWebDriver"], check=False)
+    subprocess.run(["pkill", "-f", "^/[^ ]*desktop-college-dorms"], check=False)  # nothing may outlive the run
 
 fails = [n for n, ok in results if not ok]
 print(f"\n{len(results) - len(fails)}/{len(results)} checks passed")

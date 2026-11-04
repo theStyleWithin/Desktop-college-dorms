@@ -114,7 +114,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb webkit2gtk-driver ffmpeg python3-pip libwebkit2gtk-4.1-0 libgtk-3-0 \
-            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav libfuse2
+            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav libfuse2 \
+            libgl1-mesa-dri libglx-mesa0 libegl1 libgles2 mesa-vulkan-drivers
           pip install selenium pillow
       - uses: dtolnay/rust-toolchain@stable
       - name: tauri-driver (cached)
@@ -130,6 +131,7 @@ jobs:
       - name: Run the suite
         env:
           E2E_BUNDLED_ENGINE: "1"
+          LIBGL_ALWAYS_SOFTWARE: "1" # the CI VM has no GPU; Mesa's software renderer runs the 3D viewer
         run: |
           chmod +x pkgs/*.AppImage
           # Log to a file (not the step's pipe): helper processes the app starts must never be able
@@ -138,7 +140,7 @@ jobs:
           timeout 20m xvfb-run -a -s "-screen 0 1400x950x24" python3 -u tests/e2e/e2e.py \
             "$(ls pkgs/*.AppImage)" "$PWD/e2e-assets/fixtures" "$PWD/e2e-assets/model.gguf" "$PWD/e2e-work" > e2e.log 2>&1
           rc=$?
-          pkill -x tauri-driver; pkill -x WebKitWebDriver; pkill -x desktop-college-dorms; pkill -f '^/[^ ]*dorms-engine' ; pkill -x Xvfb
+          pkill -x tauri-driver; pkill -x WebKitWebDriver; pkill -f '^/[^ ]*desktop-college-dorms'; pkill -f '^/[^ ]*dorms-engine'; pkill -x Xvfb
           grep -v libEGL e2e.log | tail -150
           exit $rc
       - uses: actions/upload-artifact@v4

@@ -119,6 +119,8 @@ pub fn run() {
             commands::test_provider,
             commands::test_profile,
             commands::list_remote_models,
+            commands::vrm_guard_begin,
+            commands::vrm_guard_end,
             commands::set_auto_chat,
         ])
         .run(tauri::generate_context!())

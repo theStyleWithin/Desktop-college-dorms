@@ -202,6 +202,9 @@ export const api = {
     invoke<string>("generate", { chatId, characterId: characterId ?? null, regenerateMessageId: regenerateMessageId ?? null }),
   cancelGeneration: (requestId: string) => invoke<void>("cancel_generation", { requestId }),
   setAutoChat: (chatId: number, on: boolean) => invoke<void>("set_auto_chat", { chatId, on }),
+  // 3D crash guard
+  vrmGuardBegin: () => invoke<boolean>("vrm_guard_begin"),
+  vrmGuardEnd: () => invoke<void>("vrm_guard_end"),
   // settings
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
