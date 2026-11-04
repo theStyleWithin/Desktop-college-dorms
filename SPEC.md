@@ -1,4 +1,4 @@
-# Desktop College Doorms: Spec
+# Desktop College Dorms: Spec
 
 An offline-first desktop app for creating AI characters and chatting with them one-on-one, in groups, or in Discord-style channels where characters talk to each other. Everything lives on the user's machine. Cloud APIs are optional.
 
