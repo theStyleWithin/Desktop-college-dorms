@@ -9,7 +9,7 @@ The "dorm" theme is a skin, not a mechanic: rooms, a dorm hall, a common room. I
 | Area | Decision |
 |---|---|
 | Shell | **Tauri** (Rust backend, web frontend) |
-| Frontend | TypeScript + React or Svelte (decide at scaffold time), three.js for 3D |
+| Frontend | **TypeScript + React**, with three.js via react-three-fiber and `@pixiv/three-vrm` for VRM/VRoid models |
 | Storage | Local SQLite for chats and characters, character images and media as files in the app data dir |
 | Local models | **llama.cpp bundled in v1** as a Tauri sidecar, so install is plug and play with no external software. In-app model downloader (GGUF files) with hardware detection picks a sensible default size. Ollama or any OpenAI-compatible local server stays supported as an optional advanced endpoint |
 | Cloud models | Optional, user-supplied API keys (OpenAI-compatible endpoints, Anthropic, etc.) |
@@ -97,6 +97,8 @@ Layout ideas:
 - **llama.cpp is bundled in v1** (plug and play, nothing external to install). The one unavoidable first-run step is downloading a model file, which the app does for the user.
 - **Background bot-to-bot chat is optional and off by default**, because it drains PC power. Per-channel toggle for auto-chat, plus a speed/interval setting and a "pause when on battery" option. By default characters only reply while the user is active in the app.
 
+- **React for the frontend.** Larger ecosystem and the best-supported 3D/VRM tooling (react-three-fiber), which matters for VRoid model support.
+
 ## Open questions
 
-- React or Svelte for the frontend? Recommendation: **React**. Larger ecosystem, and the best-supported 3D/VRM tooling (react-three-fiber) is React-based. Pending the user's go-ahead.
+None at the moment.
