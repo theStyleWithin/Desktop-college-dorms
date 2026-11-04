@@ -1,0 +1,38 @@
+# Maintainer: (whoever submits this to the AUR; the project owner has given full consent, see LICENSE)
+# NOT yet tested by the author. Update `sha256sums` from the release (`.sha256` file) before building.
+pkgname=desktop-college-dorms-bin
+_name=desktop-college-dorms
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Offline AI character creator and chat rooms with a built-in local model engine (prebuilt)'
+arch=('x86_64')
+url='https://github.com/theStyleWithin/Desktop-college-dorms'
+license=('MIT')
+# gst-* provide video avatars in the web view; vulkan-icd-loader is optional GPU acceleration.
+depends=('webkit2gtk-4.1' 'gtk3' 'dbus' 'gst-plugins-base' 'gst-plugins-good' 'gst-libav')
+optdepends=('vulkan-icd-loader: GPU acceleration for the built-in engine'
+            'gnome-keyring: store API keys in the system keychain'
+            'kwallet: store API keys in the system keychain')
+provides=("$_name")
+conflicts=("$_name" "$_name-git")
+options=('!strip')
+source=("$_name-$pkgver-linux-x86_64.tar.gz::$url/releases/download/v$pkgver/$_name-$pkgver-linux-x86_64.tar.gz"
+        "$_name-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP' 'SKIP')
+
+package() {
+  # The engines must sit next to the main binary; keep them out of /usr/bin so they
+  # can never collide with a distro llama.cpp package.
+  install -dm755 "$pkgdir/usr/lib/$_name" "$pkgdir/usr/bin"
+  cd "$srcdir/$_name-$pkgver-linux-x86_64"
+  install -m755 desktop-college-dorms dorms-engine dorms-engine-vulkan "$pkgdir/usr/lib/$_name/"
+  ln -s "/usr/lib/$_name/desktop-college-dorms" "$pkgdir/usr/bin/desktop-college-dorms"
+
+  cd "$srcdir/Desktop-college-dorms-$pkgver"
+  local id=io.github.thestylewithin.DesktopCollegeDorms
+  install -Dm644 "packaging/linux/$id.desktop" "$pkgdir/usr/share/applications/$id.desktop"
+  install -Dm644 "packaging/linux/$id.metainfo.xml" "$pkgdir/usr/share/metainfo/$id.metainfo.xml"
+  install -Dm644 packaging/linux/icons/256.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/$id.png"
+  install -Dm644 packaging/linux/icons/512.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/$id.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

@@ -1,0 +1,7 @@
+.cache/
+node_modules/
+dist/
+target/
+src-tauri/binaries/
+src-tauri/gen/schemas/
+*.log

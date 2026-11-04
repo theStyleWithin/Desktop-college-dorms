@@ -1,0 +1,24 @@
+import { createContext, useContext } from "react";
+import type { AppInfo, Character, Chat, Dorm, Settings } from "./api";
+
+export type Route =
+  | { page: "home" }
+  | { page: "library" }
+  | { page: "editor"; id: string | null }
+  | { page: "chat"; chatId?: number }
+  | { page: "settings"; tab?: string };
+
+export interface Store {
+  characters: Character[];
+  chats: Chat[];
+  dorms: Dorm[];
+  settings: Settings;
+  info: AppInfo | null;
+  modelCount: number;
+  go: (r: Route) => void;
+  refresh: () => Promise<void>;
+  setSettings: (s: Settings) => Promise<void>;
+}
+
+export const StoreCtx = createContext<Store>(null as unknown as Store);
+export const useStore = () => useContext(StoreCtx);

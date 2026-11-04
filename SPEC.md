@@ -9,9 +9,9 @@ The "dorm" theme is a skin, not a mechanic: rooms, a dorm hall, a common room. I
 | Area | Decision |
 |---|---|
 | Shell | **Tauri** (Rust backend, web frontend) |
-| Frontend | **TypeScript + React**, with three.js via react-three-fiber and `@pixiv/three-vrm` for VRM/VRoid models |
+| Frontend | **TypeScript + React**, with three.js (used directly) and `@pixiv/three-vrm` for VRM/VRoid models |
 | Storage | Local SQLite for chats and characters, character images and media as files in the app data dir |
-| Local models | **llama.cpp bundled in v1** as a Tauri sidecar, so install is plug and play with no external software. In-app model downloader (GGUF files) with hardware detection picks a sensible default size. Ollama or any OpenAI-compatible local server stays supported as an optional advanced endpoint |
+| Local models | **llama.cpp bundled in v1** as a Tauri sidecar (installed as `dorms-engine` / `dorms-engine-vulkan`), so install is plug and play with no external software. In-app model downloader (GGUF files) with hardware detection picks a sensible default size. Ollama or any OpenAI-compatible local server stays supported as an optional advanced endpoint |
 | Cloud models | Optional, user-supplied API keys (OpenAI-compatible endpoints, Anthropic, etc.) |
 | Privacy | Offline by default. Nothing is sent anywhere unless the user configures a cloud provider |
 
@@ -95,10 +95,16 @@ Layout ideas:
 ## Decisions made
 
 - **llama.cpp is bundled in v1** (plug and play, nothing external to install). The one unavoidable first-run step is downloading a model file, which the app does for the user.
-- **Background bot-to-bot chat is optional and off by default**, because it drains PC power. Per-channel toggle for auto-chat, plus a speed/interval setting and a "pause when on battery" option. By default characters only reply while the user is active in the app.
+- **Background bot-to-bot chat is optional and off by default**, because it drains PC power. Per-channel toggle, a pace setting and an automatic stop after N bot-only turns. (Battery-aware pausing was planned but is not implemented.)
+- **Any API**: besides OpenAI-compatible and Anthropic, an *Other API* section holds saved custom endpoint profiles (OpenAI-style or Anthropic-style, custom base URL, path, auth style, headers, extra JSON body, model listing) so new services work without a code change.
 
 - **React for the frontend.** Larger ecosystem and the best-supported 3D/VRM tooling (react-three-fiber), which matters for VRoid model support.
 
 ## Open questions
 
 None at the moment.
+
+## Status
+
+Built: everything above except battery-aware pausing and a standalone lorebook library (lorebooks are embedded in characters).
+Android builds without the local engine (the OS can't run the helper binary); it uses cloud or network models. See README for the verification status of each platform.

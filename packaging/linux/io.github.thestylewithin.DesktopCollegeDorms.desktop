@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Desktop College Dorms
+GenericName=AI Character Chat
+Comment=Offline AI character creator and chat rooms
+Exec=desktop-college-dorms
+Icon=io.github.thestylewithin.DesktopCollegeDorms
+Terminal=false
+Categories=Network;Chat;Utility;
+Keywords=AI;character;chat;roleplay;VRM;LLM;
+StartupWMClass=desktop-college-dorms
