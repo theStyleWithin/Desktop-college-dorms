@@ -8,6 +8,30 @@ Cloud APIs are optional and use your own key.
 
 > The "dorm" theme is a skin: dorms are spaces with their own channels, like servers in Discord.
 
+## Screenshots
+
+Rendered from the real app with original demo characters. (Cards, chats and avatars here are made up for the screenshots.)
+
+**Desktop**
+
+| | |
+|---|---|
+| ![Home](docs/screenshots/desktop-home.png)<br>**Home**: jump back into chats, your characters at a glance | ![Library](docs/screenshots/desktop-library.png)<br>**Library**: search, tags, favorites, import cards |
+| ![A channel](docs/screenshots/desktop-channel.png)<br>**Dorm channels**: characters talk to you and to each other | ![Direct chat](docs/screenshots/desktop-chat.png)<br>**Chat**: swipe, regenerate, edit; image, GIF, video or live 3D VRM beside it |
+| ![Editor](docs/screenshots/desktop-editor.png)<br>**Character editor**: Chub-style, with live token counts | ![Models](docs/screenshots/desktop-models.png)<br>**Built-in models**: sized to your computer, resumable downloads |
+| ![Other API](docs/screenshots/desktop-other-api.png)<br>**Other API**: plug in any OpenAI- or Anthropic-style service | ![Light theme](docs/screenshots/desktop-light-theme.png)<br>**Themes**: dusk, midnight and a light "paper" theme |
+
+**Phone layout** (the Android app uses this same interface; shown here at phone width)
+
+<p>
+  <img src="docs/screenshots/mobile-home.png" alt="Home on a phone" width="200">
+  <img src="docs/screenshots/mobile-library.png" alt="Library on a phone" width="200">
+  <img src="docs/screenshots/mobile-channel.png" alt="A channel on a phone" width="200">
+  <img src="docs/screenshots/mobile-settings.png" alt="Settings on a phone" width="200">
+</p>
+
+> Regenerate them any time with `tests/e2e/screenshots.py` (see the script's header).
+
 ## Features
 
 - **Characters** with JPG / PNG / WebP / GIF / MP4 / WebM avatars and **VRM / VRoid 3D models** (live, with idle motion and blinking)

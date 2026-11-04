@@ -37,6 +37,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
   const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
   const [modal, setModal] = useState<null | { type: "chat"; dormId: number | null } | { type: "dorm" } | { type: "who" }>(null);
   const [listOpen, setListOpen] = useState(false);
+  const [optsOpen, setOptsOpen] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
@@ -189,12 +190,14 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
         ) : (
           <>
             <header className="chathead">
-              <button className="btn sm" style={{ display: window.innerWidth <= 820 ? undefined : "none" }} onClick={() => setListOpen(true)}>☰</button>
+              <button className="btn sm only-mobile" onClick={() => setListOpen(true)} aria-label="Chats">☰</button>
               <div>
                 <h3>{KIND_ICON[chat.kind]} {chat.name}</h3>
                 <div className="tok">{members.map((m) => displayName(m)).join(", ") || "No characters"}</div>
               </div>
               <div className="grow" />
+              <button className="btn sm only-mobile" onClick={() => setOptsOpen((o) => !o)} aria-label="Chat options" aria-expanded={optsOpen}>⋯</button>
+              <div className={`chatopts ${optsOpen ? "open" : ""}`}>
               {chat.kind !== "dm" && (
                 <>
                   <label className="row" title="Let the characters keep talking without you (uses more power)">
@@ -219,6 +222,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               <button className="btn sm" onClick={() => setModal({ type: "who" })}>👥 Who's here</button>
               <button className="btn sm" onClick={async () => { if (window.confirm("Clear every message in this chat?")) { await api.clearChat(chat.id); setMsgs([]); } }}>Clear</button>
               <button className="btn sm danger" onClick={deleteChat}>Delete</button>
+              </div>
             </header>
 
             <div className="msgs" ref={scroller}>
