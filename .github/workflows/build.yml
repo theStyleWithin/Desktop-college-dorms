@@ -105,6 +105,7 @@ jobs:
   e2e-linux:
     needs: linux
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -131,13 +132,22 @@ jobs:
           E2E_BUNDLED_ENGINE: "1"
         run: |
           chmod +x pkgs/*.AppImage
-          xvfb-run -a -s "-screen 0 1400x950x24" python3 -u tests/e2e/e2e.py \
-            "$(ls pkgs/*.AppImage)" "$PWD/e2e-assets/fixtures" "$PWD/e2e-assets/model.gguf" "$PWD/e2e-work"
+          # Log to a file (not the step's pipe): helper processes the app starts must never be able
+          # to keep this step open after the tests finish.
+          set +e
+          timeout 20m xvfb-run -a -s "-screen 0 1400x950x24" python3 -u tests/e2e/e2e.py \
+            "$(ls pkgs/*.AppImage)" "$PWD/e2e-assets/fixtures" "$PWD/e2e-assets/model.gguf" "$PWD/e2e-work" > e2e.log 2>&1
+          rc=$?
+          pkill -x tauri-driver; pkill -x WebKitWebDriver; pkill -x desktop-college-dorms; pkill -f '^/[^ ]*dorms-engine' ; pkill -x Xvfb
+          grep -v libEGL e2e.log | tail -150
+          exit $rc
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: e2e-screenshots
-          path: e2e-work/*.png
+          name: e2e-results
+          path: |
+            e2e.log
+            e2e-work/*.png
           if-no-files-found: ignore
 
   # ------------------------------------------------------------------- windows

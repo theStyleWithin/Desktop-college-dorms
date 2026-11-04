@@ -382,6 +382,8 @@ finally:
     except Exception: pass
     drv.terminate()
     subprocess.run(["pkill", "-f", "^/[^ ]*(dorms-engine|llama-server)"], check=False)
+    for name in ("WebKitWebDriver", "desktop-college-dorms"):  # nothing may outlive the test run
+        subprocess.run(["pkill", "-x", name], check=False)
 
 fails = [n for n, ok in results if not ok]
 print(f"\n{len(results) - len(fails)}/{len(results)} checks passed")
