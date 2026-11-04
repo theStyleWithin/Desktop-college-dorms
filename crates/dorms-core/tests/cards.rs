@@ -177,3 +177,25 @@ fn jpeg_avatar_is_converted_for_png_export() {
     let png = export_png(&card, Some(&c.into_inner())).unwrap();
     assert_eq!(import_png(&png).unwrap().data.name, "Mira");
 }
+
+#[test]
+fn decompression_bombs_in_png_chunks_are_refused() {
+    use std::io::Write;
+    // 64 MB of zeros compresses to ~64 KB; inflating it must be refused, not allocated.
+    let mut z = flate2::write::ZlibEncoder::new(vec![], flate2::Compression::best());
+    z.write_all(&vec![b'A'; 64 * 1024 * 1024]).unwrap();
+    let bomb = z.finish().unwrap();
+    let mut data = b"chara\0\0".to_vec();
+    data.extend(bomb);
+    let base = export_png(&Default::default(), None).unwrap();
+    // splice a zTXt chunk in before IEND by hand
+    let mut out = png::SIGNATURE.to_vec();
+    for c in png::read_chunks(&base) {
+        if &c.kind == b"IEND" {
+            out.extend((data.len() as u32).to_be_bytes()); out.extend(b"zTXt"); out.extend(&data); out.extend([0, 0, 0, 0]);
+        }
+        out.extend((c.data.len() as u32).to_be_bytes()); out.extend(c.kind); out.extend(c.data); out.extend([0, 0, 0, 0]);
+    }
+    let texts: Vec<_> = png::text_chunks(&out).into_iter().filter(|(k, _)| k == "chara").collect();
+    assert!(texts.iter().all(|(_, t)| t.len() < 1024), "the bomb must not be inflated");
+}

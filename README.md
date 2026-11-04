@@ -28,6 +28,7 @@ Cloud APIs are optional and use your own key.
   Works with OpenRouter, Groq, Together, Mistral, DeepSeek, xAI, Ollama, LM Studio, and anything new that speaks one of those formats.
 - **Privacy**: no accounts, no analytics. Remote traffic is HTTPS (TLS via rustls) from the Rust backend, so keys never touch the web view.
   Keys go in your OS keychain, or a private file if none exists. See *Settings → Privacy*.
+- **Hostile cards are contained**: an imported card's own system prompt is demoted to lower-priority notes until you trust it, and the web view can't read your database or keys. See [SECURITY.md](SECURITY.md).
 
 ## Install
 

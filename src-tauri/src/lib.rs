@@ -55,10 +55,16 @@ pub fn run() {
             let conn = db::open(&data_dir.join("dorms.db"))?;
             // background chats never survive a restart
             conn.execute("UPDATE chats SET auto_chat=0", [])?;
-            let _ = app.asset_protocol_scope().allow_directory(&data_dir, true);
+            // The web view may read avatar media only, never the database or the key file.
+            let _ = app.asset_protocol_scope().allow_directory(data_dir.join("media"), true);
             let http = reqwest::Client::builder()
                 .user_agent("DesktopCollegeDorms")
                 .connect_timeout(Duration::from_secs(20))
+                // never follow a redirect from https:// down to plain http://
+                .redirect(reqwest::redirect::Policy::custom(|a| {
+                    let downgrade = a.url().scheme() == "http" && a.previous().iter().any(|u| u.scheme() == "https");
+                    if downgrade { a.stop() } else if a.previous().len() >= 8 { a.stop() } else { a.follow() }
+                }))
                 .build()?;
             app.manage(Arc::new(AppState {
                 app: app.handle().clone(),

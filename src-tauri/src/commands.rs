@@ -16,6 +16,9 @@ use crate::{llama, secrets, AppState, Shared};
 
 type R<T> = Result<T, String>;
 
+/// Largest card file we will parse (cards are normally well under 5 MB).
+const MAX_CARD_BYTES: usize = 64 * 1024 * 1024;
+
 fn e<E: std::fmt::Display>(err: E) -> String {
     err.to_string()
 }
@@ -216,12 +219,16 @@ pub fn import_card(request: Request<'_>, state: State<'_, Shared>) -> R<ImportOu
     let bytes = raw_body(&request)?;
     let name = header(&request, "x-file-name");
     let is_png = dorms_core::png::is_png(bytes);
+    if bytes.len() > MAX_CARD_BYTES {
+        return Err(format!("That file is too large to be a character card (over {} MB).", MAX_CARD_BYTES / 1_048_576));
+    }
     let parsed = if is_png { dorms_core::import_png(bytes) } else { dorms_core::import_json(bytes) }
         .map_err(|err| match err {
             CardError::NoCardInPng => "NO_CARD".to_string(),
             other => other.to_string(),
         })?;
 
+    let spec = format!("{:?}", parsed.spec);
     let now = db::now();
     let mut ch = Character {
         id: uid(),
@@ -231,7 +238,15 @@ pub fn import_card(request: Request<'_>, state: State<'_, Shared>) -> R<ImportOu
         created_at: now,
         updated_at: now,
         last_used: 0,
+        trusted: true,
     };
+    // Downloaded cards may carry prompt-injection style instructions. Their own system prompt
+    // and post-history instructions are used only as lower-priority notes until the user trusts the card.
+    let mut warnings = parsed.warnings;
+    if !ch.card.system_prompt.trim().is_empty() || !ch.card.post_history_instructions.trim().is_empty() {
+        ch.trusted = false;
+        warnings.push("This card has its own system prompt or post-history instructions. They are used only as lower-priority notes until you choose to trust the card (Edit → Advanced).".into());
+    }
     if ch.card.name.trim().is_empty() {
         let stem = std::path::Path::new(&name).file_stem().and_then(|s| s.to_str()).unwrap_or("Imported character");
         ch.card.name = stem.to_string();
@@ -240,7 +255,7 @@ pub fn import_card(request: Request<'_>, state: State<'_, Shared>) -> R<ImportOu
         ch.media = write_media(&state, &ch.id, "card.png", bytes).ok();
     }
     db::save_character(&state.db.lock().unwrap(), &ch).map_err(e)?;
-    Ok(ImportOut { character: out(&state, ch), warnings: parsed.warnings, spec: format!("{:?}", parsed.spec) })
+    Ok(ImportOut { character: out(&state, ch), warnings, spec })
 }
 
 /// format: `png` | `json_v2` | `json_v3`
@@ -672,6 +687,7 @@ async fn run_generation(
         history: &items,
         settings: &ps,
         group: chat.kind != "dm",
+        trusted: speaker_char.trusted,
     });
     emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "start" }));
 

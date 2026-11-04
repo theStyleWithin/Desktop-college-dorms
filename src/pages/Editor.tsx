@@ -44,12 +44,14 @@ export default function Editor({ id }: { id: string | null }) {
   const [pending, setPending] = useState<{ file: File; url: string; kind: MediaKind } | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [trusted, setTrusted] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const hydrate = (c: Character) => {
     const d = c.card.extensions?.dorms ?? {};
     const dn = String(d.display_name ?? "");
     setChar(c);
+    setTrusted(c.trusted !== false);
     setCard(c.card);
     setName(dn || c.card.name);
     setChatName(dn ? c.card.name : "");
@@ -100,7 +102,7 @@ export default function Editor({ id }: { id: string | null }) {
     if (!name.trim() && !chatName.trim()) { toast("Give your character a name first.", "err"); return null; }
     setSaving(true);
     try {
-      let saved = await api.saveCharacter({ ...(char ?? {}), card: built });
+      let saved = await api.saveCharacter({ ...(char ?? {}), card: built, trusted });
       if (pending) { saved = await api.setMedia(saved.id, pending.file); setPending(null); }
       hydrate(saved);
       await refresh();
@@ -214,6 +216,17 @@ export default function Editor({ id }: { id: string | null }) {
             <button type="button" className="btn sm" style={{ justifySelf: "start" }} onClick={() => set("alternate_greetings", [...card.alternate_greetings, ""])}>＋ Add alternate greeting</button>
           </div>
         </Field>
+        {(card.system_prompt.trim() || card.post_history_instructions.trim()) && (
+          <div className={trusted ? "hint" : "banner"} style={{ margin: "12px 0" }}>
+            <span style={{ fontSize: "1.3rem" }}>{trusted ? "🔓" : "🛡️"}</span>
+            <div className="grow">
+              {trusted
+                ? "This card is trusted: its system prompt and post-history instructions can take priority over the app's own instructions."
+                : "This card's system prompt and post-history instructions are being used only as lower-priority notes, because the card came from outside. Trust it if you know and like what they say."}
+            </div>
+            <button type="button" className={trusted ? "btn sm" : "btn primary sm"} onClick={() => { setTrusted(!trusted); setDirty(true); }}>{trusted ? "Stop trusting" : "Trust this card"}</button>
+          </div>
+        )}
         <Field label="System prompt" count={tk(card.system_prompt)} hint="Replaces the default system prompt for this character. Use {{original}} to include the default. Applied when 'use card prompts' is on in Settings.">
           <textarea value={card.system_prompt} placeholder="System Prompt" onChange={(e) => set("system_prompt", e.target.value)} />
         </Field>

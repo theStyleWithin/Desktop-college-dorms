@@ -147,6 +147,9 @@ pub async fn stream_chat(
                 let Some(chunk) = chunk else { break };
                 let chunk = chunk.map_err(|e| format!("Connection lost: {e}"))?;
                 buf.extend_from_slice(&chunk);
+                if buf.len() > 8 * 1024 * 1024 {
+                    return Err("The server sent an unexpectedly large response line.".into());
+                }
                 while let Some(nl) = buf.iter().position(|&b| b == b'\n') {
                     let line: Vec<u8> = buf.drain(..=nl).collect();
                     let line = String::from_utf8_lossy(&line);

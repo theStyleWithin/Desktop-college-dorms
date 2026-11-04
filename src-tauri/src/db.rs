@@ -35,6 +35,14 @@ pub struct Character {
     pub updated_at: i64,
     #[serde(default)]
     pub last_used: i64,
+    /// Whether this card's own system prompt / post-history instructions may take priority over
+    /// the app's. Cards you write are trusted; imported ones are not until you say so.
+    #[serde(default = "default_true")]
+    pub trusted: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Serialize, Deserialize, Clone)]

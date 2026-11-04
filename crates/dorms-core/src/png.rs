@@ -40,9 +40,17 @@ fn latin1(b: &[u8]) -> String {
     b.iter().map(|&c| c as char).collect()
 }
 
+/// Largest text chunk we will inflate. Cards are a few hundred KB at most; the cap stops a
+/// crafted PNG (a "zip bomb") from exhausting memory.
+const MAX_INFLATED: u64 = 32 * 1024 * 1024;
+
 fn inflate(b: &[u8]) -> Option<Vec<u8>> {
     let mut out = vec![];
-    flate2::read::ZlibDecoder::new(b).read_to_end(&mut out).ok()?;
+    let mut dec = flate2::read::ZlibDecoder::new(b).take(MAX_INFLATED + 1);
+    dec.read_to_end(&mut out).ok()?;
+    if out.len() as u64 > MAX_INFLATED {
+        return None;
+    }
     Some(out)
 }
 

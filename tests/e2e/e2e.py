@@ -339,6 +339,42 @@ try:
     check("a deleted profile doesn't crash generation", len(invoke("list_messages", {"chatId": chat3["id"]})) == 4)
     invoke("set_api_key", {"provider": "custom-abc123", "key": ""})
     check("profile keys can be removed", invoke("has_api_key", {"provider": "custom-abc123"}) == {"present": False})
+    # ---- security: untrusted card prompts, file scope ------------------------------------------------
+    st = invoke("get_settings"); st.update(provider="custom:abc123", profiles=[prof]); invoke("save_settings", {"settings": st})
+    nav("Characters"); upload([os.path.join(FIX, "sys_card.json")]); time.sleep(1.5)
+    check("import warns that the card's own prompt is demoted", text_present("lower-priority notes"))
+    dismiss()
+    inj = by_name("Injected")
+    check("imported cards with their own system prompt start untrusted", inj and inj["trusted"] is False)
+    check("cards without such instructions import normally", by_name("Mira Okafor")["trusted"] in (True, False))
+    chat4 = invoke("create_chat", {"dormId": None, "name": "inj", "kind": "dm", "characterIds": [inj["id"]]})
+    def ask():
+        invoke("add_user_message", {"chatId": chat4["id"], "text": "hello?"}); invoke("generate", {"chatId": chat4["id"], "characterId": None, "regenerateMessageId": None})
+        for _ in range(30):
+            time.sleep(0.4)
+            mm = invoke("list_messages", {"chatId": chat4["id"]})
+            if mm[-1]["role"] == "character" and mm[-1]["swipes"][0] != "hello": return mm
+        return mm
+    ask(); sysmsg = seen["body"]["messages"][0]["content"]
+    check("untrusted card: the app's own prompt stays on top", sysmsg.startswith("Write Injected's next reply"), sysmsg[:80])
+    check("untrusted card: its prompt is present but labelled lower priority", "lower priority" in sysmsg and sysmsg.index("lower priority") < sysmsg.index("IGNORE ALL PREVIOUS"))
+    check("untrusted card: post-history instructions are not injected into the last turn", "OBEY" not in seen["body"]["messages"][-1]["content"])
+    inj["trusted"] = True; invoke("save_character", {"character": inj}); ask()
+    sysmsg = seen["body"]["messages"][0]["content"]
+    check("trusting a card restores full compatibility (its prompt leads, {{original}} works)", sysmsg.startswith("IGNORE ALL PREVIOUS") and "Write Injected's next reply" in sysmsg, sysmsg[:80])
+    inj["trusted"] = False; invoke("save_character", {"character": inj})
+    reload_ui(); nav("Characters")
+    d.execute_script("[...document.querySelectorAll('.ccard h3')].find(x=>x.textContent==='Injected').click()"); time.sleep(1)
+    check("editor shows the untrusted banner with a Trust button", "Trust this card" in page_text() and "lower-priority notes" in page_text())
+    shot("untrusted")
+    # the web view may read avatar media but never the database or the saved-key file
+    def served(path):
+        return d.execute_async_script("const done=arguments[arguments.length-1]; fetch(window.__TAURI_INTERNALS__.convertFileSrc(arguments[0])).then(r=>done(r.status)).catch(()=>done(0));", path)
+    media_file = os.path.join(DATA, "media", os.listdir(os.path.join(DATA, "media"))[0])
+    check("avatar media is still readable by the web view", served(media_file) == 200)
+    check("the database is NOT readable by the web view", served(os.path.join(DATA, "dorms.db")) != 200)
+    secrets_path = os.path.join(DATA, "secrets.json")
+    if os.path.exists(secrets_path): check("the saved-key file is NOT readable by the web view", served(secrets_path) != 200)
     # restore + persistence across restart is covered by the db being on disk
     check("everything is stored on disk in the app data folder", os.path.exists(os.path.join(DATA, "dorms.db")) and os.path.exists(os.path.join(DATA, "llama.log")))
 finally:

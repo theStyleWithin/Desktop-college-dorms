@@ -65,6 +65,8 @@ export interface Character {
   created_at: number;
   updated_at: number;
   last_used: number;
+  /** The card's own system prompt may take priority only when trusted (imported cards start untrusted). */
+  trusted: boolean;
 }
 
 export interface Dorm { id: number; name: string; created_at: number }
