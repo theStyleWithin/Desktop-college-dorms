@@ -9,9 +9,9 @@ The "dorm" theme is a skin, not a mechanic: rooms, a dorm hall, a common room. I
 | Area | Decision |
 |---|---|
 | Shell | **Tauri** (Rust backend, web frontend) |
-| Frontend | TypeScript + React or Svelte (decide at scaffold time), three.js for 3D |
+| Frontend | **TypeScript + React**, with three.js via react-three-fiber and `@pixiv/three-vrm` for VRM/VRoid models |
 | Storage | Local SQLite for chats and characters, character images and media as files in the app data dir |
-| Local models | Ollama first (HTTP on localhost). Bundled llama.cpp later, for a fully self-contained install |
+| Local models | **llama.cpp bundled in v1** as a Tauri sidecar, so install is plug and play with no external software. In-app model downloader (GGUF files) with hardware detection picks a sensible default size. Ollama or any OpenAI-compatible local server stays supported as an optional advanced endpoint |
 | Cloud models | Optional, user-supplied API keys (OpenAI-compatible endpoints, Anthropic, etc.) |
 | Privacy | Offline by default. Nothing is sent anywhere unless the user configures a cloud provider |
 
@@ -86,14 +86,19 @@ Layout ideas:
 1. Scaffold Tauri app, SQLite schema, app shell.
 2. Character model + card import/export (V1/V2/V3, JSON + PNG) with the fixture test suite.
 3. Character editor (Chub-style form with token counts) and library grid.
-4. 1:1 chat against Ollama; prompt assembly with lorebook, depth notes, post-history.
+4. Bundle llama.cpp sidecar + first-run model downloader; 1:1 chat against it; prompt assembly with lorebook, depth notes, post-history.
 5. Media: GIF/video profiles, then VRM viewer.
 6. Group chats, then Discord-style channels with bot-to-bot conversation.
 7. Cloud providers over TLS, keychain storage, privacy indicator.
 8. Polish, theming, packaging for Windows/macOS/Linux.
 
+## Decisions made
+
+- **llama.cpp is bundled in v1** (plug and play, nothing external to install). The one unavoidable first-run step is downloading a model file, which the app does for the user.
+- **Background bot-to-bot chat is optional and off by default**, because it drains PC power. Per-channel toggle for auto-chat, plus a speed/interval setting and a "pause when on battery" option. By default characters only reply while the user is active in the app.
+
+- **React for the frontend.** Larger ecosystem and the best-supported 3D/VRM tooling (react-three-fiber), which matters for VRoid model support.
+
 ## Open questions
 
-- React or Svelte for the frontend?
-- Bundle llama.cpp in v1, or require Ollama installed?
-- Should bot-to-bot channels run continuously in the background, or only while the app window is open?
+None at the moment.
