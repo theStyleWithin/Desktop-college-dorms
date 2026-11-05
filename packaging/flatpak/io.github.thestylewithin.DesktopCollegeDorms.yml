@@ -36,10 +36,10 @@ modules:
       - install -Dm644 repo/LICENSE /app/share/licenses/io.github.thestylewithin.DesktopCollegeDorms/LICENSE
     sources:
       - type: archive
-        url: https://github.com/theStyleWithin/Desktop-college-dorms/releases/download/v0.1.0/desktop-college-dorms-0.1.0-linux-x86_64.tar.gz
+        url: https://github.com/theStyleWithin/Desktop-college-dorms/releases/download/v0.2.0/desktop-college-dorms-0.2.0-linux-x86_64.tar.gz
         sha256: REPLACE_WITH_SHA256_FROM_THE_RELEASE
       - type: git
         url: https://github.com/theStyleWithin/Desktop-college-dorms.git
-        tag: v0.1.0
+        tag: v0.2.0
         commit: REPLACE_WITH_TAG_COMMIT
         dest: repo

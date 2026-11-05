@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { api, newProfile, onModelProgress, type ApiProfile, type EngineStatus, type Hardware, type ModelFile, type ModelProgress, type Settings } from "../api";
-import { useToast } from "../components/ui";
+import { api, newProfile, onModelProgress, saveExportFile, type ApiProfile, type EngineStatus, type ExportInfo, type Hardware, type ModelFile, type ModelProgress, type Settings } from "../api";
+import { CreateProfileModal, PASSCODE_NOTE, ProfileAvatar } from "../components/ProfileForms";
+import { Modal, useToast } from "../components/ui";
 import { errText, fmtBytes } from "../lib/util";
+import type { SessionState } from "../api";
 import { useStore } from "../store";
 
-type Tab = "models" | "chat" | "look" | "privacy" | "about";
-const TABS: [Tab, string][] = [["models", "Models"], ["chat", "Chat"], ["look", "Appearance"], ["privacy", "Privacy"], ["about", "About"]];
+type Tab = "profile" | "models" | "chat" | "look" | "privacy" | "about";
+const TABS: [Tab, string][] = [["profile", "Profile"], ["models", "Models"], ["chat", "Chat"], ["look", "Appearance"], ["privacy", "Privacy"], ["about", "About"]];
 
 const ENDPOINTS: [string, string, string][] = [
   ["OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"],
@@ -19,6 +21,8 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
   const toast = useToast();
   const [tab, setTab] = useState<Tab>((TABS.find((t) => t[0] === initialTab)?.[0]) ?? "models");
   const [s, setS] = useState<Settings>(settings);
+  // the name can also change from the Profile tab's own Save; keep this draft in step so it can't revert it
+  useEffect(() => { setS((x) => (x.user_name === settings.user_name ? x : { ...x, user_name: settings.user_name })); }, [settings.user_name]);
   const dirty = JSON.stringify(s) !== JSON.stringify(settings);
   const patch = (p: Partial<Settings>) => setS((x) => ({ ...x, ...p }));
 
@@ -38,6 +42,7 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
       <div className="tabs" role="tablist">
         {TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}
       </div>
+      {tab === "profile" && <ProfileTab s={s} patch={patch} />}
       {tab === "models" && <Models s={s} patch={patch} onChanged={refresh} />}
       {tab === "chat" && <ChatTab s={s} patch={patch} />}
       {tab === "look" && <Look s={s} patch={patch} />}
@@ -223,8 +228,6 @@ function Models({ s, patch, onChanged }: { s: Settings; patch: (p: Partial<Setti
 function ChatTab({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void }) {
   return (
     <div className="card">
-      <label className="f"><span>Your name:</span><input type="text" value={s.user_name} onChange={(e) => patch({ user_name: e.target.value })} /></label>
-      <label className="f"><span>About you:</span><span><textarea value={s.user_description} placeholder="Optional. Who you are, for characters to know." onChange={(e) => patch({ user_description: e.target.value })} /></span></label>
       <label className="f"><span>Context size:</span><span><input type="number" min={512} step={512} value={s.context_tokens} onChange={(e) => patch({ context_tokens: Number(e.target.value) })} /><div className="hint">How much of the chat the model can see (tokens). Bigger remembers more but uses more memory. 4096 is a safe start.</div></span></label>
       <label className="f"><span>Max reply length:</span><input type="number" min={16} step={16} value={s.max_tokens} onChange={(e) => patch({ max_tokens: Number(e.target.value) })} /></label>
       <label className="f"><span>Creativity ({s.temperature.toFixed(2)}):</span><input type="range" min={0} max={2} step={0.05} value={s.temperature} onChange={(e) => patch({ temperature: Number(e.target.value) })} /></label>
@@ -408,7 +411,9 @@ function Privacy({ s }: { s: Settings }) {
   return (
     <div className="card" style={{ display: "grid", gap: 10 }}>
       <h3>What stays on your device</h3>
-      <p>Your characters, chats, images, videos, VRM models, and settings are stored only in the app's data folder. There is no account, no sync, and no analytics.</p>
+      <p>Your characters, chats, images, videos, VRM models, and settings are stored only in the app's data folder. Profiles are local to this device: there is no online account, no sync, and no analytics.</p>
+      <h3>Profiles and passcodes</h3>
+      <p>Each profile has its own characters, chats, settings and API keys, and guest mode keeps its own separate space. A passcode keeps other people on this computer out of your profile inside the app. It does <b>not</b> encrypt files on disk, so anyone with access to your user account on this computer could still read the data folder. Eject and backup files are not encrypted either, and never contain API keys or passcodes.</p>
       <h3>When you use the built-in model</h3>
       <p>Nothing leaves your computer. The engine only listens on your own machine (127.0.0.1).</p>
       <h3>When you use a cloud provider</h3>
@@ -434,5 +439,187 @@ function About() {
         To back up or move everything, copy the data folder. {info?.portable ? "In the portable build it sits right next to the program, so copying that folder moves your whole setup." : ""}
       </p>
     </div>
+  );
+}
+
+function plural(n: number, w: string) { return `${n} ${w}${n === 1 ? "" : "s"}`; }
+const summary = (i: ExportInfo) => `${plural(i.characters, "character")}, ${plural(i.chats, "chat")}, ${plural(i.messages, "message")}, ${plural(i.media, "media file")} (${fmtBytes(i.size)})`;
+
+function ProfileTab({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void }) {
+  const { session, setSession, refresh } = useStore();
+  const toast = useToast();
+  const p = session.profile;
+  const [name, setName] = useState(p?.display_name ?? "");
+  const [pc, setPc] = useState({ current: "", next: "", again: "" });
+  const [modal, setModal] = useState<null | "claim" | "export" | "eject" | "delete">(null);
+
+  useEffect(() => setName(p?.display_name ?? ""), [p?.display_name]);
+
+  const saveName = async () => {
+    try { setSession(await api.updateProfile(name)); await refresh(); toast("Name saved", "ok"); } catch (e) { toast(errText(e), "err"); }
+  };
+  const savePasscode = async (remove?: boolean) => {
+    if (!remove && pc.next !== pc.again) return toast("The two new passcodes don't match.", "err");
+    try {
+      setSession(await api.setPasscode(pc.current, remove ? "" : pc.next));
+      setPc({ current: "", next: "", again: "" });
+      toast(remove ? "Passcode removed" : "Passcode saved", "ok");
+    } catch (e) { toast(errText(e), "err"); }
+  };
+  const signOut = async () => { try { setSession(await api.signOut()); } catch (e) { toast(errText(e), "err"); } };
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <div className="card">
+        <div className="row" style={{ gap: 14 }}>
+          <ProfileAvatar name={p?.handle ?? "Guest"} size={64} />
+          <div className="grow" style={{ minWidth: 200 }}>
+            <h3>{p ? p.handle : "Guest"}</h3>
+            <div className="hint">{p ? "A profile on this device. Its characters, chats and keys are separate from every other profile." : "Guest space. Nothing here is tied to a profile."}</div>
+          </div>
+          <button className="btn" onClick={signOut}>Switch profile</button>
+        </div>
+        {!p && (
+          <div className="banner" style={{ marginTop: 14, marginBottom: 0 }}>
+            <span style={{ fontSize: "1.3rem" }}>🔖</span>
+            <div className="grow">Want your chats tied to a name, with an optional passcode? Make the guest space a real profile. Everything moves over.</div>
+            <button className="btn primary sm" onClick={() => setModal("claim")}>Make this a real profile</button>
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <h3>How you appear in chats</h3>
+        {p ? (
+          <label className="f"><span>Your name:</span>
+            <span className="row" style={{ flexWrap: "nowrap" }}>
+              <input type="text" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />
+              <button className="btn" disabled={!name.trim() || name.trim() === p.display_name} onClick={saveName}>Save name</button>
+            </span>
+          </label>
+        ) : (
+          <label className="f"><span>Your name:</span><input type="text" value={s.user_name} onChange={(e) => patch({ user_name: e.target.value })} /></label>
+        )}
+        <label className="f"><span>About you:</span><span><textarea value={s.user_description} placeholder="Optional. Who you are, for characters to know." onChange={(e) => patch({ user_description: e.target.value })} /><div className="hint">Saved with the Save settings button.</div></span></label>
+      </div>
+
+      {p && (
+        <div className="card">
+          <h3>Passcode</h3>
+          <p className="hint">{PASSCODE_NOTE}</p>
+          <div style={{ display: "grid", gap: 8, maxWidth: 420 }}>
+            {p.has_passcode && <input type="password" autoComplete="current-password" placeholder="Current passcode" value={pc.current} onChange={(e) => setPc({ ...pc, current: e.target.value })} />}
+            <input type="password" autoComplete="new-password" placeholder={p.has_passcode ? "New passcode" : "Choose a passcode (4+ characters)"} value={pc.next} onChange={(e) => setPc({ ...pc, next: e.target.value })} />
+            <input type="password" autoComplete="new-password" placeholder="New passcode again" value={pc.again} onChange={(e) => setPc({ ...pc, again: e.target.value })} />
+            <div className="row">
+              <button className="btn primary" disabled={!pc.next} onClick={() => savePasscode()}>{p.has_passcode ? "Change passcode" : "Set passcode"}</button>
+              {p.has_passcode && <button className="btn danger" disabled={!pc.current} onClick={() => savePasscode(true)}>Remove passcode</button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <h3>When the app starts</h3>
+        <label className="row" style={{ marginTop: 8 }}>
+          <input type="checkbox" checked={session.ask_on_launch} onChange={async (e) => { try { setSession(await api.setLaunchPref(e.target.checked)); } catch (er) { toast(errText(er), "err"); } }} />
+          Ask which profile to use every time (otherwise it reopens the last one, unless that one has a passcode)
+        </label>
+      </div>
+
+      <div className="card">
+        <h3>Your data</h3>
+        <p className="hint">Everything in {p ? "this profile" : "the guest space"}: characters, dorms, chats and messages, their images, GIFs, videos and 3D models, and your settings. API keys and passcodes are never saved to a file.</p>
+        <div className="row" style={{ marginTop: 10 }}>
+          <button className="btn" onClick={() => setModal("export")}>Save a backup copy…</button>
+          <button className="btn" onClick={() => setModal("eject")}>Eject {p ? "profile" : "guest data"}…</button>
+          <button className="btn danger" onClick={() => setModal("delete")}>Delete {p ? "profile" : "guest data"}…</button>
+        </div>
+        <p className="hint" style={{ marginTop: 10 }}><b>Eject</b> saves everything to a file, then takes it off this device. It isn't a delete: import the file from the profile screen, here or on another device, and it all comes back.</p>
+      </div>
+
+      {modal === "claim" && <CreateProfileModal claim onClose={() => setModal(null)} onDone={(st) => { setModal(null); setSession(st); }} />}
+      {(modal === "export" || modal === "eject") && <ExportFlow eject={modal === "eject"} label={p ? p.handle : "guest data"} onClose={() => setModal(null)} onEjected={(st) => { setModal(null); setSession(st); }} />}
+      {modal === "delete" && <DeleteFlow expected={p ? p.handle : "guest"} onClose={() => setModal(null)} onDeleted={(st) => { setModal(null); setSession(st); }} />}
+    </div>
+  );
+}
+
+/** Save a verified copy to a file; for Eject, then remove the profile once the user confirms they have it. */
+function ExportFlow({ eject, label, onClose, onEjected }: { eject: boolean; label: string; onClose: () => void; onEjected: (s: SessionState) => void }) {
+  const toast = useToast();
+  const [info, setInfo] = useState<ExportInfo | null>(null);
+  const [saved, setSaved] = useState<{ path: string; verified: boolean } | null>(null);
+  const [sure, setSure] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const save = async () => {
+    setBusy(true); setErr("");
+    try {
+      const i = await api.prepareExport();
+      setInfo(i);
+      const r = await saveExportFile(i);
+      if (r) setSaved(r);
+    } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
+  };
+  const remove = async () => {
+    if (!info) return;
+    setBusy(true); setErr("");
+    try { const st = await api.ejectProfile(info.token); toast(`${label} was ejected. Import ${info.file_name} to bring it back.`, "ok"); onEjected(st); } catch (e) { setErr(errText(e)); setBusy(false); }
+  };
+
+  return (
+    <Modal title={eject ? "Eject" : "Save a backup copy"} onClose={onClose}>
+      {!saved ? (
+        <div style={{ display: "grid", gap: 10 }}>
+          {eject ? (
+            <>
+              <p style={{ margin: 0 }}>Eject takes <b>{label}</b> off this device. First it saves everything to a file.</p>
+              <p style={{ margin: 0 }}>This is <b>not a delete</b>. Import the file from the profile screen, on this device or another, and it comes back. Without the file, it can't.</p>
+            </>
+          ) : (
+            <p style={{ margin: 0 }}>Saves a copy of <b>{label}</b> to a file you choose. Nothing is removed.</p>
+          )}
+          <p className="hint" style={{ margin: 0 }}>The file is <b>not encrypted</b>, so keep it somewhere safe. API keys and your passcode are not saved in it.</p>
+          {err && <div className="hint" style={{ color: "var(--danger)" }} role="alert">{err}</div>}
+          <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save my data"}</button><button className="btn" onClick={onClose}>Cancel</button></div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 10 }}>
+          <p style={{ margin: 0 }}><b>{info?.file_name}</b> was saved to <span style={{ wordBreak: "break-all" }}>{saved.path}</span>.</p>
+          {info && <p className="hint" style={{ margin: 0 }}>{summary(info)}</p>}
+          {saved.verified
+            ? <p className="hint" style={{ margin: 0 }}>✓ The saved file was read back and matches.</p>
+            : <p className="hint" style={{ margin: 0, color: eject ? "var(--danger)" : undefined }}>This location couldn't be double-checked. {eject ? "Nothing will be removed. Save it somewhere else." : "Look for the file to be sure it's there."}</p>}
+          {eject && saved.verified && (
+            <>
+              <label className="row"><input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} /> I have the file and I know where it is.</label>
+              {err && <div className="hint" style={{ color: "var(--danger)" }} role="alert">{err}</div>}
+              <div className="row"><button className="btn danger" disabled={!sure || busy} onClick={remove}>{busy ? "Removing…" : "Remove from this device"}</button><button className="btn" onClick={onClose}>Keep it here</button></div>
+            </>
+          )}
+          {(!eject || !saved.verified) && <div className="row"><button className="btn primary" onClick={onClose}>Done</button></div>}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function DeleteFlow({ expected, onClose, onDeleted }: { expected: string; onClose: () => void; onDeleted: (s: SessionState) => void }) {
+  const [typed, setTyped] = useState("");
+  const [err, setErr] = useState("");
+  return (
+    <Modal title="Delete permanently" onClose={onClose}>
+      <div style={{ display: "grid", gap: 10 }}>
+        <p style={{ margin: 0 }}>This erases everything in <b>{expected}</b> and can't be undone. If you might want it back, use <b>Eject</b> instead, which saves a file first.</p>
+        <label>Type <b>{expected}</b> to confirm<input type="text" value={typed} onChange={(e) => setTyped(e.target.value)} /></label>
+        {err && <div className="hint" style={{ color: "var(--danger)" }} role="alert">{err}</div>}
+        <div className="row">
+          <button className="btn danger" disabled={typed.trim().toLowerCase() !== expected.toLowerCase()} onClick={async () => { try { onDeleted(await api.deleteProfile(typed)); } catch (e) { setErr(errText(e)); } }}>Delete everything</button>
+          <button className="btn" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </Modal>
   );
 }

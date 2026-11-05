@@ -20,6 +20,7 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
 | ![A channel](docs/screenshots/desktop-channel.png)<br>**Dorm channels**: characters talk to you and to each other | ![Direct chat](docs/screenshots/desktop-chat.png)<br>**Chat**: swipe, regenerate, edit; image, GIF, video or live 3D VRM beside it |
 | ![Editor](docs/screenshots/desktop-editor.png)<br>**Character editor**: Chub-style, with live token counts | ![Models](docs/screenshots/desktop-models.png)<br>**Built-in models**: sized to your computer, resumable downloads |
 | ![Other API](docs/screenshots/desktop-other-api.png)<br>**Other API**: plug in any OpenAI- or Anthropic-style service | ![Light theme](docs/screenshots/desktop-light-theme.png)<br>**Themes**: dusk, midnight and a light "paper" theme |
+| ![Welcome](docs/screenshots/desktop-welcome.png)<br>**Profiles**: local accounts with an optional passcode, or hop in as a guest | ![Profile settings](docs/screenshots/desktop-profile.png)<br>**Profile settings**: passcode, backup, **Eject**, delete |
 
 **Phone layout** (the Android app uses this same interface; shown here at phone width)
 
@@ -28,6 +29,8 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
   <img src="docs/screenshots/mobile-library.png" alt="Library on a phone" width="200">
   <img src="docs/screenshots/mobile-channel.png" alt="A channel on a phone" width="200">
   <img src="docs/screenshots/mobile-settings.png" alt="Settings on a phone" width="200">
+  <img src="docs/screenshots/mobile-welcome.png" alt="Profile picker on a phone" width="200">
+  <img src="docs/screenshots/mobile-profile.png" alt="Profile settings on a phone" width="200">
 </p>
 
 > Regenerate them any time with `tests/e2e/screenshots.py` (see the script's header).
@@ -50,7 +53,8 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
 - **Cloud and other APIs**: OpenAI-compatible, Anthropic, or **Other API**: save any number of custom endpoints
   (OpenAI-style or Anthropic-style) with your own base URL, model, auth style, extra headers and extra JSON body.
   Works with OpenRouter, Groq, Together, Mistral, DeepSeek, xAI, Ollama, LM Studio, and anything new that speaks one of those formats.
-- **Privacy**: no accounts, no analytics. Remote traffic is HTTPS (TLS via rustls) from the Rust backend, so keys never touch the web view.
+- **Local profiles, guest mode and Eject**: keep several people's (or personas') characters, chats, settings and API keys apart on one device, each with an optional passcode, or just hop in as a guest with nothing tied to a name. **Eject** saves a profile to a verified file and takes it off the device (not a delete: import the file here or on another device to bring it all back). A guest space can be turned into a profile later. Everything is local; there is no online account.
+- **Privacy**: no online accounts, no analytics. Remote traffic is HTTPS (TLS via rustls) from the Rust backend, so keys never touch the web view.
   Keys go in your OS keychain, or a private file if none exists. See *Settings → Privacy*.
 - **Hostile cards are contained**: an imported card's own system prompt is demoted to lower-priority notes until you trust it, and the web view can't read your database or keys. See [SECURITY.md](SECURITY.md).
 
@@ -78,13 +82,14 @@ Then create or import a character and start a chat.
 
 - **Android has no built-in engine yet.** Android doesn't allow launching the helper program the desktop builds use. Use a cloud provider,
   or point *Other API* at a model server on your home network (Ollama, LM Studio, or this app on your PC).
+- **Passcodes are a lock, not encryption.** A profile passcode keeps other people on the same computer out of your profile inside the app. It does not encrypt files on disk, and Eject/backup files are not encrypted either (they never contain API keys or passcodes). See [SECURITY.md](SECURITY.md).
 - The built-in engine needs an **AVX2 CPU** (Intel Haswell / AMD Zen or newer, which includes the Steam Deck).
 - Windows portable build needs the **WebView2 runtime** (already present on Windows 11 and nearly all updated Windows 10).
 - Video avatars load into memory when played (library thumbnails play on hover), so keep them reasonably small.
 - Battery-aware pausing isn't implemented; the per-channel pace and turn limit are the power controls.
 - **Verification status**: the Linux AppImage, the portable (single-file) build and the whole app are covered by an automated end-to-end suite
   that drives the real packaged app (card import/export, editing, GIF/video/VRM, real model chat, channels with bots, downloads, cloud and
-  Other API paths, and the live 3D viewer). The **Windows installer/portable and the Android APK are built by CI but have not been run on a real device by the author**.
+  Other API paths, local profiles with passcodes and lockout, profile isolation, and the export / eject / import round trip, and the live 3D viewer). The **Windows installer/portable and the Android APK are built by CI but have not been run on a real device by the author**.
   If your graphics drivers can't run WebGL, the app notices an unfinished 3D attempt on the next launch and
   shows a placeholder with a "Try again" button instead of repeating a crash.
   The Flatpak and AUR files are untested hand-offs.

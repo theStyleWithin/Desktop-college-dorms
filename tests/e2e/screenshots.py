@@ -195,6 +195,17 @@ try:
     nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Models').click()"); time.sleep(0.6)
     st = inv("get_settings"); st.update(theme="dusk"); inv("save_settings", {"settings": st}); reload_ui()
     nav("Settings"); snap("desktop-models", DESK)
+
+    # profiles: the Profile tab, then the welcome screen you see once a profile exists
+    inv("create_profile", {"handle": "Alex", "displayName": "Alex", "passcode": "demo-pass"}); reload_ui()
+    nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Profile').click()"); time.sleep(0.6)
+    snap("desktop-profile", DESK)
+    d.set_window_size(*PHONE); time.sleep(0.6)
+    d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Profile').click()"); time.sleep(0.6)
+    snap("mobile-profile", PHONE)
+    inv("sign_out"); reload_ui()
+    snap("mobile-welcome", PHONE)
+    snap("desktop-welcome", DESK)
 finally:
     try: d.quit()
     except Exception: pass

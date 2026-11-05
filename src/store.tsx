@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { AppInfo, Character, Chat, Dorm, Settings } from "./api";
+import type { AppInfo, Character, Chat, Dorm, SessionState, Settings } from "./api";
 
 export type Route =
   | { page: "home" }
@@ -18,6 +18,8 @@ export interface Store {
   go: (r: Route) => void;
   refresh: () => Promise<void>;
   setSettings: (s: Settings) => Promise<void>;
+  session: SessionState;
+  setSession: (s: SessionState) => void;
 }
 
 export const StoreCtx = createContext<Store>(null as unknown as Store);

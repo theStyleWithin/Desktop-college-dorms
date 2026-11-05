@@ -106,5 +106,7 @@ None at the moment.
 
 ## Status
 
+v0.2.0 adds local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.
+
 Built: everything above except battery-aware pausing and a standalone lorebook library (lorebooks are embedded in characters).
 Android builds without the local engine (the OS can't run the helper binary); it uses cloud or network models. See README for the verification status of each platform.

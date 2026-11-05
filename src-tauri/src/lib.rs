@@ -1,3 +1,4 @@
+mod accounts;
 mod commands;
 mod db;
 mod llama;
@@ -22,9 +23,25 @@ pub struct AppState {
     pub cancels: Mutex<HashMap<String, Arc<Notify>>>,
     pub autos: Mutex<HashMap<i64, tauri::async_runtime::JoinHandle<()>>>,
     pub busy: Mutex<HashSet<i64>>,
+    pub session: Mutex<Session>,
+    /// Export waiting to be saved (and, for eject, confirmed): (token, file bytes, profile it came from).
+    pub pending_export: Mutex<Option<crate::accounts::PendingExport>>,
+    /// Wrong-passcode tracking per profile: (failures, locked until).
+    pub login_fails: Mutex<HashMap<String, (u32, std::time::Instant)>>,
 }
 
 pub type Shared = Arc<AppState>;
+
+/// Which local profile (or the guest space) is open. Only the backend decides this; the web view can't pick
+/// another profile's data by sending a different id.
+#[derive(Default)]
+pub struct Session {
+    pub chosen: bool,
+    /// `None` = guest space.
+    pub profile: Option<String>,
+    /// Set after an explicit sign-out so the app doesn't just reopen the last profile.
+    pub no_auto: bool,
+}
 
 fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
     #[cfg(feature = "portable")]
@@ -75,6 +92,9 @@ pub fn run() {
                 cancels: Default::default(),
                 autos: Default::default(),
                 busy: Default::default(),
+                session: Default::default(),
+                pending_export: Default::default(),
+                login_fails: Default::default(),
             }));
             Ok(())
         })
@@ -119,6 +139,21 @@ pub fn run() {
             commands::test_provider,
             commands::test_profile,
             commands::list_remote_models,
+            accounts::session_state,
+            accounts::sign_in,
+            accounts::sign_out,
+            accounts::create_profile,
+            accounts::claim_guest_profile,
+            accounts::update_profile,
+            accounts::set_passcode,
+            accounts::set_launch_pref,
+            accounts::prepare_export,
+            accounts::read_export,
+            accounts::save_export,
+            accounts::confirm_export_saved,
+            accounts::eject_profile,
+            accounts::delete_profile,
+            accounts::import_profile,
             commands::vrm_guard_begin,
             commands::vrm_guard_end,
             commands::set_auto_chat,
