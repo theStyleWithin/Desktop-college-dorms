@@ -98,7 +98,7 @@ def upload(paths, scope=None):
     inp.send_keys("\n".join(paths)); time.sleep(0.2)
 def page_text(): return d.execute_script("return document.body.innerText")
 def reload_ui():
-    d.refresh(); wait(30).until(lambda x: "Good" in page_text() or "Dorms" in page_text()); time.sleep(0.8)
+    d.refresh(); wait(30).until(lambda x: "Dorms" in page_text()); time.sleep(0.8)
 def dismiss():
     for b in d.find_elements(By.CSS_SELECTOR, ".modal button[aria-label=Close]"):
         b.click(); time.sleep(0.3)
@@ -109,7 +109,7 @@ def chars(): return invoke("list_characters")
 def by_name(n): return next((c for c in chars() if c["card"]["name"] == n), None)
 
 try:
-    wait(30).until(lambda x: "Good" in x.find_element(By.TAG_NAME, "body").text)
+    wait(30).until(lambda x: "New character" in x.execute_script("return document.body.innerText"))  # the greeting changes with the hour; the buttons do not
     check("app launches and the UI renders", True)
     check("no first-run banner when a model is already installed", "download a model" not in d.find_element(By.TAG_NAME, "body").text)
 
