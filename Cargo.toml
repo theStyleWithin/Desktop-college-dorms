@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["crates/dorms-core", "src-tauri"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+opt-level = "s"
+strip = true

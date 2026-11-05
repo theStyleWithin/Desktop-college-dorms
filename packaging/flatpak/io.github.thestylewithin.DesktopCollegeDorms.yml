@@ -1,0 +1,45 @@
+# Flatpak manifest (hand-off, NOT yet built or tested by the author).
+#
+# It repackages the prebuilt Linux tarball from a GitHub release, which is the usual approach for
+# Tauri apps. Before building:
+#   1. Make sure a release exists whose assets include desktop-college-dorms-<version>-linux-x86_64.tar.gz
+#   2. Replace the two `sha256`/`commit` placeholders below (the release publishes a .sha256 next to the tarball).
+#   3. flatpak-builder --user --install --force-clean build-dir io.github.thestylewithin.DesktopCollegeDorms.yml
+#
+# Anyone is welcome to submit this to Flathub (see packaging/README.md and the MIT license).
+app-id: io.github.thestylewithin.DesktopCollegeDorms
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+command: desktop-college-dorms
+
+finish-args:
+  - --share=ipc
+  - --share=network                       # model downloads and optional cloud providers
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri                          # WebKit rendering, VRM viewer, Vulkan engine
+  - --talk-name=org.freedesktop.secrets   # API keys in the system keychain
+  # File pickers go through the portal, so no --filesystem access is requested.
+
+modules:
+  - name: desktop-college-dorms
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 desktop-college-dorms-*/desktop-college-dorms /app/bin/desktop-college-dorms
+      - install -Dm755 desktop-college-dorms-*/dorms-engine /app/bin/dorms-engine
+      - install -Dm755 desktop-college-dorms-*/dorms-engine-vulkan /app/bin/dorms-engine-vulkan
+      - install -Dm644 repo/packaging/linux/io.github.thestylewithin.DesktopCollegeDorms.desktop /app/share/applications/io.github.thestylewithin.DesktopCollegeDorms.desktop
+      - install -Dm644 repo/packaging/linux/io.github.thestylewithin.DesktopCollegeDorms.metainfo.xml /app/share/metainfo/io.github.thestylewithin.DesktopCollegeDorms.metainfo.xml
+      - install -Dm644 repo/packaging/linux/icons/256.png /app/share/icons/hicolor/256x256/apps/io.github.thestylewithin.DesktopCollegeDorms.png
+      - install -Dm644 repo/packaging/linux/icons/512.png /app/share/icons/hicolor/512x512/apps/io.github.thestylewithin.DesktopCollegeDorms.png
+      - install -Dm644 repo/LICENSE /app/share/licenses/io.github.thestylewithin.DesktopCollegeDorms/LICENSE
+    sources:
+      - type: archive
+        url: https://github.com/theStyleWithin/Desktop-college-dorms/releases/download/v0.1.0/desktop-college-dorms-0.1.0-linux-x86_64.tar.gz
+        sha256: REPLACE_WITH_SHA256_FROM_THE_RELEASE
+      - type: git
+        url: https://github.com/theStyleWithin/Desktop-college-dorms.git
+        tag: v0.1.0
+        commit: REPLACE_WITH_TAG_COMMIT
+        dest: repo

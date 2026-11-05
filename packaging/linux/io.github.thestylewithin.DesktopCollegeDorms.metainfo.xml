@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.thestylewithin.DesktopCollegeDorms</id>
+  <name>Desktop College Dorms</name>
+  <summary>Offline AI character creator and chat rooms</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.thestylewithin">
+    <name>theStyleWithin</name>
+  </developer>
+  <description>
+    <p>
+      Create AI characters with images, GIFs, video or VRM/VRoid 3D models, import character cards in the
+      common V1/V2/V3 format (PNG or JSON), and chat one-on-one, in groups, or in Discord-style channels
+      where characters talk to each other.
+    </p>
+    <p>
+      Everything is stored on your computer. A local model engine (llama.cpp) is built in, so there is nothing
+      else to install. Cloud providers such as OpenAI-compatible servers and Anthropic are optional and use
+      your own API key over an encrypted connection.
+    </p>
+    <ul>
+      <li>Chub-style character editor with token counts, alternate greetings and embedded lorebooks</li>
+      <li>Lenient card import that keeps unknown fields so round trips lose nothing</li>
+      <li>Group chats and channels with optional bot-to-bot conversation</li>
+      <li>Built-in local models with a hardware-aware downloader, GPU acceleration through Vulkan</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.thestylewithin.DesktopCollegeDorms.desktop</launchable>
+  <url type="homepage">https://github.com/theStyleWithin/Desktop-college-dorms</url>
+  <url type="bugtracker">https://github.com/theStyleWithin/Desktop-college-dorms/issues</url>
+  <categories>
+    <category>Network</category>
+    <category>Chat</category>
+    <category>Utility</category>
+  </categories>
+  <!-- Replace with hosted screenshots before submitting to a store:
+  <screenshots><screenshot type="default"><image>https://…/library.png</image></screenshot></screenshots> -->
+  <!-- This app chats with AI models that can produce unmoderated text; submitters should review this rating. -->
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-chat">intense</content_attribute>
+  </content_rating>
+  <provides>
+    <binary>desktop-college-dorms</binary>
+  </provides>
+  <releases>
+    <release version="0.1.0" date="2026-11-04"/>
+  </releases>
+</component>

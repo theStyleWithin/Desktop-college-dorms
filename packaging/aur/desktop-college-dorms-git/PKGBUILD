@@ -1,0 +1,51 @@
+# Maintainer: (whoever submits this to the AUR; the project owner has given full consent, see LICENSE)
+# NOT yet tested by the author. Builds everything from source, including the llama.cpp engine.
+pkgname=desktop-college-dorms-git
+_name=desktop-college-dorms
+_repo=Desktop-college-dorms
+pkgver=0.1.0.r0.g0000000
+pkgrel=1
+pkgdesc='Offline AI character creator and chat rooms with a built-in local model engine (git)'
+arch=('x86_64')
+url='https://github.com/theStyleWithin/Desktop-college-dorms'
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'dbus' 'gst-plugins-base' 'gst-plugins-good' 'gst-libav')
+makedepends=('git' 'rust' 'cargo' 'nodejs' 'npm' 'cmake' 'pkgconf' 'vulkan-headers' 'shaderc' 'vulkan-icd-loader')
+optdepends=('vulkan-icd-loader: GPU acceleration for the built-in engine'
+            'gnome-keyring: store API keys in the system keychain'
+            'kwallet: store API keys in the system keychain')
+provides=("$_name")
+conflicts=("$_name" "$_name-bin")
+options=('!strip')
+source=("git+$url.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$_repo"
+  git describe --long --tags 2>/dev/null | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' \
+    || printf '0.1.0.r%s.g%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  cd "$_repo"
+  export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
+  npm ci
+  node scripts/build-llama.mjs       # static llama.cpp engines (CPU + Vulkan) -> src-tauri/binaries
+  npx tauri build --no-bundle
+}
+
+package() {
+  cd "$_repo"
+  local triple=x86_64-unknown-linux-gnu id=io.github.thestylewithin.DesktopCollegeDorms
+  install -dm755 "$pkgdir/usr/lib/$_name" "$pkgdir/usr/bin"
+  install -m755 target/release/desktop-college-dorms "$pkgdir/usr/lib/$_name/desktop-college-dorms"
+  install -m755 "src-tauri/binaries/dorms-engine-$triple" "$pkgdir/usr/lib/$_name/dorms-engine"
+  install -m755 "src-tauri/binaries/dorms-engine-vulkan-$triple" "$pkgdir/usr/lib/$_name/dorms-engine-vulkan"
+  ln -s "/usr/lib/$_name/desktop-college-dorms" "$pkgdir/usr/bin/desktop-college-dorms"
+
+  install -Dm644 "packaging/linux/$id.desktop" "$pkgdir/usr/share/applications/$id.desktop"
+  install -Dm644 "packaging/linux/$id.metainfo.xml" "$pkgdir/usr/share/metainfo/$id.metainfo.xml"
+  install -Dm644 packaging/linux/icons/256.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/$id.png"
+  install -Dm644 packaging/linux/icons/512.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/$id.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

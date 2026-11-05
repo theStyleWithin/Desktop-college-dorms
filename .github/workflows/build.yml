@@ -1,0 +1,287 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  LLAMA_TAG: b12111 # llama.cpp release bundled as the built-in engine
+
+jobs:
+  # ---------------------------------------------------------------- unit tests
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            librsvg2-dev libayatana-appindicator3-dev libssl-dev libdbus-1-dev pkg-config patchelf
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm run build # type-checks the frontend and produces dist/ (needed by the Tauri crate)
+      - name: Placeholder engine binaries (tauri-build only checks that they exist)
+        run: |
+          mkdir -p src-tauri/binaries
+          touch src-tauri/binaries/dorms-engine-x86_64-unknown-linux-gnu src-tauri/binaries/dorms-engine-vulkan-x86_64-unknown-linux-gnu
+      - run: cargo test --workspace
+
+  # --------------------------------------------------------------------- linux
+  linux:
+    runs-on: ubuntu-22.04 # oldest glibc we care about, so the AppImage runs on SteamOS, CachyOS, Debian 12+, Fedora…
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            librsvg2-dev libayatana-appindicator3-dev libssl-dev libdbus-1-dev pkg-config patchelf rpm file \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-tools libunwind-dev
+      - name: Vulkan SDK (for the GPU engine; the build falls back to CPU-only if this fails)
+        continue-on-error: true
+        run: |
+          wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+          sudo apt-get update -y
+          sudo apt-get install -y mesa-vulkan-drivers vulkan-sdk
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+
+      - name: Engine cache
+        id: engine
+        uses: actions/cache/restore@v4
+        with:
+          path: src-tauri/binaries
+          key: engine-linux-${{ env.LLAMA_TAG }}-${{ hashFiles('scripts/build-llama.mjs') }}
+      - name: Build engine (llama.cpp)
+        if: steps.engine.outputs.cache-hit != 'true'
+        run: node scripts/build-llama.mjs
+      - name: Save engine cache (only when the Vulkan build really worked)
+        if: steps.engine.outputs.cache-hit != 'true' && hashFiles('src-tauri/binaries/.vulkan-ok') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: src-tauri/binaries
+          key: engine-linux-${{ env.LLAMA_TAG }}-${{ hashFiles('scripts/build-llama.mjs') }}
+
+      - run: npm ci
+      - name: Loose binary and tarball
+        run: |
+          npx tauri build --no-bundle
+          VERSION=$(node -p "require('./package.json').version")
+          scripts/package-linux-tarball.sh "$VERSION" dist-packages
+      - name: AppImage, deb, rpm
+        env:
+          NO_STRIP: "true"
+        run: npx tauri build --bundles appimage,deb,rpm
+      - name: Collect
+        run: |
+          cp target/release/bundle/appimage/*.AppImage dist-packages/
+          cp target/release/bundle/deb/*.deb dist-packages/
+          cp target/release/bundle/rpm/*.rpm dist-packages/
+          ls -la dist-packages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: dist-packages/*
+          if-no-files-found: error
+
+  # Runs the full end-to-end suite against the packaged AppImage, with no engine on disk
+  # other than the one bundled inside it.
+  e2e-linux:
+    needs: linux
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: linux-packages, path: pkgs }
+      - name: Test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb webkit2gtk-driver ffmpeg python3-pip libwebkit2gtk-4.1-0 libgtk-3-0 \
+            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav libfuse2 \
+            libgl1-mesa-dri libglx-mesa0 libegl1 libgles2 mesa-vulkan-drivers mesa-utils mesa-utils-extra
+          pip install selenium pillow
+          echo '--- graphics stack on this runner'; (xvfb-run -a glxinfo -B; xvfb-run -a eglinfo -B) 2>&1 | grep -vE '^\s*$' | head -30 || true
+      - uses: dtolnay/rust-toolchain@stable
+      - name: tauri-driver (cached)
+        id: driver
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/tauri-driver
+          key: tauri-driver-2.1.0
+      - if: steps.driver.outputs.cache-hit != 'true'
+        run: cargo install tauri-driver --locked --version 2.1.0
+      - name: Fetch test assets
+        run: tests/e2e/fetch_assets.sh "$PWD/e2e-assets"
+      - name: Run the suite
+        env:
+          E2E_BUNDLED_ENGINE: "1"
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          # The WebDriver screenshot command hangs on these VMs; screenshots are only for humans, so turn them off.
+          E2E_NO_SHOTS: "1"
+        run: |
+          chmod +x pkgs/*.AppImage
+          # Log to a file (not the step's pipe): helper processes the app starts must never be able
+          # to keep this step open after the tests finish.
+          set +e
+          timeout 20m xvfb-run -a -s "-screen 0 1400x950x24" python3 -u tests/e2e/e2e.py \
+            "$(ls pkgs/*.AppImage)" "$PWD/e2e-assets/fixtures" "$PWD/e2e-assets/model.gguf" "$PWD/e2e-work" > e2e.log 2>&1
+          rc=$?
+          pkill -x tauri-driver; pkill -x WebKitWebDriver; pkill -f '^/[^ ]*desktop-college-dorms'; pkill -f '^/[^ ]*dorms-engine'; pkill -x Xvfb
+          grep -v libEGL e2e.log | tail -150
+          exit $rc
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-results
+          path: |
+            e2e.log
+            e2e-work/driver.log
+            e2e-work/*.png
+          if-no-files-found: ignore
+
+  # ------------------------------------------------------------------- windows
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vulkan SDK (for the GPU engine; the build falls back to CPU-only if this fails)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $v = "1.4.313.2"
+          curl.exe -fsSL -o "$env:RUNNER_TEMP\vulkan.exe" "https://sdk.lunarg.com/sdk/download/$v/windows/VulkanSDK-$v-Installer.exe"
+          & "$env:RUNNER_TEMP\vulkan.exe" --accept-licenses --default-answer --confirm-command install
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\$v"
+          Add-Content $env:GITHUB_PATH "C:\VulkanSDK\$v\Bin"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+
+      - name: Engine cache
+        id: engine
+        uses: actions/cache/restore@v4
+        with:
+          path: src-tauri/binaries
+          key: engine-windows-${{ env.LLAMA_TAG }}-${{ hashFiles('scripts/build-llama.mjs') }}
+      - name: Build engine (llama.cpp)
+        if: steps.engine.outputs.cache-hit != 'true'
+        run: node scripts/build-llama.mjs
+      - name: Save engine cache (only when the Vulkan build really worked)
+        if: steps.engine.outputs.cache-hit != 'true' && hashFiles('src-tauri/binaries/.vulkan-ok') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: src-tauri/binaries
+          key: engine-windows-${{ env.LLAMA_TAG }}-${{ hashFiles('scripts/build-llama.mjs') }}
+
+      - run: npm ci
+      - name: Installer (NSIS, per-user, no admin needed)
+        run: npx tauri build --bundles nsis
+      - name: Portable single .exe (engine compiled in, data kept beside the exe)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist-packages | Out-Null
+          Copy-Item target/release/bundle/nsis/*.exe dist-packages/
+          $env:DORMS_LLAMA_EMBED = (Resolve-Path "src-tauri/binaries/dorms-engine-x86_64-pc-windows-msvc.exe").Path
+          $features = "portable,embed-llama"
+          if (Test-Path "src-tauri/binaries/.vulkan-ok") {
+            $env:DORMS_LLAMA_EMBED_VULKAN = (Resolve-Path "src-tauri/binaries/dorms-engine-vulkan-x86_64-pc-windows-msvc.exe").Path
+            $features = "portable,embed-llama,embed-llama-vulkan"
+          }
+          npx tauri build --no-bundle -- --features $features
+          $version = node -p "require('./package.json').version"
+          Copy-Item target/release/desktop-college-dorms.exe "dist-packages/DesktopCollegeDorms_${version}_x64_portable.exe"
+          Get-ChildItem dist-packages | Format-Table Name, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: dist-packages/*
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------- android
+  android:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "" # skip the legacy 'tools' package, which no longer exists; we install what we need below
+      - name: Android SDK/NDK
+        run: |
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;27.2.12479018"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - name: Generate the Android project
+        run: npx tauri android init --ci
+      - name: Build release APK (arm64 + armv7)
+        run: npx tauri android build --apk --target aarch64 --target armv7
+      - name: Sign
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          BT="$ANDROID_HOME/build-tools/34.0.0"
+          APK=$(find src-tauri/gen/android -name '*-unsigned.apk' | head -n1)
+          echo "unsigned apk: $APK"
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > release.jks
+            PASS="$KEYSTORE_PASS"; ALIAS="$KEY_ALIAS"
+          else
+            echo "No signing key configured: using a throwaway key (installable, but updates need an uninstall first)."
+            keytool -genkeypair -keystore release.jks -alias dorms -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass android -keypass android -dname "CN=Desktop College Dorms"
+            PASS=android; ALIAS=dorms
+          fi
+          VERSION=$(node -p "require('./package.json').version")
+          mkdir -p dist-packages
+          "$BT/zipalign" -p -f 4 "$APK" aligned.apk
+          "$BT/apksigner" sign --ks release.jks --ks-key-alias "$ALIAS" --ks-pass "pass:$PASS" --key-pass "pass:$PASS" \
+            --out "dist-packages/DesktopCollegeDorms_${VERSION}_android.apk" aligned.apk
+          "$BT/apksigner" verify --print-certs "dist-packages/DesktopCollegeDorms_${VERSION}_android.apk" | head -3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-packages
+          path: dist-packages/*
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------- release
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, linux, e2e-linux, windows, android]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts, pattern: "*-packages", merge-multiple: true }
+      - run: ls -la artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
