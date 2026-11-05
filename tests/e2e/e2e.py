@@ -78,7 +78,10 @@ d.file_detector = UselessFileDetector()  # driver runs locally; send paths as-is
 d.set_window_size(1280, 860)
 wait = lambda t=20: WebDriverWait(d, t)
 
-def shot(name): d.get_screenshot_as_file(os.path.join(WORK, name + ".png"))
+def shot(name):
+    # Screenshots are only for humans. On some CI VMs the WebDriver screenshot command hangs, so CI turns them off.
+    if os.environ.get("E2E_NO_SHOTS"): return
+    d.get_screenshot_as_file(os.path.join(WORK, name + ".png"))
 def invoke(cmd, args=None):
     r = d.execute_async_script("const done=arguments[arguments.length-1]; window.__TAURI_INTERNALS__.invoke(arguments[0], arguments[1]||{}).then(v=>done({ok:v})).catch(e=>done({err:String(e)}));", cmd, args)
     if "err" in r: raise RuntimeError(f"{cmd}: {r['err']}")

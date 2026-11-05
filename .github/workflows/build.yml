@@ -133,9 +133,8 @@ jobs:
         env:
           E2E_BUNDLED_ENGINE: "1"
           LIBGL_ALWAYS_SOFTWARE: "1"
-          # CI VMs freeze the web view when the live 3D viewer starts (no usable GL stack). The viewer is
-          # exercised by local runs; here the suite skips just that part and keeps every other check.
-          E2E_SKIP_3D: "1"
+          # The WebDriver screenshot command hangs on these VMs; screenshots are only for humans, so turn them off.
+          E2E_NO_SHOTS: "1"
         run: |
           chmod +x pkgs/*.AppImage
           # Log to a file (not the step's pipe): helper processes the app starts must never be able
