@@ -19,6 +19,23 @@ conversation ("ignore all previous instructions…").
 What a hostile card **cannot** do, whatever it says: the app gives the model no tools, no file access and no network access.
 A model only produces text in the chat.
 
+## Profiles, guest mode and Eject
+
+Profiles are local to the device and exist to keep people (or personas) apart inside the app.
+
+- **Isolation is enforced by the backend.** Which profile is open is decided by signing in; the web view never supplies it.
+  Every query is scoped to that profile, so another profile's characters, chats, messages and keys can't be read, edited or deleted by
+  guessing ids. Replies and bot chats started in one profile stop when you switch.
+- **Passcodes** are hashed with Argon2id and never stored or sent back. Five wrong attempts lock that profile for 30 seconds.
+  A passcode is a lock inside the app, **not encryption**: anyone who can read your user account's files on this computer can read the
+  data folder, so use your operating system's disk encryption for that.
+- **API keys are per profile** (OS keychain, or a private file if there is none) and are never written to export files.
+- **Eject** builds the export, re-reads it with the same strict reader used for import, saves it, reads the saved bytes back from disk
+  and compares them, and only then (after you confirm) removes the profile. The backend refuses to eject without a saved, verified
+  export of that same profile. Export files are **not encrypted**; keep them somewhere safe.
+- **Import** reads only expected files, refuses path tricks and oversized or inconsistent archives, never overwrites an existing
+  profile, and is all-or-nothing (a failed import leaves nothing behind).
+
 ## The web view is locked down
 
 - Strict Content-Security-Policy; the UI never renders HTML from cards or models (messages are rendered as text).

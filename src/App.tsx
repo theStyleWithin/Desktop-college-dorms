@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type AppInfo, type Character, type Chat, type Dorm, type Settings } from "./api";
+import { api, type AppInfo, type Character, type Chat, type Dorm, type SessionState, type Settings } from "./api";
 import { StoreCtx, type Route, type Store } from "./store";
 import { Logo, ToastProvider, useToast } from "./components/ui";
+import { ProfileAvatar } from "./components/ProfileForms";
+import Welcome from "./pages/Welcome";
 import Home from "./pages/Home";
 import Library from "./pages/Library";
 import Editor from "./pages/Editor";
@@ -23,7 +25,7 @@ const NAV: { page: Route["page"]; label: string; icon: string }[] = [
   { page: "settings", label: "Settings", icon: "⚙️" },
 ];
 
-function Shell() {
+function Shell({ session, setSession }: { session: SessionState; setSession: (s: SessionState) => void }) {
   const toast = useToast();
   const [route, setRoute] = useState<Route>({ page: "home" });
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -55,8 +57,8 @@ function Shell() {
   }, []);
 
   const store: Store = useMemo(
-    () => ({ characters, chats, dorms, settings, info, modelCount, go: setRoute, refresh, setSettings }),
-    [characters, chats, dorms, settings, info, modelCount, refresh, setSettings],
+    () => ({ characters, chats, dorms, settings, info, modelCount, go: setRoute, refresh, setSettings, session, setSession }),
+    [characters, chats, dorms, settings, info, modelCount, refresh, setSettings, session, setSession],
   );
 
   return (
@@ -71,6 +73,10 @@ function Shell() {
             </button>
           ))}
           <div className="grow" />
+          <button className="nav" style={{ gap: 8 }} onClick={() => setRoute({ page: "settings", tab: "profile" })} title="Profile settings">
+            <ProfileAvatar name={session.profile?.handle ?? "Guest"} size={26} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.profile?.handle ?? "Guest"}</span>
+          </button>
           <small>v{info?.version ?? "…"}{info?.portable ? " · portable" : ""}</small>
         </nav>
         <main className={route.page === "chat" ? "main" : "main"} style={route.page === "chat" ? { overflow: "hidden" } : undefined}>
@@ -90,9 +96,15 @@ function Shell() {
 }
 
 export default function App() {
+  const [session, setSession] = useState<SessionState | null>(null);
+  const [failed, setFailed] = useState("");
+  useEffect(() => { api.session().then(setSession).catch((e) => setFailed(String(e))); }, []);
   return (
     <ToastProvider>
-      <Shell />
+      {failed ? <div className="page">Couldn't start: {failed}</div>
+        : !session ? <div className="page sub">Loading…</div>
+        : !session.signed_in ? <Welcome session={session} onSession={setSession} />
+        : <Shell key={session.profile?.id ?? "guest"} session={session} setSession={setSession} />}
     </ToastProvider>
   );
 }

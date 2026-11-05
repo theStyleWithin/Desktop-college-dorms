@@ -23,6 +23,20 @@ fn e<E: std::fmt::Display>(err: E) -> String {
     err.to_string()
 }
 
+/// Whose data this session may touch. `None` is the guest space. Chosen by signing in, never by the web view.
+fn owner(st: &AppState) -> R<db::Owner> {
+    let s = st.session.lock().unwrap();
+    if s.chosen { Ok(s.profile.clone()) } else { Err("Pick a profile first.".into()) }
+}
+
+/// Secrets (API keys) are kept per profile so people sharing a computer never share keys.
+fn skey(o: &db::Owner, name: &str) -> String {
+    match o {
+        None => name.to_string(),
+        Some(id) => format!("{name}@{id}"),
+    }
+}
+
 fn uid() -> String {
     uuid::Uuid::new_v4().to_string()
 }
@@ -129,51 +143,56 @@ fn remove_media_file(st: &AppState, m: &Option<Media>) {
 
 #[tauri::command]
 pub fn list_characters(state: State<'_, Shared>) -> R<Vec<CharacterOut>> {
-    let list = db::list_characters(&state.db.lock().unwrap()).map_err(e)?;
+    let list = db::list_characters(&state.db.lock().unwrap(), &owner(&state)?).map_err(e)?;
     Ok(list.into_iter().map(|c| out(&state, c)).collect())
 }
 
 #[tauri::command]
 pub fn get_character(state: State<'_, Shared>, id: String) -> R<Option<CharacterOut>> {
-    let c = db::get_character(&state.db.lock().unwrap(), &id).map_err(e)?;
+    let c = db::get_character(&state.db.lock().unwrap(), &id, &owner(&state)?).map_err(e)?;
     Ok(c.map(|c| out(&state, c)))
 }
 
 #[tauri::command]
 pub fn save_character(state: State<'_, Shared>, mut character: Character) -> R<CharacterOut> {
+    let o = owner(&state)?;
     let db = state.db.lock().unwrap();
     let now = db::now();
-    if character.id.is_empty() {
+    // an id that isn't one of this profile's characters is treated as a new character
+    let known = !character.id.is_empty() && db::get_character(&db, &character.id, &o).map_err(e)?.is_some();
+    if !known {
         character.id = uid();
         character.created_at = now;
     }
     // media is owned by the backend; never trust the frontend copy
-    if let Some(existing) = db::get_character(&db, &character.id).map_err(e)? {
+    if let Some(existing) = db::get_character(&db, &character.id, &o).map_err(e)? {
         character.media = existing.media;
         if character.created_at == 0 {
             character.created_at = existing.created_at;
         }
     }
     character.updated_at = now;
-    db::save_character(&db, &character).map_err(e)?;
+    db::save_character(&db, &character, &o).map_err(e)?;
     Ok(out(&state, character))
 }
 
 #[tauri::command]
 pub fn delete_character(state: State<'_, Shared>, id: String) -> R<()> {
+    let o = owner(&state)?;
     let db = state.db.lock().unwrap();
-    if let Some(c) = db::get_character(&db, &id).map_err(e)? {
+    if let Some(c) = db::get_character(&db, &id, &o).map_err(e)? {
         remove_media_file(&state, &c.media);
     }
-    db::delete_character(&db, &id).map_err(e)
+    db::delete_character(&db, &id, &o).map_err(e)
 }
 
 #[tauri::command]
 pub fn set_favorite(state: State<'_, Shared>, id: String, favorite: bool) -> R<()> {
+    let o = owner(&state)?;
     let db = state.db.lock().unwrap();
-    if let Some(mut c) = db::get_character(&db, &id).map_err(e)? {
+    if let Some(mut c) = db::get_character(&db, &id, &o).map_err(e)? {
         c.favorite = favorite;
-        db::save_character(&db, &c).map_err(e)?;
+        db::save_character(&db, &c, &o).map_err(e)?;
     }
     Ok(())
 }
@@ -184,24 +203,26 @@ pub fn set_media(request: Request<'_>, state: State<'_, Shared>) -> R<CharacterO
     let id = header(&request, "x-char-id");
     let name = header(&request, "x-file-name");
     let bytes = raw_body(&request)?;
+    let o = owner(&state)?;
     let db = state.db.lock().unwrap();
-    let mut c = db::get_character(&db, &id).map_err(e)?.ok_or("Save the character first")?;
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Save the character first")?;
     let media = write_media(&state, &id, &name, bytes)?;
     remove_media_file(&state, &c.media);
     c.media = Some(media);
     c.updated_at = db::now();
-    db::save_character(&db, &c).map_err(e)?;
+    db::save_character(&db, &c, &o).map_err(e)?;
     Ok(out(&state, c))
 }
 
 #[tauri::command]
 pub fn clear_media(state: State<'_, Shared>, id: String) -> R<CharacterOut> {
+    let o = owner(&state)?;
     let db = state.db.lock().unwrap();
-    let mut c = db::get_character(&db, &id).map_err(e)?.ok_or("Character not found")?;
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Character not found")?;
     remove_media_file(&state, &c.media);
     c.media = None;
     c.updated_at = db::now();
-    db::save_character(&db, &c).map_err(e)?;
+    db::save_character(&db, &c, &o).map_err(e)?;
     Ok(out(&state, c))
 }
 
@@ -254,14 +275,14 @@ pub fn import_card(request: Request<'_>, state: State<'_, Shared>) -> R<ImportOu
     if is_png {
         ch.media = write_media(&state, &ch.id, "card.png", bytes).ok();
     }
-    db::save_character(&state.db.lock().unwrap(), &ch).map_err(e)?;
+    db::save_character(&state.db.lock().unwrap(), &ch, &owner(&state)?).map_err(e)?;
     Ok(ImportOut { character: out(&state, ch), warnings, spec })
 }
 
 /// format: `png` | `json_v2` | `json_v3`
 #[tauri::command]
 pub fn export_card(state: State<'_, Shared>, id: String, format: String) -> R<Response> {
-    let c = db::get_character(&state.db.lock().unwrap(), &id).map_err(e)?.ok_or("Character not found")?;
+    let c = db::get_character(&state.db.lock().unwrap(), &id, &owner(&state)?).map_err(e)?.ok_or("Character not found")?;
     let bytes = match format.as_str() {
         "png" => {
             let base = c
@@ -283,27 +304,27 @@ pub fn export_card(state: State<'_, Shared>, id: String, format: String) -> R<Re
 
 #[tauri::command]
 pub fn list_dorms(state: State<'_, Shared>) -> R<Vec<Dorm>> {
-    db::list_dorms(&state.db.lock().unwrap()).map_err(e)
+    db::list_dorms(&state.db.lock().unwrap(), &owner(&state)?).map_err(e)
 }
 
 #[tauri::command]
 pub fn create_dorm(state: State<'_, Shared>, name: String) -> R<Dorm> {
-    db::create_dorm(&state.db.lock().unwrap(), name.trim()).map_err(e)
+    db::create_dorm(&state.db.lock().unwrap(), name.trim(), &owner(&state)?).map_err(e)
 }
 
 #[tauri::command]
 pub fn rename_dorm(state: State<'_, Shared>, id: i64, name: String) -> R<()> {
-    db::rename_dorm(&state.db.lock().unwrap(), id, name.trim()).map_err(e)
+    db::rename_dorm(&state.db.lock().unwrap(), id, name.trim(), &owner(&state)?).map_err(e)
 }
 
 #[tauri::command]
 pub fn delete_dorm(state: State<'_, Shared>, id: i64) -> R<()> {
-    db::delete_dorm(&state.db.lock().unwrap(), id).map_err(e)
+    db::delete_dorm(&state.db.lock().unwrap(), id, &owner(&state)?).map_err(e)
 }
 
 #[tauri::command]
 pub fn list_chats(state: State<'_, Shared>) -> R<Vec<Chat>> {
-    db::list_chats(&state.db.lock().unwrap()).map_err(e)
+    db::list_chats(&state.db.lock().unwrap(), &owner(&state)?).map_err(e)
 }
 
 #[tauri::command]
@@ -314,14 +335,15 @@ pub fn create_chat(
     kind: String,
     character_ids: Vec<String>,
 ) -> R<Chat> {
+    let o = owner(&state)?;
     let db = state.db.lock().unwrap();
     let kind = if ["dm", "group", "channel"].contains(&kind.as_str()) { kind } else { "dm".into() };
-    let chat = db::create_chat(&db, dorm_id, name.trim(), &kind, &character_ids).map_err(e)?;
+    let chat = db::create_chat(&db, dorm_id, name.trim(), &kind, &character_ids, &o).map_err(e)?;
     // Seed greetings: DMs get the character's, groups get each one's. Channels start empty.
     if kind != "channel" {
-        let user = db::get_settings(&db).user_name;
+        let user = db::get_settings(&db, &o).user_name;
         for id in character_ids.iter().take(if kind == "dm" { 1 } else { usize::MAX }) {
-            if let Some(c) = db::get_character(&db, id).map_err(e)? {
+            if let Some(c) = db::get_character(&db, id, &o).map_err(e)? {
                 let mut greetings: Vec<String> = vec![];
                 if !c.card.first_mes.trim().is_empty() {
                     greetings.push(c.card.first_mes.clone());
@@ -343,28 +365,39 @@ pub fn create_chat(
 
 #[tauri::command]
 pub fn update_chat(state: State<'_, Shared>, chat: Chat) -> R<()> {
-    db::update_chat(&state.db.lock().unwrap(), &chat).map_err(e)
+    db::update_chat(&state.db.lock().unwrap(), &chat, &owner(&state)?).map_err(e)
 }
 
 #[tauri::command]
 pub fn delete_chat(state: State<'_, Shared>, id: i64) -> R<()> {
+    let o = owner(&state)?;
     stop_auto(&state, id);
-    db::delete_chat(&state.db.lock().unwrap(), id).map_err(e)
+    db::delete_chat(&state.db.lock().unwrap(), id, &o).map_err(e)
 }
 
 #[tauri::command]
 pub fn list_messages(state: State<'_, Shared>, chat_id: i64) -> R<Vec<Message>> {
-    db::list_messages(&state.db.lock().unwrap(), chat_id).map_err(e)
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    db::get_chat(&db, chat_id, &o).map_err(e)?.ok_or("Chat not found")?;
+    db::list_messages(&db, chat_id).map_err(e)
 }
 
 #[tauri::command]
 pub fn add_user_message(state: State<'_, Shared>, chat_id: i64, text: String) -> R<Message> {
-    db::add_message(&state.db.lock().unwrap(), chat_id, "user", None, &[text]).map_err(e)
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    db::get_chat(&db, chat_id, &o).map_err(e)?.ok_or("Chat not found")?;
+    db::add_message(&db, chat_id, "user", None, &[text]).map_err(e)
 }
 
 #[tauri::command]
 pub fn edit_message(state: State<'_, Shared>, id: i64, text: String) -> R<Message> {
+    let o = owner(&state)?;
     let db = state.db.lock().unwrap();
+    if !db::message_owned(&db, id, &o).map_err(e)? {
+        return Err("Message not found".into());
+    }
     let mut m = db::get_message(&db, id).map_err(e)?.ok_or("Message not found")?;
     let idx = (m.swipe_index.max(0) as usize).min(m.swipes.len().saturating_sub(1));
     if m.swipes.is_empty() {
@@ -378,12 +411,21 @@ pub fn edit_message(state: State<'_, Shared>, id: i64, text: String) -> R<Messag
 
 #[tauri::command]
 pub fn delete_message(state: State<'_, Shared>, id: i64) -> R<()> {
-    db::delete_message(&state.db.lock().unwrap(), id).map_err(e)
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    if !db::message_owned(&db, id, &o).map_err(e)? {
+        return Err("Message not found".into());
+    }
+    db::delete_message(&db, id).map_err(e)
 }
 
 #[tauri::command]
 pub fn set_swipe(state: State<'_, Shared>, id: i64, index: i64) -> R<Message> {
+    let o = owner(&state)?;
     let db = state.db.lock().unwrap();
+    if !db::message_owned(&db, id, &o).map_err(e)? {
+        return Err("Message not found".into());
+    }
     let m = db::get_message(&db, id).map_err(e)?.ok_or("Message not found")?;
     let idx = index.clamp(0, m.swipes.len().saturating_sub(1) as i64);
     db::save_message_swipes(&db, id, &m.swipes, idx).map_err(e)?;
@@ -392,7 +434,10 @@ pub fn set_swipe(state: State<'_, Shared>, id: i64, index: i64) -> R<Message> {
 
 #[tauri::command]
 pub fn clear_chat(state: State<'_, Shared>, chat_id: i64) -> R<()> {
-    db::clear_messages(&state.db.lock().unwrap(), chat_id).map_err(e)
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    db::get_chat(&db, chat_id, &o).map_err(e)?.ok_or("Chat not found")?;
+    db::clear_messages(&db, chat_id).map_err(e)
 }
 
 // ---------------------------------------------------------------------------
@@ -400,8 +445,8 @@ pub fn clear_chat(state: State<'_, Shared>, chat_id: i64) -> R<()> {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn get_settings(state: State<'_, Shared>) -> Settings {
-    db::get_settings(&state.db.lock().unwrap())
+pub fn get_settings(state: State<'_, Shared>) -> R<Settings> {
+    Ok(db::get_settings(&state.db.lock().unwrap(), &owner(&state)?))
 }
 
 #[tauri::command]
@@ -416,7 +461,7 @@ pub fn save_settings(state: State<'_, Shared>, mut settings: Settings) -> R<Sett
             p.id = uid();
         }
     }
-    db::save_settings(&state.db.lock().unwrap(), &settings).map_err(e)?;
+    db::save_settings(&state.db.lock().unwrap(), &settings, &owner(&state)?).map_err(e)?;
     Ok(settings)
 }
 
@@ -434,17 +479,19 @@ fn check_provider(p: &str) -> R<()> {
 #[tauri::command]
 pub fn set_api_key(state: State<'_, Shared>, provider: String, key: String) -> R<String> {
     check_provider(&provider)?;
+    let o = owner(&state)?;
     if key.trim().is_empty() {
-        secrets::delete(&state.data_dir, &provider);
+        secrets::delete(&state.data_dir, &skey(&o, &provider));
         return Ok("none".into());
     }
-    secrets::set(&state.data_dir, &provider, key.trim()).map(String::from)
+    secrets::set(&state.data_dir, &skey(&o, &provider), key.trim()).map(String::from)
 }
 
 #[tauri::command]
 pub fn has_api_key(state: State<'_, Shared>, provider: String) -> R<KeyStatus> {
     check_provider(&provider)?;
-    Ok(KeyStatus { present: secrets::get(&state.data_dir, &provider).is_some() })
+    let o = owner(&state)?;
+    Ok(KeyStatus { present: secrets::get(&state.data_dir, &skey(&o, &provider)).is_some() })
 }
 
 // ---------------------------------------------------------------------------
@@ -503,7 +550,7 @@ pub async fn stop_local_engine(state: State<'_, Shared>) -> R<()> {
 // ---------------------------------------------------------------------------
 
 /// Turn a user-defined API profile (plus its stored key) into an endpoint.
-fn profile_endpoint(st: &AppState, p: &ApiProfile) -> R<Endpoint> {
+fn profile_endpoint(st: &AppState, o: &db::Owner, p: &ApiProfile) -> R<Endpoint> {
     if p.base_url.trim().is_empty() {
         return Err(format!("\"{}\" has no address yet. Fill in its base URL in Settings.", p.name));
     }
@@ -519,7 +566,7 @@ fn profile_endpoint(st: &AppState, p: &ApiProfile) -> R<Endpoint> {
         }
     };
     let extras = Extras { headers: p.headers.iter().map(|h| (h.name.clone(), h.value.clone())).collect(), body };
-    let key = secrets::get(&st.data_dir, &format!("custom-{}", p.id));
+    let key = secrets::get(&st.data_dir, &skey(o, &format!("custom-{}", p.id)));
     let base = p.base_url.trim().to_string();
     if p.format == "anthropic" {
         let key = key.ok_or_else(|| format!("Add the API key for \"{}\" in Settings.", p.name))?;
@@ -536,20 +583,20 @@ fn profile_endpoint(st: &AppState, p: &ApiProfile) -> R<Endpoint> {
 }
 
 /// The endpoint to talk to, plus the context window we must stay inside.
-async fn resolve_endpoint(st: &Shared, s: &Settings) -> R<(Endpoint, usize)> {
+async fn resolve_endpoint(st: &Shared, o: &db::Owner, s: &Settings) -> R<(Endpoint, usize)> {
     match s.provider.as_str() {
         "anthropic" => {
-            let key = secrets::get(&st.data_dir, "anthropic").ok_or("Add your Anthropic API key in Settings.")?;
+            let key = secrets::get(&st.data_dir, &skey(o, "anthropic")).ok_or("Add your Anthropic API key in Settings.")?;
             Ok((Endpoint::Anthropic { base: "https://api.anthropic.com".into(), key, model: s.anthropic_model.clone(), extras: Extras::default() }, s.context_tokens))
         }
         "openai" => {
-            let key = secrets::get(&st.data_dir, "openai");
+            let key = secrets::get(&st.data_dir, &skey(o, "openai"));
             Ok((Endpoint::openai(s.openai_base_url.clone(), key, s.openai_model.clone()), s.context_tokens))
         }
         p if p.starts_with("custom:") => {
             let id = &p["custom:".len()..];
             let prof = s.profiles.iter().find(|x| x.id == id).ok_or("The selected Other API no longer exists. Pick another in Settings.")?;
-            Ok((profile_endpoint(st, prof)?, s.context_tokens))
+            Ok((profile_endpoint(st, o, prof)?, s.context_tokens))
         }
         _ => {
             let (base, n_ctx) = llama::ensure_running(st, &s.local_model, s.context_tokens, s.local_gpu).await?;
@@ -608,6 +655,7 @@ impl Drop for BusyGuard {
 
 async fn run_generation(
     st: &Shared,
+    o: &db::Owner,
     rid: &str,
     chat_id: i64,
     speaker: Option<String>,
@@ -616,11 +664,11 @@ async fn run_generation(
 ) -> R<Message> {
     let (settings, chat, chars, msgs) = {
         let db = st.db.lock().unwrap();
-        let settings = db::get_settings(&db);
-        let chat = db::get_chat(&db, chat_id).map_err(e)?.ok_or("Chat not found")?;
+        let settings = db::get_settings(&db, o);
+        let chat = db::get_chat(&db, chat_id, o).map_err(e)?.ok_or("Chat not found")?;
         let mut chars = HashMap::new();
         for id in &chat.character_ids {
-            if let Some(c) = db::get_character(&db, id).map_err(e)? {
+            if let Some(c) = db::get_character(&db, id, o).map_err(e)? {
                 chars.insert(id.clone(), c);
             }
         }
@@ -670,7 +718,7 @@ async fn run_generation(
         .filter_map(|i| chars.get(i).map(|c| (i.clone(), c.card.clone())))
         .collect();
     emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "loading" }));
-    let (endpoint, context_tokens) = resolve_endpoint(st, &settings).await?;
+    let (endpoint, context_tokens) = resolve_endpoint(st, o, &settings).await?;
     let ps = PromptSettings {
         user_name: settings.user_name.clone(),
         user_description: settings.user_description.clone(),
@@ -714,9 +762,9 @@ async fn run_generation(
             }
             None => db::add_message(&db, chat_id, "character", Some(&speaker_id), &[text]).map_err(e)?,
         };
-        if let Some(mut c) = db::get_character(&db, &speaker_id).map_err(e)? {
+        if let Some(mut c) = db::get_character(&db, &speaker_id, o).map_err(e)? {
             c.last_used = db::now();
-            let _ = db::save_character(&db, &c);
+            let _ = db::save_character(&db, &c, o);
         }
         m
     };
@@ -725,7 +773,7 @@ async fn run_generation(
 }
 
 /// One full reply, with busy/cancel bookkeeping and error events.
-async fn generate_once(st: &Shared, chat_id: i64, speaker: Option<String>, regen: Option<i64>, rid: String) -> R<Message> {
+async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option<String>, regen: Option<i64>, rid: String) -> R<Message> {
     if !st.busy.lock().unwrap().insert(chat_id) {
         let err = "This chat is already generating a reply.".to_string();
         emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "kind": "error", "error": err }));
@@ -734,7 +782,7 @@ async fn generate_once(st: &Shared, chat_id: i64, speaker: Option<String>, regen
     let cancel = Arc::new(Notify::new());
     st.cancels.lock().unwrap().insert(rid.clone(), cancel.clone());
     let _guard = BusyGuard { st: st.clone(), chat_id, rid: rid.clone() };
-    let res = run_generation(st, &rid, chat_id, speaker, regen, &cancel).await;
+    let res = run_generation(st, o, &rid, chat_id, speaker, regen, &cancel).await;
     if let Err(err) = &res {
         emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "kind": "error", "error": err }));
     }
@@ -743,14 +791,15 @@ async fn generate_once(st: &Shared, chat_id: i64, speaker: Option<String>, regen
 
 /// Starts a reply in the background; progress arrives as `dorms://gen` events.
 #[tauri::command]
-pub fn generate(state: State<'_, Shared>, chat_id: i64, character_id: Option<String>, regenerate_message_id: Option<i64>) -> String {
+pub fn generate(state: State<'_, Shared>, chat_id: i64, character_id: Option<String>, regenerate_message_id: Option<i64>) -> R<String> {
+    let o = owner(&state)?;
     let rid = uid();
     let st: Shared = state.inner().clone();
     let r = rid.clone();
     tauri::async_runtime::spawn(async move {
-        let _ = generate_once(&st, chat_id, character_id, regenerate_message_id, r).await;
+        let _ = generate_once(&st, &o, chat_id, character_id, regenerate_message_id, r).await;
     });
-    rid
+    Ok(rid)
 }
 
 #[tauri::command]
@@ -763,8 +812,9 @@ pub fn cancel_generation(state: State<'_, Shared>, request_id: String) {
 #[tauri::command]
 pub async fn test_provider(state: State<'_, Shared>) -> R<String> {
     let st: Shared = state.inner().clone();
-    let settings = db::get_settings(&st.db.lock().unwrap());
-    let (ep, _) = resolve_endpoint(&st, &settings).await?;
+    let o = owner(&st)?;
+    let settings = db::get_settings(&st.db.lock().unwrap(), &o);
+    let (ep, _) = resolve_endpoint(&st, &o, &settings).await?;
     let msgs = vec![
         dorms_core::prompt::ChatMsg { role: "system".into(), content: "Reply with one short friendly sentence.".into() },
         dorms_core::prompt::ChatMsg { role: "user".into(), content: "Say hello.".into() },
@@ -779,7 +829,8 @@ pub async fn test_provider(state: State<'_, Shared>) -> R<String> {
 #[tauri::command]
 pub async fn test_profile(state: State<'_, Shared>, profile: ApiProfile) -> R<String> {
     let st: Shared = state.inner().clone();
-    let ep = profile_endpoint(&st, &profile)?;
+    let o = owner(&st)?;
+    let ep = profile_endpoint(&st, &o, &profile)?;
     let msgs = vec![
         dorms_core::prompt::ChatMsg { role: "system".into(), content: "Reply with one short friendly sentence.".into() },
         dorms_core::prompt::ChatMsg { role: "user".into(), content: "Say hello.".into() },
@@ -797,7 +848,8 @@ pub async fn list_remote_models(state: State<'_, Shared>, profile: ApiProfile) -
     if p.model.trim().is_empty() {
         p.model = "model".into(); // not needed for listing
     }
-    let ep = profile_endpoint(&st, &p)?;
+    let o = owner(&st)?;
+    let ep = profile_endpoint(&st, &o, &p)?;
     llm::list_remote_models(&st.http, &ep).await
 }
 
@@ -835,9 +887,9 @@ fn stop_auto(st: &AppState, chat_id: i64) {
     }
 }
 
-async fn auto_loop(st: Shared, chat_id: i64) {
+async fn auto_loop(st: Shared, o: db::Owner, chat_id: i64) {
     loop {
-        let chat = db::get_chat(&st.db.lock().unwrap(), chat_id).ok().flatten();
+        let chat = db::get_chat(&st.db.lock().unwrap(), chat_id, &o).ok().flatten();
         let Some(chat) = chat else { break };
         if !chat.auto_chat {
             break;
@@ -859,7 +911,7 @@ async fn auto_loop(st: Shared, chat_id: i64) {
         if st.busy.lock().unwrap().contains(&chat_id) {
             continue;
         }
-        if generate_once(&st, chat_id, None, None, uid()).await.is_err() {
+        if generate_once(&st, &o, chat_id, None, None, uid()).await.is_err() {
             let _ = db::set_auto_chat(&st.db.lock().unwrap(), chat_id, false);
             emit(&st, "dorms://auto-stopped", json!({ "chat_id": chat_id, "reason": "error" }));
             break;
@@ -870,12 +922,14 @@ async fn auto_loop(st: Shared, chat_id: i64) {
 
 #[tauri::command]
 pub fn set_auto_chat(state: State<'_, Shared>, chat_id: i64, on: bool) -> R<()> {
+    let o = owner(&state)?;
     let st: Shared = state.inner().clone();
+    db::get_chat(&st.db.lock().unwrap(), chat_id, &o).map_err(e)?.ok_or("Chat not found")?;
     db::set_auto_chat(&st.db.lock().unwrap(), chat_id, on).map_err(e)?;
     stop_auto(&st, chat_id);
     if on {
         let s2 = st.clone();
-        let h = tauri::async_runtime::spawn(auto_loop(s2, chat_id));
+        let h = tauri::async_runtime::spawn(auto_loop(s2, o, chat_id));
         st.autos.lock().unwrap().insert(chat_id, h);
     }
     Ok(())

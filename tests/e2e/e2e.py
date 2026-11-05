@@ -2,7 +2,7 @@
 
 Usage: xvfb-run -a python3 tests/e2e/e2e.py <app-binary> <fixtures-dir> <tiny.gguf> <workdir>
 """
-import base64, io, json, os, shutil, subprocess, sys, threading, time
+import base64, io, json, os, shutil, subprocess, sys, threading, time, zipfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from PIL import Image
@@ -98,7 +98,7 @@ def upload(paths, scope=None):
     inp.send_keys("\n".join(paths)); time.sleep(0.2)
 def page_text(): return d.execute_script("return document.body.innerText")
 def reload_ui():
-    d.refresh(); wait(30).until(lambda x: "Dorms" in page_text()); time.sleep(0.8)
+    d.refresh(); wait(30).until(lambda x: "Dorms" in page_text() or "Welcome to the dorms" in page_text()); time.sleep(0.8)
 def dismiss():
     for b in d.find_elements(By.CSS_SELECTOR, ".modal button[aria-label=Close]"):
         b.click(); time.sleep(0.3)
@@ -424,6 +424,167 @@ try:
     if os.path.exists(secrets_path): check("the saved-key file is NOT readable by the web view", served(secrets_path) != 200)
     # restore + persistence across restart is covered by the db being on disk
     check("everything is stored on disk in the app data folder", os.path.exists(os.path.join(DATA, "dorms.db")) and os.path.exists(os.path.join(DATA, "llama.log")))
+    # =================== local profiles, guest mode, eject ===================================================
+    def inv_err(cmd, args=None):
+        try: invoke(cmd, args); return None
+        except RuntimeError as ex: return str(ex)
+    def invoke_file(cmd, path, headers):
+        b64 = base64.b64encode(open(path, "rb").read()).decode()
+        r = d.execute_async_script("const done=arguments[arguments.length-1];const b=Uint8Array.from(atob(arguments[0]),c=>c.charCodeAt(0));window.__TAURI_INTERNALS__.invoke(arguments[1], b, {headers:arguments[2]}).then(v=>done({ok:v})).catch(e=>done({err:String(e)}));", b64, cmd, headers)
+        if "err" in r: raise RuntimeError(r["err"])
+        return r["ok"]
+    media_dir = os.path.join(DATA, "media")
+
+    st0 = invoke("session_state")
+    check("with no profiles the app opens straight into guest mode", st0["signed_in"] and st0["guest"] and st0["profiles"] == [])
+    check("existing data lives in the guest space after the upgrade", st0["guest_items"] > 5 and len(chars()) > 5)
+    guest_char_ids = [c["id"] for c in chars()]
+    guest_chat = invoke("list_chats")[0]; guest_msg = invoke("list_messages", {"chatId": guest_chat["id"]})[0]
+    guest_chars_before = len(guest_char_ids)
+    invoke("set_api_key", {"provider": "openai", "key": "guest-key-1"})
+
+    # -- create a profile: its data is separate from the guest space
+    out = invoke("create_profile", {"handle": "Alex", "displayName": "Alexandra", "passcode": None})
+    check("creating a profile signs it in", out["profile"]["handle"] == "Alex" and not out["guest"])
+    check("a new profile starts empty (guest data is not visible)", chars() == [] and invoke("list_chats") == [] and invoke("list_dorms") == [])
+    check("the profile's chat name is set from its display name", invoke("get_settings")["user_name"] == "Alexandra")
+    check("API keys don't carry over from guest mode", invoke("has_api_key", {"provider": "openai"}) == {"present": False})
+    check("duplicate profile names are refused (case-insensitive)", "already used" in (inv_err("create_profile", {"handle": "alex", "displayName": None, "passcode": None}) or ""))
+    check("the name 'guest' is reserved", "reserved" in (inv_err("create_profile", {"handle": "Guest", "displayName": None, "passcode": None}) or ""))
+    check("a one-letter name is refused", inv_err("create_profile", {"handle": "A", "displayName": None, "passcode": None}) is not None)
+
+    blank_card = {"name": "Pip", "description": "A tiny test character.", "personality": "", "scenario": "", "first_mes": "Hi!", "mes_example": "", "creator_notes": "", "system_prompt": "", "post_history_instructions": "", "alternate_greetings": [], "character_book": None, "tags": ["t"], "creator": "", "character_version": "", "nickname": "", "group_only_greetings": [], "extensions": {}}
+    pip = invoke("save_character", {"character": {"card": blank_card, "trusted": True}})
+    pip = set_media_ipc(pip["id"], os.path.join(FIX, "avatar.gif"))
+    adorm = invoke("create_dorm", {"name": "Alex's dorm"})
+    achat = invoke("create_chat", {"dormId": adorm["id"], "name": "pip-chat", "kind": "dm", "characterIds": [pip["id"]]})
+    invoke("add_user_message", {"chatId": achat["id"], "text": "hello from Alex"})
+    check("the profile can create its own data", len(chars()) == 1 and len(invoke("list_chats")) == 1 and len(invoke("list_dorms")) == 1)
+
+    # -- isolation: another profile's rows can't be reached by id
+    check("another profile's character can't be read by id", invoke("get_character", {"id": guest_char_ids[0]}) is None)
+    check("another profile's character can't be exported", inv_err("export_card", {"id": guest_char_ids[0], "format": "json_v2"}) is not None)
+    check("another profile's chat can't be read", "not found" in (inv_err("list_messages", {"chatId": guest_chat["id"]}) or "").lower())
+    check("another profile's chat can't be written to", inv_err("add_user_message", {"chatId": guest_chat["id"], "text": "intruder"}) is not None)
+    check("another profile's message can't be edited", inv_err("edit_message", {"id": guest_msg["id"], "text": "intruder"}) is not None)
+    check("another profile's message can't be deleted or swiped", inv_err("delete_message", {"id": guest_msg["id"]}) is not None and inv_err("set_swipe", {"id": guest_msg["id"], "index": 0}) is not None)
+    check("another profile's chat can't be cleared or deleted", inv_err("clear_chat", {"chatId": guest_chat["id"]}) is not None)
+    invoke("delete_chat", {"id": guest_chat["id"]}); invoke("delete_character", {"id": guest_char_ids[0]})
+    invoke("update_chat", {"chat": dict(guest_chat, name="hijacked")})
+
+    # -- passcodes and lockout
+    check("a passcode must be at least 4 characters", inv_err("set_passcode", {"current": None, "new": "abc"}) is not None)
+    out = invoke("set_passcode", {"current": None, "new": "open sesame"})
+    check("a passcode can be set", out["profile"]["has_passcode"] is True)
+    alex_id = out["profile"]["id"]
+    out = invoke("sign_out"); 
+    check("signing out leaves no profile open", out["signed_in"] is False)
+    check("without a profile, data commands refuse to answer", "pick a profile" in (inv_err("list_characters") or "").lower() and inv_err("list_chats") is not None and inv_err("get_settings") is not None)
+    check("a wrong passcode is refused", "wrong passcode" in (inv_err("sign_in", {"profileId": alex_id, "passcode": "nope"}) or "").lower())
+    out = invoke("sign_in", {"profileId": alex_id, "passcode": "open sesame"})
+    check("the right passcode signs in", out["signed_in"] and out["profile"]["handle"] == "Alex")
+    check("the passcode hash is never sent to the web view", "hash" not in json.dumps(out).lower() and "open sesame" not in json.dumps(out))
+    invoke("sign_out")
+    for _ in range(5): inv_err("sign_in", {"profileId": alex_id, "passcode": "wrong"})
+    check("repeated wrong passcodes lock the profile for a while", "too many" in (inv_err("sign_in", {"profileId": alex_id, "passcode": "wrong"}) or "").lower())
+    check("even the right passcode is refused during a lockout", "too many" in (inv_err("sign_in", {"profileId": alex_id, "passcode": "open sesame"}) or "").lower())
+
+    # -- the welcome screen (UI) while the profile is locked
+    reload_ui()
+    check("the welcome screen lists profiles with a lock and a guest option", text_present("Welcome to the dorms") and text_present("Alex") and text_present("Continue as guest"))
+    shot("welcome")
+    time.sleep(31)  # lockout is 30 s
+    d.execute_script("[...document.querySelectorAll('button.ccard')].find(b=>b.textContent.includes('Alex')).click()"); time.sleep(0.8)
+    check("choosing a passcode-protected profile asks for the passcode", bool(d.find_elements(By.CSS_SELECTOR, "input[type=password]")))
+    pw = d.find_element(By.CSS_SELECTOR, ".modal input[type=password]"); pw.send_keys("open sesame"); pw.send_keys(Keys.ENTER); time.sleep(2.5)
+    check("entering the passcode opens the profile in the UI", text_present("Alexandra") or text_present("Good") or text_present("New character"))
+    nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Profile').click()"); time.sleep(0.8)
+    check("the Profile tab shows identity, passcode and data actions", all(t in page_text() for t in ["How you appear in chats", "Passcode", "Eject profile", "Save a backup copy"]))
+    shot("profile-tab")
+
+    # -- backup, eject (order enforced), import
+    info = invoke("prepare_export")
+    check("the export summary counts what was exported", info["characters"] == 1 and info["chats"] == 1 and info["media"] == 1 and info["messages"] >= 2, str(info))
+    check("eject refuses before the file has been saved", "hasn't been saved" in (inv_err("eject_profile", {"token": info["token"]}) or ""))
+    check("eject refuses a wrong token", inv_err("eject_profile", {"token": "not-the-token"}) is not None)
+    out_path = os.path.join(WORK, "alex.dorms")
+    sv = invoke("save_export", {"token": info["token"], "path": out_path})
+    check("the file is written and verified by reading it back", os.path.getsize(out_path) == info["size"] == sv["size"])
+    z = zipfile.ZipFile(out_path); names = z.namelist()
+    man = json.loads(z.read("manifest.json")); dat = z.read("data.json").decode()
+    check("the file is a zip holding a manifest, data and media", "manifest.json" in names and "data.json" in names and sum(n.startswith("media/") for n in names) == 1)
+    check("the manifest identifies the profile and format", man["format"] == "desktop-college-dorms/profile" and man["profile"]["handle"] == "Alex" and man["version"] == 1)
+    check("no passcode, hash or API key is written to the file", "open sesame" not in dat and "argon2" not in dat and "guest-key-1" not in dat and "passcode_hash" not in dat)
+    n_media_before = len(os.listdir(media_dir))
+    invoke("eject_profile", {"token": info["token"]})
+    st = invoke("session_state")
+    check("eject signs out and removes the profile from the device", st["signed_in"] is False and all(p["handle"] != "Alex" for p in st["profiles"]))
+    check("eject deletes the profile's media files", len(os.listdir(media_dir)) == n_media_before - 1)
+    invoke("sign_in", {"profileId": None})
+    check("eject leaves the guest space untouched, even after the other profile tried to delete and rename its rows", len(chars()) == guest_chars_before and any(c["id"] == guest_chat["id"] and c["name"] == guest_chat["name"] for c in invoke("list_chats")) and "Alex" not in json.dumps(invoke("list_dorms")))
+    check("the guest API key survived another profile's eject", invoke("has_api_key", {"provider": "openai"}) == {"present": True})
+    invoke("sign_out")
+
+    prev = invoke_file("import_profile", out_path, {"x-mode": "inspect"})
+    check("inspecting a file previews it without importing", prev["handle"] == "Alex" and prev["characters"] == 1 and prev["handle_taken"] is False and prev["already_here"] is False)
+    check("nothing was imported by inspecting", all(p["handle"] != "Alex" for p in invoke("session_state")["profiles"]))
+    out = invoke_file("import_profile", out_path, {"x-mode": "import", "x-handle": "Alex", "x-passcode": "fresh passcode"})
+    check("importing restores the profile and signs it in", out["signed_in"] and out["profile"]["handle"] == "Alex" and out["profile"]["has_passcode"])
+    restored_chars = chars(); restored_chats = invoke("list_chats")
+    check("the restored profile has its character, dorm and chat", len(restored_chars) == 1 and restored_chars[0]["card"]["name"] == "Pip" and len(restored_chats) == 1 and len(invoke("list_dorms")) == 1)
+    check("the restored chat keeps its messages", any(m["swipes"][0] == "hello from Alex" for m in invoke("list_messages", {"chatId": restored_chats[0]["id"]})))
+    check("the restored avatar file exists again", restored_chars[0]["media"] and os.path.exists(os.path.join(DATA, restored_chars[0]["media"]["file"])))
+    check("the restored profile kept its chat name", invoke("get_settings")["user_name"] == "Alexandra")
+    invoke("sign_out")
+    check("the passcode set during import works and the old one does not", inv_err("sign_in", {"profileId": invoke("session_state")["profiles"][0]["id"], "passcode": "open sesame"}) is not None)
+
+    both = invoke_file("import_profile", out_path, {"x-mode": "inspect"})
+    check("importing never overwrites: a name already on the device is flagged", both["handle_taken"] is True)
+    try: invoke_file("import_profile", out_path, {"x-mode": "import", "x-handle": "Alex", "x-passcode": ""}); taken_err = ""
+    except RuntimeError as ex: taken_err = str(ex)
+    check("importing under a taken name fails clearly", "already used" in taken_err, taken_err)
+    out = invoke_file("import_profile", out_path, {"x-mode": "import", "x-handle": "Alex Two", "x-passcode": ""})
+    two_chars = chars()
+    check("importing the same file again makes a separate copy", out["profile"]["handle"] == "Alex Two" and len(two_chars) == 1 and two_chars[0]["id"] != restored_chars[0]["id"])
+    check("the second copy's avatar is its own file", two_chars[0]["media"]["file"] != restored_chars[0]["media"]["file"] and os.path.exists(os.path.join(DATA, two_chars[0]["media"]["file"])))
+    check("two profiles now exist on the device", len(invoke("session_state")["profiles"]) == 2)
+    invoke("sign_out")
+
+    bad = os.path.join(WORK, "bad.dorms"); raw = bytearray(open(out_path, "rb").read()); raw[len(raw)//2] ^= 0xFF; open(bad, "wb").write(bytes(raw))
+    trunc = os.path.join(WORK, "trunc.dorms"); open(trunc, "wb").write(open(out_path, "rb").read()[:300])
+    for label, path in [("a damaged", bad), ("a truncated", trunc), ("a non-profile", os.path.join(FIX, "mira_v2.json"))]:
+        try: invoke_file("import_profile", path, {"x-mode": "inspect"}); res = ""
+        except RuntimeError as ex: res = str(ex)
+        check(f"{label} file is refused with a clear message and changes nothing", res != "" and len(invoke("session_state")["profiles"]) == 2, res)
+
+    # -- guest space: claim it as a profile (data and keys move)
+    invoke("sign_in", {"profileId": None})
+    n_guest_chars = len(chars()); n_guest_chats = len(invoke("list_chats"))
+    check("the guest space is untouched by all of that", n_guest_chars == guest_chars_before and n_guest_chats >= 1)
+    out = invoke("claim_guest_profile", {"handle": "Guesty", "displayName": "Guesty G", "passcode": None})
+    check("claiming the guest space makes a profile that owns the data", out["profile"]["handle"] == "Guesty" and len(chars()) == n_guest_chars and len(invoke("list_chats")) == n_guest_chats)
+    check("claiming moves the API key with the data", invoke("has_api_key", {"provider": "openai"}) == {"present": True})
+    invoke("sign_out"); invoke("sign_in", {"profileId": None})
+    check("after claiming, the guest space starts empty", chars() == [] and invoke("list_chats") == [] and invoke("has_api_key", {"provider": "openai"}) == {"present": False})
+    # guest space can be ejected too, and guest has no passcode
+    check("the guest space has no passcode to set", inv_err("set_passcode", {"current": None, "new": "abcd"}) is not None)
+
+    # -- delete needs the name typed
+    gid = [p for p in invoke("session_state")["profiles"] if p["handle"] == "Guesty"][0]["id"]
+    invoke("sign_in", {"profileId": gid})
+    check("only the guest space can be claimed (not an existing profile)", "only the guest space" in (inv_err("claim_guest_profile", {"handle": "Nope", "displayName": None, "passcode": None}) or "").lower())
+    check("deleting a profile needs its name typed", "doesn't match" in (inv_err("delete_profile", {"confirm": "nope"}) or ""))
+    n_before = len(os.listdir(media_dir))
+    invoke("delete_profile", {"confirm": "guesty"})
+    st = invoke("session_state")
+    check("deleting removes the profile and signs out", st["signed_in"] is False and all(p["handle"] != "Guesty" for p in st["profiles"]))
+    check("deleting removes its media files too", len(os.listdir(media_dir)) < n_before)
+    # -- device preference: ask on launch
+    check("the launch preference is stored", invoke("set_launch_pref", {"askOnLaunch": True})["ask_on_launch"] is True)
+    invoke("set_launch_pref", {"askOnLaunch": False})
+    reload_ui()
+    check("with profiles present and none open, the picker shows (no silent sign-in after sign-out)", text_present("Welcome to the dorms"))
+
 finally:
     try: d.quit()
     except Exception: pass

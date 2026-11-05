@@ -1,7 +1,7 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
-import { writeFile } from "@tauri-apps/plugin-fs";
+import { stat, writeFile } from "@tauri-apps/plugin-fs";
 
 export type MediaKind = "image" | "gif" | "video" | "vrm";
 export interface Media { kind: MediaKind; file: string }
@@ -140,6 +140,23 @@ export interface EngineStatus { running: boolean; model: string; backend: string
 export interface AppInfo { version: string; data_dir: string; portable: boolean; platform: string; local_engine: boolean }
 export interface ImportResult { character: Character; warnings: string[]; spec: string }
 
+export interface ProfileInfo { id: string; handle: string; display_name: string; has_passcode: boolean; created_at: number; last_login: number }
+export interface SessionState {
+  signed_in: boolean;
+  guest: boolean;
+  profile: ProfileInfo | null;
+  profiles: ProfileInfo[];
+  ask_on_launch: boolean;
+  /** Characters, dorms and chats already in the guest space. */
+  guest_items: number;
+}
+export interface ExportInfo { token: string; file_name: string; size: number; characters: number; dorms: number; chats: number; messages: number; media: number }
+export interface ImportPreview {
+  handle: string; display_name: string; guest: boolean; app_version: string; exported_at: number;
+  characters: number; dorms: number; chats: number; messages: number; media: number;
+  already_here: boolean; handle_taken: boolean;
+}
+
 export type GenEvent =
   | { kind: "loading" | "start"; request_id: string; chat_id: number; character_id: string }
   | { kind: "token"; request_id: string; chat_id: number; character_id: string; text: string }
@@ -202,6 +219,28 @@ export const api = {
     invoke<string>("generate", { chatId, characterId: characterId ?? null, regenerateMessageId: regenerateMessageId ?? null }),
   cancelGeneration: (requestId: string) => invoke<void>("cancel_generation", { requestId }),
   setAutoChat: (chatId: number, on: boolean) => invoke<void>("set_auto_chat", { chatId, on }),
+  // profiles and sessions
+  session: () => invoke<SessionState>("session_state"),
+  signIn: (profileId: string | null, passcode?: string) => invoke<SessionState>("sign_in", { profileId, passcode: passcode ?? null }),
+  signOut: () => invoke<SessionState>("sign_out"),
+  createProfile: (handle: string, displayName: string, passcode: string) =>
+    invoke<SessionState>("create_profile", { handle, displayName: displayName || null, passcode: passcode || null }),
+  claimGuest: (handle: string, displayName: string, passcode: string) =>
+    invoke<SessionState>("claim_guest_profile", { handle, displayName: displayName || null, passcode: passcode || null }),
+  updateProfile: (displayName: string) => invoke<SessionState>("update_profile", { displayName }),
+  setPasscode: (current: string, next: string) => invoke<SessionState>("set_passcode", { current: current || null, new: next || null }),
+  setLaunchPref: (askOnLaunch: boolean) => invoke<SessionState>("set_launch_pref", { askOnLaunch }),
+  prepareExport: () => invoke<ExportInfo>("prepare_export"),
+  ejectProfile: (token: string) => invoke<SessionState>("eject_profile", { token }),
+  deleteProfile: (confirm: string) => invoke<SessionState>("delete_profile", { confirm }),
+  async inspectProfileFile(file: File): Promise<ImportPreview> {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return bin("import_profile", bytes, { "x-mode": "inspect" });
+  },
+  async importProfileFile(file: File, handle: string, passcode: string): Promise<SessionState> {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return bin("import_profile", bytes, { "x-mode": "import", "x-handle": enc(handle), "x-passcode": enc(passcode) });
+  },
   // 3D crash guard
   vrmGuardBegin: () => invoke<boolean>("vrm_guard_begin"),
   vrmGuardEnd: () => invoke<void>("vrm_guard_end"),
@@ -268,3 +307,24 @@ export const dormsExt = (card: CardData): { tagline: string; display_name: strin
 });
 export const displayName = (c: Character) => dormsExt(c.card).display_name || c.card.name || "Unnamed";
 export const tagline = (c: Character) => dormsExt(c.card).tagline || c.card.creator_notes.split("\n")[0] || "";
+
+/**
+ * Save a prepared export where the user chooses. Desktop: the backend writes the file and checks it by
+ * reading the bytes back. Android's save dialog hands out content:// addresses the backend can't write to,
+ * so there the web view writes it and the size is checked. `verified` is what eject requires.
+ * Returns null if the user cancelled.
+ */
+export async function saveExportFile(info: ExportInfo): Promise<{ path: string; verified: boolean } | null> {
+  const path = await save({ defaultPath: info.file_name, filters: [{ name: "Desktop College Dorms profile", extensions: ["dorms"] }] });
+  if (!path) return null;
+  if (!path.startsWith("content:")) {
+    await invoke("save_export", { token: info.token, path });
+    return { path, verified: true };
+  }
+  const buf = await invoke<ArrayBuffer>("read_export", { token: info.token });
+  await writeFile(path, new Uint8Array(buf));
+  let verified = false;
+  try { verified = (await stat(path)).size === info.size; } catch { /* some locations can't be inspected */ }
+  if (verified) await invoke("confirm_export_saved", { token: info.token, size: info.size });
+  return { path, verified };
+}
