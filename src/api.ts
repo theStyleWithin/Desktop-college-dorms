@@ -158,9 +158,9 @@ export interface ImportPreview {
 }
 
 export type GenEvent =
-  | { kind: "loading" | "start"; request_id: string; chat_id: number; character_id: string }
-  | { kind: "token"; request_id: string; chat_id: number; character_id: string; text: string }
-  | { kind: "done"; request_id: string; chat_id: number; character_id: string; message: Message }
+  | { kind: "loading" | "start"; request_id: string; chat_id: number; character_id: string; continue_of?: number | null }
+  | { kind: "token"; request_id: string; chat_id: number; character_id: string; text: string; continue_of?: number | null }
+  | { kind: "done"; request_id: string; chat_id: number; character_id: string; message: Message; continue_of?: number | null }
   | { kind: "error"; request_id: string; chat_id: number; error: string };
 
 export interface ModelProgress { file: string; downloaded: number; total: number; done: boolean; error: string | null }
@@ -215,8 +215,9 @@ export const api = {
   deleteMessage: (id: number) => invoke<void>("delete_message", { id }),
   setSwipe: (id: number, index: number) => invoke<Message>("set_swipe", { id, index }),
   clearChat: (chatId: number) => invoke<void>("clear_chat", { chatId }),
-  generate: (chatId: number, characterId?: string | null, regenerateMessageId?: number | null) =>
-    invoke<string>("generate", { chatId, characterId: characterId ?? null, regenerateMessageId: regenerateMessageId ?? null }),
+  /** `continueMessageId` extends that (newest, character) message in place instead of starting a new reply. */
+  generate: (chatId: number, characterId?: string | null, regenerateMessageId?: number | null, continueMessageId?: number | null) =>
+    invoke<string>("generate", { chatId, characterId: characterId ?? null, regenerateMessageId: regenerateMessageId ?? null, continueMessageId: continueMessageId ?? null }),
   cancelGeneration: (requestId: string) => invoke<void>("cancel_generation", { requestId }),
   setAutoChat: (chatId: number, on: boolean) => invoke<void>("set_auto_chat", { chatId, on }),
   // profiles and sessions
