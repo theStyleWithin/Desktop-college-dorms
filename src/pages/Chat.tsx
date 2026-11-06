@@ -7,7 +7,7 @@ import { Modal, useToast } from "../components/ui";
 import { errText, timeAgo } from "../lib/util";
 import { useStore } from "../store";
 
-interface Live { rid: string; characterId: string; text: string; phase: "loading" | "start" | "streaming" }
+interface Live { rid: string; characterId: string; text: string; phase: "loading" | "start" | "streaming"; /** set when extending an existing message */ continueOf: number | null }
 
 const KIND_ICON: Record<ChatKind, string> = { dm: "👤", group: "👥", channel: "#" };
 
@@ -61,8 +61,8 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
     const subs = [
       onGen((e) => {
         if (e.chat_id !== selectedRef.current) { if (e.kind === "done") refresh(); return; }
-        if (e.kind === "loading" || e.kind === "start") setLive({ rid: e.request_id, characterId: e.character_id, text: "", phase: e.kind });
-        else if (e.kind === "token") setLive((l) => ({ rid: e.request_id, characterId: e.character_id, text: (l?.rid === e.request_id ? l.text : "") + e.text, phase: "streaming" }));
+        if (e.kind === "loading" || e.kind === "start") setLive({ rid: e.request_id, characterId: e.character_id, text: "", phase: e.kind, continueOf: e.continue_of ?? null });
+        else if (e.kind === "token") setLive((l) => ({ rid: e.request_id, characterId: e.character_id, text: (l?.rid === e.request_id ? l.text : "") + e.text, phase: "streaming", continueOf: e.continue_of ?? null }));
         else if (e.kind === "done") {
           setLive(null);
           setMsgs((m) => (m.some((x) => x.id === e.message.id) ? m.map((x) => (x.id === e.message.id ? e.message : x)) : [...m, e.message]));
@@ -230,7 +230,10 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               {msgs.filter((m) => m.role !== "system").map((m, idx, arr) => {
                 const c = m.character_id ? byId.get(m.character_id) : undefined;
                 const isLast = idx === arr.length - 1;
-                const body = m.swipes[m.swipe_index] ?? m.swipes[m.swipes.length - 1] ?? "";
+                const saved = m.swipes[m.swipe_index] ?? m.swipes[m.swipes.length - 1] ?? "";
+                // while a continuation streams, show it growing inside this message
+                const extending = live?.continueOf === m.id;
+                const body = extending ? saved + (saved && live.text && !/\s$/.test(saved) && !/^\s/.test(live.text) ? " " : "") + live.text : saved;
                 return (
                   <div className={`msg ${m.role}`} key={m.id}>
                     <Avatar c={c} name={nameOf(m)} />
@@ -254,6 +257,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                             <button className="btn ghost sm" disabled={busy} onClick={() => swipe(m, 1)} title={m.swipe_index + 1 >= m.swipes.length ? "Generate another version" : "Next version"} aria-label="Next version">›</button>
                           )}
                           {m.role === "character" && isLast && <button className="btn ghost sm" disabled={busy} onClick={() => api.generate(chat.id, null, m.id)}>↻ Regenerate</button>}
+                          {m.role === "character" && isLast && <button className="btn ghost sm" disabled={busy} onClick={() => api.generate(chat.id, null, null, m.id)} title="Ask the character to go on and write more">⏩ Continue</button>}
                           <button className="btn ghost sm" onClick={() => setEditing({ id: m.id, text: body })}>✎ Edit</button>
                           <button className="btn ghost sm" onClick={async () => { await api.deleteMessage(m.id); setMsgs((x) => x.filter((y) => y.id !== m.id)); }}>🗑</button>
                         </div>
@@ -262,7 +266,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                   </div>
                 );
               })}
-              {live && (
+              {live && live.continueOf == null && (
                 <div className="msg character">
                   <Avatar c={byId.get(live.characterId)} name={byId.get(live.characterId)?.card.name ?? "?"} />
                   <div>

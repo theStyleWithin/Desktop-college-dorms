@@ -126,7 +126,7 @@ button.chip { cursor: pointer; } button.chip.on { background: var(--accent); col
 .msg .who small { color: var(--muted); font-weight: 400; }
 .msg .txt { white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
 .msg .txt em { color: color-mix(in srgb, var(--text) 62%, var(--accent2)); }
-.msg .tools { display: flex; gap: 4px; opacity: 0; transition: opacity .1s; margin-top: 4px; align-items: center; }
+.msg .tools { display: flex; flex-wrap: wrap; gap: 4px; opacity: 0; transition: opacity .1s; margin-top: 4px; align-items: center; }
 .msg:hover .tools { opacity: 1; }
 .msg.user .who { color: var(--accent); }
 .typing { color: var(--muted); font-style: italic; }

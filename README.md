@@ -17,7 +17,7 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
 | | |
 |---|---|
 | ![Home](docs/screenshots/desktop-home.png)<br>**Home**: jump back into chats, your characters at a glance | ![Library](docs/screenshots/desktop-library.png)<br>**Library**: search, tags, favorites, import cards |
-| ![A channel](docs/screenshots/desktop-channel.png)<br>**Dorm channels**: characters talk to you and to each other | ![Direct chat](docs/screenshots/desktop-chat.png)<br>**Chat**: swipe, regenerate, edit; image, GIF, video or live 3D VRM beside it |
+| ![A channel](docs/screenshots/desktop-channel.png)<br>**Dorm channels**: characters talk to you and to each other | ![Direct chat](docs/screenshots/desktop-chat.png)<br>**Chat**: swipe, regenerate, continue, edit; image, GIF, video or live 3D VRM beside it |
 | ![Editor](docs/screenshots/desktop-editor.png)<br>**Character editor**: Chub-style, with live token counts | ![Models](docs/screenshots/desktop-models.png)<br>**Built-in models**: sized to your computer, resumable downloads |
 | ![Other API](docs/screenshots/desktop-other-api.png)<br>**Other API**: plug in any OpenAI- or Anthropic-style service | ![Light theme](docs/screenshots/desktop-light-theme.png)<br>**Themes**: dusk, midnight and a light "paper" theme |
 | ![Welcome](docs/screenshots/desktop-welcome.png)<br>**Profiles**: local accounts with an optional passcode, or hop in as a guest | ![Profile settings](docs/screenshots/desktop-profile.png)<br>**Profile settings**: passcode, backup, **Eject**, delete |
@@ -44,7 +44,7 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
 - **Character card import and export** (V1, V2 and V3; JSON and PNG). Import is deliberately forgiving: wrong types and missing
   fields never cause an error, unknown fields are kept and written back, so round trips lose nothing. Tested against cards written by
   independent tools (tEXt, zTXt and ccv3 chunks, non-Latin text, loose JSON, SillyTavern-style lorebooks).
-- **Chats**: one-on-one, group chats, and channels inside dorms. Swipe / regenerate / edit / delete messages.
+- **Chats**: one-on-one, group chats, and channels inside dorms. Swipe, regenerate, **continue** (ask the character to keep going and extend the same message), edit and delete messages.
   Turn order: take turns, random, or reply when named.
 - **Bots talking to each other**: optional per channel, off by default, with a pace and an automatic stop after N bot-only turns
   so an unattended channel can't drain your battery or API credit.
