@@ -537,14 +537,24 @@ pub fn list_folders(state: State<'_, Shared>) -> R<Vec<FolderOut>> {
 }
 
 #[tauri::command]
-pub fn create_folder(state: State<'_, Shared>, name: String) -> R<FolderOut> {
+pub fn create_folder(state: State<'_, Shared>, name: String, parent: Option<String>) -> R<FolderOut> {
     let o = owner(&state)?;
     let name = clean_folder_name(&name)?;
     let db = state.db.lock().unwrap();
+    let all = db::list_folders(&db, &o).map_err(e)?;
+    // a new folder may sit inside an existing one
+    let parent = match parent {
+        Some(p) if !p.is_empty() => {
+            if !all.iter().any(|f| f.id == p) { return Err("That folder doesn't exist any more.".into()); }
+            if db::folder_chain(&all, &p).len() >= db::MAX_FOLDER_DEPTH { return Err("Folders can only be nested a few levels deep.".into()); }
+            Some(p)
+        }
+        _ => None,
+    };
     if db::list_folders(&db, &o).map_err(e)?.len() >= 500 {
         return Err("That's a lot of folders. Delete some first.".into());
     }
-    let f = db::Folder { id: uid(), name, cover: None, frame: None, created_at: db::now() };
+    let f = db::Folder { id: uid(), name, cover: None, frame: None, created_at: db::now(), parent };
     db::save_folder(&db, &f, &o).map_err(e)?;
     Ok(folder_out(&state, f))
 }
@@ -570,6 +580,23 @@ pub fn delete_folder(state: State<'_, Shared>, id: String) -> R<()> {
         }
     }
     db::delete_folder(&db, &id, &o).map_err(e)
+}
+
+/// Put a folder inside another (or back at the top level with `parent: null`).
+#[tauri::command]
+pub fn move_folder(state: State<'_, Shared>, id: String, parent: Option<String>) -> R<FolderOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let all = db::list_folders(&db, &o).map_err(e)?;
+    let mut f = all.iter().find(|f| f.id == id).cloned().ok_or("Folder not found")?;
+    let parent = parent.filter(|p| !p.is_empty());
+    if let Some(p) = &parent {
+        if !all.iter().any(|x| &x.id == p) { return Err("That folder doesn't exist any more.".into()); }
+    }
+    db::can_nest(&all, &id, parent.as_deref())?;
+    f.parent = parent;
+    db::save_folder(&db, &f, &o).map_err(e)?;
+    Ok(folder_out(&state, f))
 }
 
 /// Body: raw image bytes. Headers: `x-folder-id`, `x-file-name` (percent-encoded).

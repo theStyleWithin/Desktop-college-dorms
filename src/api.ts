@@ -60,7 +60,7 @@ export interface CardData {
 export interface Frame { x: number; y: number; zoom: number }
 export const DEFAULT_FRAME: Frame = { x: 0.5, y: 0.5, zoom: 1 };
 export interface Lorebook { id: string; name: string; book: CharacterBook; created_at: number; updated_at: number }
-export interface Folder { id: string; name: string; cover: string | null; frame: Frame | null; created_at: number; cover_path?: string | null }
+export interface Folder { id: string; name: string; cover: string | null; frame: Frame | null; created_at: number; cover_path?: string | null; /** the folder this one sits inside (null = top level) */ parent?: string | null }
 
 export interface Character {
   id: string;
@@ -266,7 +266,8 @@ export const api = {
   setFrame: (id: string, frame: Frame | null) => invoke<Character>("set_frame", { id, frame }),
   // folders
   listFolders: () => invoke<Folder[]>("list_folders"),
-  createFolder: (name: string) => invoke<Folder>("create_folder", { name }),
+  createFolder: (name: string, parent: string | null = null) => invoke<Folder>("create_folder", { name, parent }),
+  moveFolder: (id: string, parent: string | null) => invoke<Folder>("move_folder", { id, parent }),
   renameFolder: (id: string, name: string) => invoke<Folder>("rename_folder", { id, name }),
   deleteFolder: (id: string) => invoke<void>("delete_folder", { id }),
   async setFolderCover(id: string, file: File): Promise<Folder> {

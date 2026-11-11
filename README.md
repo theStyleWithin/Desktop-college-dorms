@@ -84,8 +84,9 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
   Nothing is forced on a chat. A pack's own custom screens are not run; the app shows its values in built-in panels instead.
 - **Phone mode** (📱 in a chat): the same conversation as a texting experience: a phone with message bubbles, and replies written and
   shown as short texts.
-- **Character folders**: optional folders in the library. Drag characters onto a folder (or ⋮ → Move to folder), rename it, give it its own picture.
-  Deleting a folder never deletes its characters.
+- **Character folders**: optional folders in the library, and folders can nest, so you can keep a "Canon character RP" folder with a folder per series inside it,
+  and each series' characters inside that. Drag characters or folders onto a folder (or onto the path at the top), or use ⋮ → Move to folder / Move folder…; rename a folder,
+  give it its own picture. Deleting a folder never deletes anything: its characters and subfolders move up one level.
 - **Position your pictures**: choosing an avatar opens a window where you drag and zoom until the face is just right (with previews of the
   card, round avatar and banner). The framing is saved, can be changed later (⤧ Position), and is used everywhere the picture appears.
   Library cards are bigger too.

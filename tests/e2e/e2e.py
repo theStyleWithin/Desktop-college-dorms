@@ -713,6 +713,38 @@ try:
     check("deleting a folder keeps its characters (back at the top level) and removes its picture", mira_now is not None and mira_now["folder"] is None and not os.path.exists(cover_file) and invoke("list_folders") == [])
 
     card0 = {"name": "Pip", "description": "A tiny test character.", "personality": "", "scenario": "", "first_mes": "Hi!", "mes_example": "", "creator_notes": "", "system_prompt": "", "post_history_instructions": "", "alternate_greetings": [], "character_book": None, "tags": ["t"], "creator": "", "character_version": "", "nickname": "", "group_only_greetings": [], "extensions": {}}
+    # nested folders: a canon folder, series inside it, characters in the series
+    canon = invoke("create_folder", {"name": "Canon character RP", "parent": None})
+    check("a folder sits at the top level by default", canon["parent"] is None)
+    ser1 = invoke("create_folder", {"name": "Series One", "parent": canon["id"]})
+    ser2 = invoke("create_folder", {"name": "Series Two", "parent": canon["id"]})
+    check("a folder can be made inside another", ser1["parent"] == canon["id"] and ser2["parent"] == canon["id"])
+    sub = invoke("create_folder", {"name": "Season 1", "parent": ser1["id"]})
+    check("and inside that, as deep as you like (within reason)", sub["parent"] == ser1["id"])
+    check("a folder can't be made inside one that doesn't exist", "doesn't exist" in (inv_err("create_folder", {"name": "x", "parent": "nope"}) or ""))
+    check("a folder can't go inside itself", "inside itself" in (inv_err("move_folder", {"id": canon["id"], "parent": canon["id"]}) or ""))
+    check("or inside one of its own subfolders", "inside itself" in (inv_err("move_folder", {"id": canon["id"], "parent": sub["id"]}) or ""))
+    mv = invoke("move_folder", {"id": ser2["id"], "parent": ser1["id"]})
+    check("an existing folder can be moved into another (a whole tree moves with it)", mv["parent"] == ser1["id"])
+    mv = invoke("move_folder", {"id": ser2["id"], "parent": None})
+    check("...and back out to the top level", mv["parent"] is None)
+    deep = canon
+    for i in range(14):
+        r = inv_err("create_folder", {"name": f"deep{i}", "parent": deep["id"]})
+        if r: break
+        deep = [f for f in invoke("list_folders") if f["name"] == f"deep{i}"][0]
+    check("folders can only nest so deep", r is not None and "deep" in r, str(r))
+    for f in invoke("list_folders"):
+        if f["name"].startswith("deep"): invoke("delete_folder", {"id": f["id"]})
+    invoke("move_characters", {"ids": [mira["id"]], "folder": sub["id"]})
+    invoke("delete_folder", {"id": ser1["id"]})
+    fl = {f["name"]: f for f in invoke("list_folders")}
+    check("deleting a folder moves its subfolders up a level (nothing is lost)", "Series One" not in fl and fl["Season 1"]["parent"] == canon["id"], str({k: v["parent"] for k, v in fl.items()}))
+    check("and its characters up too", invoke("get_character", {"id": mira["id"]})["folder"] == fl["Season 1"]["id"])
+    for n in ("Season 1", "Series Two", "Canon character RP"):
+        invoke("delete_folder", {"id": [f for f in invoke("list_folders") if f["name"] == n][0]["id"]})
+    check("deleting all of them returns the character to the top level", invoke("get_character", {"id": mira["id"]})["folder"] is None and invoke("list_folders") == [])
+
     greeter = invoke("save_character", {"character": {"id": "", "card": dict(card0, name="Greeter", first_mes="Hi, first!", alternate_greetings=["Second hello", "  ", "Third hello"])}})
     c_open = invoke("create_chat", {"dormId": None, "name": "open1", "kind": "dm", "characterIds": [greeter["id"]], "opening": 2})
     m0 = invoke("list_messages", {"chatId": c_open["id"]})[0]
@@ -845,6 +877,47 @@ try:
     d.execute_script("window.confirm=()=>true"); click_text(".fbar button", "Delete folder"); time.sleep(1.0)
     check("deleting the folder keeps the character and returns it to the top level", invoke("list_folders") == [] and len([c for c in invoke("list_characters") if not c.get("folder")]) == n_chars and d.execute_script("return document.querySelectorAll('.grid .ccard').length") == n_chars)
     check("the cards are the bigger size", d.execute_script("return document.querySelector('.ccard').getBoundingClientRect().height") >= 300)
+    # nested folders on screen
+    def mkfolder(name):
+        click_text("button", "New folder"); wait(5).until(lambda x: x.execute_script("return !!document.querySelector('.modal input[aria-label=\\'Folder name\\']')"))
+        set_value("input[aria-label='Folder name']", name); click_text(".modal button", "Create folder"); time.sleep(0.9)
+    mkfolder("Canon character RP")
+    mkfolder("Series A")
+    check("a folder made while another is open goes inside it", {f["name"]: f.get("parent") for f in invoke("list_folders")}.get("Series A") == [f["id"] for f in invoke("list_folders") if f["name"] == "Canon character RP"][0])
+    check("the path shows where you are (All characters › Canon character RP › Series A)", d.execute_script("const c=document.querySelector('.crumbs');return !!c && c.innerText.includes('All characters') && c.innerText.includes('Canon character RP') && c.innerText.includes('Series A')"))
+    d.execute_script("document.querySelector('.crumb[data-crumb=\"Canon character RP\"]').click()"); time.sleep(0.6)
+    check("clicking a step of the path goes back up to it, showing the folder inside", d.execute_script("return !!document.querySelector('.ftile[data-folder=\"Series A\"]')"))
+    d.execute_script("document.querySelector('.crumb[data-crumb=\"All characters\"]').click()"); time.sleep(0.6)
+    check("at the top only the top-level folder shows", d.execute_script("return !!document.querySelector('.ftile[data-folder=\"Canon character RP\"]') && !document.querySelector('.ftile[data-folder=\"Series A\"]')") and "1 folder" in d.execute_script("return document.querySelector('.ftile[data-folder=\"Canon character RP\"]').innerText"))
+    mkfolder("Series B")
+    d.execute_script("document.querySelector('.crumb[data-crumb=\"All characters\"]').click()"); time.sleep(0.6)
+    res = d.execute_script("""
+      try {
+        const a = document.querySelector('.ftile[data-folder="Series B"]'), b = document.querySelector('.ftile[data-folder="Canon character RP"]');
+        const dt = new DataTransfer();
+        a.dispatchEvent(new DragEvent('dragstart', {bubbles: true, dataTransfer: dt}));
+        b.dispatchEvent(new DragEvent('dragover', {bubbles: true, cancelable: true, dataTransfer: dt}));
+        b.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer: dt}));
+        return 'ok';
+      } catch (e) { return String(e); }""")
+    time.sleep(1.0)
+    fm = {f["name"]: f for f in invoke("list_folders")}
+    check("dragging a folder onto another puts it inside", res == "ok" and fm["Series B"]["parent"] == fm["Canon character RP"]["id"], str(res))
+    d.execute_script("document.querySelector('.ftile[data-folder=\"Canon character RP\"]').click()"); time.sleep(0.6)
+    check("both series are inside Canon now", d.execute_script("return document.querySelectorAll('.ftile').length") == 2)
+    d.execute_script("document.querySelector('.ftile[data-folder=\"Series B\"]').click()"); time.sleep(0.6)
+    click_text(".fbar button", "Move folder"); time.sleep(0.5)
+    check("Move folder lists the folders as a tree (not itself)", d.execute_script("return !!document.querySelector('.modal [data-pick=\"Series A\"]') && !document.querySelector('.modal [data-pick=\"Series B\"]')"))
+    d.execute_script("document.querySelector('.modal [data-pick=\"Series A\"]').click()"); time.sleep(0.9)
+    fm = {f["name"]: f for f in invoke("list_folders")}
+    check("picking a folder there moves it (now Canon > Series A > Series B)", fm["Series B"]["parent"] == fm["Series A"]["id"])
+    d.execute_script("window.confirm=()=>true"); click_text(".fbar button", "Delete folder"); time.sleep(1.0)
+    fm = {f["name"]: f for f in invoke("list_folders")}
+    check("deleting a folder leaves you in the folder above it", "Series B" not in fm and d.execute_script("return document.querySelector('.crumbs b')?.innerText") == "Series A", str(d.execute_script("return document.querySelector('.crumbs')?.innerText")))
+    for n in ("Series A", "Canon character RP"):
+        pass
+    for f in sorted(invoke("list_folders"), key=lambda f: 1 if f.get("parent") else 0, reverse=True): invoke("delete_folder", {"id": f["id"]})
+    reload_ui(); nav("Characters"); time.sleep(0.6)
 
     # -- lorebooks: import a SillyTavern world info file, attach it, delete it
     nav("Lorebooks"); time.sleep(0.6)
@@ -1291,6 +1364,7 @@ try:
     fcrew = invoke("create_folder", {"name": "Crew"})
     fcrew = invoke_file("set_folder_cover", os.path.join(FIX, "avatar.gif"), {"x-folder-id": fcrew["id"], "x-file-name": "avatar.gif"})
     fcrew = invoke("set_folder_frame", {"id": fcrew["id"], "frame": {"x": 0.6, "y": 0.4, "zoom": 2.2}})
+    fkid = invoke("create_folder", {"name": "Crew kids", "parent": fcrew["id"]})
     invoke("move_characters", {"ids": [filed["id"]], "folder": fcrew["id"]})
     lbk = invoke("save_lorebook", {"lorebook": {"id": "", "name": "Packed lore", "book": {"entries": [{"keys": ["k"], "content": "packed lore text", "enabled": True}]}, "created_at": 0, "updated_at": 0}})
     invoke("save_character", {"character": dict(filed, lorebooks=[lbk["id"]])})
@@ -1318,8 +1392,10 @@ try:
     check("the room's music came back with its name", r2[0]["music_name"] == "room song.mp3" and os.path.exists(r2[0]["music_path"]), str(r2[0]))
     check("so did the dorm's own music", invoke("list_dorms")[0]["music_name"] == "dorm tune.wav" and os.path.exists(invoke("list_dorms")[0]["music_path"]))
     fl = invoke("list_folders"); fch = [c for c in invoke("list_characters") if c["card"]["name"] == "Filed"][0]
-    check("the folder came back with its picture and framing", len(fl) == 1 and fl[0]["name"] == "Crew" and os.path.exists(fl[0]["cover_path"]) and fl[0]["frame"] == {"x": 0.6, "y": 0.4, "zoom": 2.2}, str(fl))
-    check("the character is still filed in it (new id mapped), with its own framing", fch["folder"] == fl[0]["id"] and fch["frame"] == {"x": 0.3, "y": 0.2, "zoom": 1.7}, str(fch.get("folder")))
+    fcr = [f for f in fl if f["name"] == "Crew"][0]
+    check("the folder came back with its picture and framing", fcr["name"] == "Crew" and os.path.exists(fcr["cover_path"]) and fcr["frame"] == {"x": 0.6, "y": 0.4, "zoom": 2.2}, str(fl))
+    check("folders inside folders come back nested", len(fl) == 2 and {f["name"]: f.get("parent") for f in fl}.get("Crew kids") == [f["id"] for f in fl if f["name"] == "Crew"][0], str(fl))
+    check("the character is still filed in it (new id mapped), with its own framing", fch["folder"] == fcr["id"] and fch["frame"] == {"x": 0.3, "y": 0.2, "zoom": 1.7}, str(fch.get("folder")))
     lbs = invoke("list_lorebooks")
     check("the lorebook came back, still attached to the character", len(lbs) == 1 and lbs[0]["name"] == "Packed lore" and fch["lorebooks"] == [lbs[0]["id"]])
     check("the dorm is still set in that room", len(d2) == 1 and d2[0]["room_id"] == r2[0]["id"], str(d2))
