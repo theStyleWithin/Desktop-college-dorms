@@ -30,7 +30,7 @@ export function createHands(opts: {
 }) {
   const { scene, camera, dom, head } = opts;
   const s = opts.scale;
-  const skin = new THREE.MeshStandardMaterial({ color: 0xf0c4a8, roughness: 0.6, metalness: 0, emissive: 0x5a3a2c });
+  const skin = new THREE.MeshStandardMaterial({ color: 0xf0c4a8, roughness: 0.6, metalness: 0, emissive: 0xa87258 });
 
   // ---- a simple, soft hand: palm + 4 fingers (2 joints) + thumb, built as a rig so fingers can curl ----
   type Rig = { root: THREE.Group; fingers: THREE.Object3D[][]; thumb: THREE.Object3D[] };
@@ -153,6 +153,7 @@ export function createHands(opts: {
     for (const h of [hl, hr]) {
       h.vel.copy(h.pos).sub(h.prev).divideScalar(Math.max(dt, 1e-3));
       h.rig.root.position.copy(h.pos);
+      h.rig.root.scale.setScalar(1.3);                  // a touch larger than life, so they read at a distance
       camera.getWorldDirection(fwd);
       h.rig.root.quaternion.copy(camera.quaternion);
       h.rig.root.rotateX(-0.35);                        // fingers tilt down toward the character
