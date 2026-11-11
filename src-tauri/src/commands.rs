@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use dorms_core::prompt::{build_prompt, clean_reply, substitute, HistoryItem, PromptInput, PromptSettings};
+use dorms_core::prompt::{build_prompt, clean_reply, join_continuation, substitute, HistoryItem, PromptInput, PromptSettings};
 use dorms_core::{CardError, CardSpec};
 use serde::Serialize;
 use serde_json::json;
@@ -852,6 +852,7 @@ async fn run_generation(
     chat_id: i64,
     speaker: Option<String>,
     regen: Option<i64>,
+    cont: Option<i64>,
     cancel: &Notify,
 ) -> R<Message> {
     let (settings, chat, chars, msgs) = {
@@ -871,16 +872,28 @@ async fn run_generation(
         return Err("This chat has no characters yet. Add one first.".into());
     }
 
-    let (history, target): (Vec<&Message>, Option<&Message>) = match regen {
-        Some(mid) => {
+    let (history, target): (Vec<&Message>, Option<&Message>) = match (regen, cont) {
+        (Some(mid), _) => {
             let pos = msgs.iter().position(|m| m.id == mid).ok_or("Message not found")?;
             (msgs[..pos].iter().collect(), Some(&msgs[pos]))
         }
-        None => (msgs.iter().collect(), None),
+        // continuing: the whole chat is history, including the message being extended
+        (None, Some(cid)) => {
+            let last = msgs.last().ok_or("Message not found")?;
+            if last.id != cid {
+                return Err("Only the newest message can be continued.".into());
+            }
+            if last.role != "character" || last.character_id.is_none() {
+                return Err("Only a character's message can be continued.".into());
+            }
+            (msgs.iter().collect(), Some(last))
+        }
+        (None, None) => (msgs.iter().collect(), None),
     };
+    let continuing = cont.is_some() && regen.is_none();
 
     let speaker_id = match (target, speaker) {
-        (Some(m), _) => m.character_id.clone().ok_or("Only character messages can be regenerated")?,
+        (Some(m), _) => m.character_id.clone().ok_or("Only character messages can be regenerated or continued")?,
         (None, Some(s)) => s,
         (None, None) => pick_speaker(&chat, &history, &chars),
     };
@@ -909,7 +922,7 @@ async fn run_generation(
         .filter(|i| **i != speaker_id)
         .filter_map(|i| chars.get(i).map(|c| (i.clone(), c.card.clone())))
         .collect();
-    emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "loading" }));
+    emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "loading", "continue_of": cont }));
     let (endpoint, context_tokens) = resolve_endpoint(st, o, &settings).await?;
     let ps = PromptSettings {
         user_name: settings.user_name.clone(),
@@ -919,6 +932,7 @@ async fn run_generation(
         use_card_system_prompt: settings.use_card_system_prompt,
         default_system: Some(settings.default_system.clone()).filter(|s| !s.trim().is_empty()),
         default_scan_depth: 4,
+        continue_last: continuing,
     };
     let prompt = build_prompt(&PromptInput {
         speaker_id: &speaker_id,
@@ -929,22 +943,42 @@ async fn run_generation(
         group: chat.kind != "dm",
         trusted: speaker_char.trusted,
     });
-    emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "start" }));
+    emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "start", "continue_of": cont }));
 
     let params = GenParams { temperature: settings.temperature, top_p: settings.top_p, max_tokens: ps.max_response_tokens };
     let full = llm::stream_chat(&st.http, &endpoint, &prompt, &params, cancel, |t| {
-        emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "token", "text": t }));
+        emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "token", "text": t, "continue_of": cont }));
     })
     .await?;
 
-    let text = clean_reply(&full, &speaker_char.card.name);
-    if text.is_empty() {
+    // A continuation keeps its leading spacing (it may start a new paragraph); only a stray "Name:" is removed.
+    let text = if continuing {
+        let prefix = format!("{}:", speaker_char.card.name);
+        let t = full.trim_start();
+        if t.starts_with(&prefix) { t[prefix.len()..].trim_start().to_string() } else { full.clone() }
+    } else {
+        clean_reply(&full, &speaker_char.card.name)
+    };
+    if text.trim().is_empty() {
         return Err("The model returned an empty reply. Try again, or raise the max length in Settings.".into());
     }
 
     let msg = {
         let db = st.db.lock().unwrap();
         let m = match target {
+            // extend the version being shown, in place
+            Some(t) if continuing => {
+                let mut swipes = t.swipes.clone();
+                let idx = (t.swipe_index.max(0) as usize).min(swipes.len().saturating_sub(1));
+                let joined = join_continuation(swipes.get(idx).map(String::as_str).unwrap_or(""), &text);
+                if swipes.is_empty() {
+                    swipes.push(joined);
+                } else {
+                    swipes[idx] = joined;
+                }
+                db::save_message_swipes(&db, t.id, &swipes, idx as i64).map_err(e)?;
+                db::get_message(&db, t.id).map_err(e)?.ok_or("Message vanished")?
+            }
             Some(t) => {
                 let mut swipes = t.swipes.clone();
                 swipes.push(text);
@@ -960,12 +994,12 @@ async fn run_generation(
         }
         m
     };
-    emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "done", "message": msg }));
+    emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "done", "message": msg, "continue_of": cont }));
     Ok(msg)
 }
 
 /// One full reply, with busy/cancel bookkeeping and error events.
-async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option<String>, regen: Option<i64>, rid: String) -> R<Message> {
+async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option<String>, regen: Option<i64>, cont: Option<i64>, rid: String) -> R<Message> {
     if !st.busy.lock().unwrap().insert(chat_id) {
         let err = "This chat is already generating a reply.".to_string();
         emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "kind": "error", "error": err }));
@@ -974,7 +1008,7 @@ async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option
     let cancel = Arc::new(Notify::new());
     st.cancels.lock().unwrap().insert(rid.clone(), cancel.clone());
     let _guard = BusyGuard { st: st.clone(), chat_id, rid: rid.clone() };
-    let res = run_generation(st, o, &rid, chat_id, speaker, regen, &cancel).await;
+    let res = run_generation(st, o, &rid, chat_id, speaker, regen, cont, &cancel).await;
     if let Err(err) = &res {
         emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "kind": "error", "error": err }));
     }
@@ -983,13 +1017,13 @@ async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option
 
 /// Starts a reply in the background; progress arrives as `dorms://gen` events.
 #[tauri::command]
-pub fn generate(state: State<'_, Shared>, chat_id: i64, character_id: Option<String>, regenerate_message_id: Option<i64>) -> R<String> {
+pub fn generate(state: State<'_, Shared>, chat_id: i64, character_id: Option<String>, regenerate_message_id: Option<i64>, continue_message_id: Option<i64>) -> R<String> {
     let o = owner(&state)?;
     let rid = uid();
     let st: Shared = state.inner().clone();
     let r = rid.clone();
     tauri::async_runtime::spawn(async move {
-        let _ = generate_once(&st, &o, chat_id, character_id, regenerate_message_id, r).await;
+        let _ = generate_once(&st, &o, chat_id, character_id, regenerate_message_id, continue_message_id, r).await;
     });
     Ok(rid)
 }
@@ -1103,7 +1137,7 @@ async fn auto_loop(st: Shared, o: db::Owner, chat_id: i64) {
         if st.busy.lock().unwrap().contains(&chat_id) {
             continue;
         }
-        if generate_once(&st, &o, chat_id, None, None, uid()).await.is_err() {
+        if generate_once(&st, &o, chat_id, None, None, None, uid()).await.is_err() {
             let _ = db::set_auto_chat(&st.db.lock().unwrap(), chat_id, false);
             emit(&st, "dorms://auto-stopped", json!({ "chat_id": chat_id, "reason": "error" }));
             break;

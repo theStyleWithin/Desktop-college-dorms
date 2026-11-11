@@ -257,6 +257,34 @@ try:
             ActionChains(d).move_to_element_with_offset(cv, 0, -60).click_and_hold().move_by_offset(30, 0).move_by_offset(-30, 0).release().perform(); time.sleep(0.6)
             check("moving the hands doesn't break the viewer", d.execute_script("return !!document.querySelector('.vrm-big canvas')") and d.execute_script("return document.querySelector('.vrm-big .vrm-box').dataset.petting!==undefined"))
             d.execute_script("document.querySelector('.vrm-big [aria-label=Hands]').click()")
+            # the big viewer is a real window: resize from the edges/corners, move by the title bar, theatre and full screen
+            rect = lambda sel: d.execute_script("const r=document.querySelector(arguments[0]).getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}", sel)
+            win = ".vw"
+            r0 = rect(win)
+            check("the viewer window has resize handles on all 4 sides and 4 corners", d.execute_script("return document.querySelectorAll('.vw-h').length") == 8)
+            ActionChains(d).move_to_element(d.find_element(By.CSS_SELECTOR, ".vw-h-se")).click_and_hold().move_by_offset(-120, -90).release().perform(); time.sleep(0.4)
+            r1 = rect(win)
+            check("pulling the bottom-right corner resizes it", r1["w"] < r0["w"] - 60 and r1["h"] < r0["h"] - 40, f"{r0} -> {r1}")
+            ActionChains(d).move_to_element(d.find_element(By.CSS_SELECTOR, ".vw-h-w")).click_and_hold().move_by_offset(-80, 0).release().perform(); time.sleep(0.4)
+            r2 = rect(win)
+            check("pulling the left edge widens it (and keeps the right edge put)", r2["w"] > r1["w"] + 40 and abs((r2["x"] + r2["w"]) - (r1["x"] + r1["w"])) < 3, f"{r1} -> {r2}")
+            ActionChains(d).move_to_element(d.find_element(By.CSS_SELECTOR, ".vw-bar h2")).click_and_hold().move_by_offset(0, 20).release().perform(); time.sleep(0.4)
+            r3 = rect(win)
+            check("dragging the title bar moves the window without resizing it", abs(r3["w"] - r2["w"]) < 2 and abs(r3["y"] - r2["y"]) > 8, f"{r2} -> {r3}")
+            check("the 3D view follows the window size", d.execute_script("const c=document.querySelector('.vrm-big canvas').getBoundingClientRect(),b=document.querySelector('.vrm-big').getBoundingClientRect();return Math.abs(c.width-b.width)<3 && Math.abs(c.height-b.height)<3"))
+            d.execute_script("document.querySelector('.vw [aria-label=\"Theatre mode\"]').click()"); time.sleep(0.6)
+            vw_, vh_ = d.execute_script("return [innerWidth,innerHeight]")
+            rt = rect(win)
+            check("theatre mode fills most of the screen", rt["w"] > vw_ * 0.9 and rt["h"] > vh_ * 0.88, f"{rt} in {vw_}x{vh_}")
+            check("no resize handles in theatre mode", d.execute_script("return document.querySelectorAll('.vw-h').length") == 0)
+            d.execute_script("document.querySelector('.vw [aria-label=\"Full screen\"]').click()"); time.sleep(0.8)
+            rf = rect(win)
+            check("full screen covers the whole app window", rf["w"] >= vw_ - 1 and rf["h"] >= vh_ - 1 and rf["x"] <= 1 and rf["y"] <= 1, f"{rf}")
+            check("the model still shows in full screen", d.execute_script("const e=document.querySelector('.vrm-big .vrm-box');return e&&e.dataset.ready==='1'"))
+            ActionChains(d).send_keys(Keys.ESCAPE).perform(); time.sleep(0.6)
+            check("Escape leaves full screen but keeps the window open", d.execute_script("return !!document.querySelector('.vw[data-mode=window]')"))
+            r4 = rect(win)
+            check("and the window is back where it was", abs(r4["w"] - r3["w"]) < 2 and abs(r4["h"] - r3["h"]) < 2, f"{r3} -> {r4}")
             ActionChains(d).send_keys(Keys.ESCAPE).perform(); time.sleep(0.8)
             check("Escape closes the big viewer", not d.execute_script("return !!document.querySelector('.vrm-big')"))
     if not SKIP3D:
@@ -317,6 +345,17 @@ try:
     # edit
     mid = last["id"]; invoke("edit_message", {"id": mid, "text": "edited reply"})
     check("message edit persists", invoke("list_messages", {"chatId": chat["id"]})[-1]["swipes"][-1] == "edited reply")
+    # the Continue button, with the real engine: it extends this very message instead of adding a new one
+    n_before = len(invoke("list_messages", {"chatId": chat["id"]}))
+    check("the Continue button sits next to Regenerate on the newest character message",
+          d.execute_script("const t=[...document.querySelectorAll('.msg.character .tools')].pop(); return !!t && t.textContent.includes('Regenerate') && t.textContent.includes('Continue')"))
+    d.execute_script("[...document.querySelectorAll('.msg.character .tools button')].reverse().find(b=>b.textContent.includes('Continue')).click()")
+    for _ in range(90):
+        time.sleep(1)
+        cur = invoke("list_messages", {"chatId": chat["id"]})[-1]
+        if len(cur["swipes"][cur["swipe_index"]]) > len("edited reply"): break
+    cur_all = invoke("list_messages", {"chatId": chat["id"]}); cur = cur_all[-1]; cur_text = cur["swipes"][cur["swipe_index"]]
+    check("Continue extends the same message in place with the real model", cur["id"] == mid and len(cur_all) == n_before and cur_text.startswith("edited reply") and len(cur_text) > len("edited reply"), cur_text[:120])
 
     # ---- group channel with bots chatting ---------------------------------------------
     hiro = by_name("田中 Hiro")
@@ -397,6 +436,31 @@ try:
         mm = invoke("list_messages", {"chatId": chat2["id"]})
         if mm[-1]["role"] == "character" and len(mm) >= 3: break
     check("cloud replies land in chats", mm[-1]["swipes"][0] == "Hello from *the cloud*!", str(mm[-1]))
+    # ---- Continue: exact request, in-place result, and the guards ----------------------------------------
+    msgs_c = invoke("list_messages", {"chatId": chat2["id"]}); last_c = msgs_c[-1]; before_c = last_c["swipes"][last_c["swipe_index"]]
+    invoke("generate", {"chatId": chat2["id"], "characterId": None, "regenerateMessageId": None, "continueMessageId": last_c["id"]})
+    for _ in range(30):
+        time.sleep(0.4)
+        after_all = invoke("list_messages", {"chatId": chat2["id"]})
+        if len(after_all[-1]["swipes"][after_all[-1]["swipe_index"]]) > len(before_c): break
+    after_all = invoke("list_messages", {"chatId": chat2["id"]}); after_c = after_all[-1]; after_text = after_c["swipes"][after_c["swipe_index"]]
+    check("continue extends the newest message in place (no new message, same id)", len(after_all) == len(msgs_c) and after_c["id"] == last_c["id"])
+    check("the added text follows the original with clean spacing", after_text == before_c + " Hello from *the cloud*!", repr(after_text))
+    check("continue doesn't add a version (swipe)", len(after_c["swipes"]) == len(last_c["swipes"]) and after_c["swipe_index"] == last_c["swipe_index"])
+    sent_c = seen["body"]["messages"]
+    check("the model is shown its own partial reply, untouched, as the character's words", sent_c[-2]["role"] == "assistant" and sent_c[-2]["content"] == before_c, str(sent_c[-2:]))
+    check("and is asked to go on without repeating itself", sent_c[-1]["role"] == "user" and "Continue" in sent_c[-1]["content"] and "do not repeat" in sent_c[-1]["content"])
+    check("the continue prompt still alternates roles and ends on a user turn", sent_c[0]["role"] == "system" and sent_c[-1]["role"] == "user" and all(a["role"] != b["role"] for a, b in zip(sent_c[1:], sent_c[2:])), str([m["role"] for m in sent_c]))
+    def unchanged_after(args, label):
+        snap = json.dumps(invoke("list_messages", {"chatId": chat2["id"]}))
+        invoke("generate", dict({"chatId": chat2["id"], "characterId": None, "regenerateMessageId": None, "continueMessageId": None}, **args)); time.sleep(1.5)
+        check(label, json.dumps(invoke("list_messages", {"chatId": chat2["id"]})) == snap)
+    unchanged_after({"continueMessageId": msgs_c[0]["id"]}, "an older message can't be continued (only the newest)")
+    invoke("add_user_message", {"chatId": chat2["id"], "text": "thanks"})
+    user_msg = invoke("list_messages", {"chatId": chat2["id"]})[-1]
+    unchanged_after({"continueMessageId": user_msg["id"]}, "a user's own message can't be continued")
+    unchanged_after({"continueMessageId": 999999}, "continuing a message that doesn't exist does nothing")
+    invoke("delete_message", {"id": user_msg["id"]})
     sent = seen["body"]["messages"]
     check("prompt for a cloud call is well-formed (system first, alternating, ends on user)",
           sent[0]["role"] == "system" and sent[-1]["role"] == "user" and all(a["role"] != b["role"] for a, b in zip(sent[1:], sent[2:])), str([m["role"] for m in sent]))
