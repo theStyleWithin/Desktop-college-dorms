@@ -238,6 +238,12 @@ jobs:
       - run: npm ci
       - name: Generate the Android project
         run: npx tauri android init --ci
+      - name: Allow the microphone (voice input)
+        run: |
+          M=src-tauri/gen/android/app/src/main/AndroidManifest.xml
+          grep -q RECORD_AUDIO "$M" || sed -i '0,/<uses-permission/s||<uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission|' "$M"
+          grep -n "uses-permission" "$M"
+          grep -q RECORD_AUDIO "$M"
       - name: Build release APK (arm64 + armv7)
         run: npx tauri android build --apk --target aarch64 --target armv7
       - name: Sign

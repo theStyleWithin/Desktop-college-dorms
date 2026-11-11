@@ -74,15 +74,28 @@ pub fn app_info(state: State<'_, Shared>) -> AppInfo {
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
+pub struct OutfitOut {
+    id: String,
+    name: String,
+    path: String,
+}
+
+#[derive(Serialize)]
 pub struct CharacterOut {
     #[serde(flatten)]
     c: Character,
+    /// What to show right now: the outfit being worn, or the original model.
     media_path: Option<String>,
+    /// The wardrobe: where each extra outfit's model file is.
+    outfit_paths: Vec<OutfitOut>,
 }
 
 fn out(st: &AppState, c: Character) -> CharacterOut {
-    let media_path = c.media.as_ref().map(|m| st.data_dir.join(&m.file).to_string_lossy().to_string());
-    CharacterOut { c, media_path }
+    let abs = |f: &str| st.data_dir.join(f).to_string_lossy().to_string();
+    let worn = c.outfit.as_ref().and_then(|id| c.outfits.iter().find(|o| &o.id == id));
+    let media_path = worn.map(|o| abs(&o.file)).or_else(|| c.media.as_ref().map(|m| abs(&m.file)));
+    let outfit_paths = c.outfits.iter().map(|o| OutfitOut { id: o.id.clone(), name: o.name.clone(), path: abs(&o.file) }).collect();
+    CharacterOut { c, media_path, outfit_paths }
 }
 
 fn raw_body<'a>(req: &'a Request<'_>) -> R<&'a [u8]> {
@@ -167,6 +180,8 @@ pub fn save_character(state: State<'_, Shared>, mut character: Character) -> R<C
     // media is owned by the backend; never trust the frontend copy
     if let Some(existing) = db::get_character(&db, &character.id, &o).map_err(e)? {
         character.media = existing.media;
+        character.outfits = existing.outfits;
+        character.outfit = existing.outfit;
         if character.created_at == 0 {
             character.created_at = existing.created_at;
         }
@@ -182,6 +197,9 @@ pub fn delete_character(state: State<'_, Shared>, id: String) -> R<()> {
     let db = state.db.lock().unwrap();
     if let Some(c) = db::get_character(&db, &id, &o).map_err(e)? {
         remove_media_file(&state, &c.media);
+        for f in &c.outfits {
+            let _ = std::fs::remove_file(state.data_dir.join(&f.file));
+        }
     }
     db::delete_character(&db, &id, &o).map_err(e)
 }
@@ -211,6 +229,99 @@ pub fn set_media(request: Request<'_>, state: State<'_, Shared>) -> R<CharacterO
     c.media = Some(media);
     c.updated_at = db::now();
     db::save_character(&db, &c, &o).map_err(e)?;
+    Ok(out(&state, c))
+}
+
+// ---- wardrobe: extra outfits (VRM models) for a 3D character ---------------------------------------------
+
+const MAX_OUTFITS: usize = 24;
+
+fn clean_outfit_name(n: &str) -> String {
+    let n: String = n.chars().filter(|c| !c.is_control()).collect();
+    let n = n.trim();
+    if n.is_empty() { "Outfit".to_string() } else { n.chars().take(40).collect() }
+}
+
+/// Adds an outfit: another VRM of the same character (exported from VRoid Studio or similar) and puts it on.
+/// Body: raw file bytes. Headers: `x-char-id`, `x-file-name` (percent-encoded), optional `x-outfit-name`.
+#[tauri::command]
+pub fn add_outfit(request: Request<'_>, state: State<'_, Shared>) -> R<CharacterOut> {
+    let id = header(&request, "x-char-id");
+    let file_name = header(&request, "x-file-name");
+    let wanted = header(&request, "x-outfit-name");
+    let bytes = raw_body(&request)?;
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Save the character first")?;
+    if c.media.as_ref().map(|m| m.kind.as_str()) != Some("vrm") {
+        return Err("Outfits are for 3D characters. Give this character a VRM model first.".into());
+    }
+    if c.outfits.len() >= MAX_OUTFITS {
+        return Err(format!("That's the most outfits one character can have ({MAX_OUTFITS}). Remove one first."));
+    }
+    let (kind, _) = media_kind(&file_name)?;
+    if kind != "vrm" {
+        return Err("An outfit has to be a VRM model (.vrm), for example the same character exported with different clothes.".into());
+    }
+    let media = write_media(&state, &format!("{id}-outfit"), &file_name, bytes)?;
+    let stem = std::path::Path::new(&file_name).file_stem().and_then(|s| s.to_str()).unwrap_or("Outfit");
+    let mut name = clean_outfit_name(if wanted.trim().is_empty() { stem } else { &wanted });
+    let base = name.clone();
+    let mut n = 2;
+    while c.outfits.iter().any(|x| x.name.eq_ignore_ascii_case(&name)) {
+        name = format!("{base} {n}");
+        n += 1;
+    }
+    let outfit = db::Outfit { id: uid(), name, file: media.file };
+    c.outfit = Some(outfit.id.clone());
+    c.outfits.push(outfit);
+    c.updated_at = db::now();
+    db::save_character(&db, &c, &o).map_err(e)?;
+    Ok(out(&state, c))
+}
+
+/// Puts an outfit on (`None` = back to the original model).
+#[tauri::command]
+pub fn set_outfit(state: State<'_, Shared>, id: String, outfit_id: Option<String>) -> R<CharacterOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Character not found")?;
+    match outfit_id.filter(|x| !x.is_empty()) {
+        Some(oid) => {
+            if !c.outfits.iter().any(|x| x.id == oid) { return Err("That outfit isn't in the wardrobe any more.".into()); }
+            c.outfit = Some(oid);
+        }
+        None => c.outfit = None,
+    }
+    db::save_character(&db, &c, &o).map_err(e)?;
+    Ok(out(&state, c))
+}
+
+#[tauri::command]
+pub fn rename_outfit(state: State<'_, Shared>, id: String, outfit_id: String, name: String) -> R<CharacterOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Character not found")?;
+    let name = clean_outfit_name(&name);
+    if c.outfits.iter().any(|x| x.id != outfit_id && x.name.eq_ignore_ascii_case(&name)) {
+        return Err(format!("There's already an outfit called \"{name}\"."));
+    }
+    c.outfits.iter_mut().find(|x| x.id == outfit_id).ok_or("That outfit isn't in the wardrobe any more.")?.name = name;
+    db::save_character(&db, &c, &o).map_err(e)?;
+    Ok(out(&state, c))
+}
+
+#[tauri::command]
+pub fn remove_outfit(state: State<'_, Shared>, id: String, outfit_id: String) -> R<CharacterOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Character not found")?;
+    if let Some(i) = c.outfits.iter().position(|x| x.id == outfit_id) {
+        let gone = c.outfits.remove(i);
+        let _ = std::fs::remove_file(state.data_dir.join(&gone.file));
+        if c.outfit.as_deref() == Some(&outfit_id) { c.outfit = None; }
+        db::save_character(&db, &c, &o).map_err(e)?;
+    }
     Ok(out(&state, c))
 }
 
@@ -255,6 +366,8 @@ pub fn import_card(request: Request<'_>, state: State<'_, Shared>) -> R<ImportOu
         id: uid(),
         card: parsed.data,
         media: None,
+        outfits: vec![],
+        outfit: None,
         favorite: false,
         created_at: now,
         updated_at: now,
@@ -473,7 +586,7 @@ pub struct KeyStatus {
 /// Secret names: the two built-in providers, or `custom-<profile id>`.
 fn check_provider(p: &str) -> R<()> {
     let custom_ok = p.strip_prefix("custom-").map(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')).unwrap_or(false);
-    if p == "openai" || p == "anthropic" || custom_ok { Ok(()) } else { Err("Unknown provider".into()) }
+    if p == "openai" || p == "anthropic" || p == "stt" || custom_ok { Ok(()) } else { Err("Unknown provider".into()) }
 }
 
 #[tauri::command]
@@ -492,6 +605,85 @@ pub fn has_api_key(state: State<'_, Shared>, provider: String) -> R<KeyStatus> {
     check_provider(&provider)?;
     let o = owner(&state)?;
     Ok(KeyStatus { present: secrets::get(&state.data_dir, &skey(&o, &provider)).is_some() })
+}
+
+// ---------------------------------------------------------------------------
+// Voice input (speech to text)
+// ---------------------------------------------------------------------------
+
+/// Plain http is fine for this machine or the local network, never for a server on the internet.
+fn voice_url_ok(base: &str) -> R<()> {
+    let u = reqwest::Url::parse(base.trim()).map_err(|_| "The voice server address isn't a valid URL (it should look like https://api.openai.com/v1).".to_string())?;
+    match u.scheme() {
+        "https" => Ok(()),
+        "http" => {
+            let host = u.host_str().unwrap_or("").trim_matches(['[', ']']); // IPv6 hosts come back in brackets
+            let private = host == "localhost" || host.ends_with(".local") || host.parse::<std::net::IpAddr>().map(|ip| match ip {
+                std::net::IpAddr::V4(v) => v.is_loopback() || v.is_private() || v.is_link_local(),
+                std::net::IpAddr::V6(v) => v.is_loopback(),
+            }).unwrap_or(false);
+            if private { Ok(()) } else { Err("Voice servers on the internet must use https:// so nobody can listen in. (http:// is only allowed for this computer or your local network.)".into()) }
+        }
+        _ => Err("The voice server address must start with https:// (or http:// for a server on your own network).".into()),
+    }
+}
+
+/// Sends one WAV recording to `<stt_url>/audio/transcriptions` and returns the text.
+async fn stt_request(st: &Shared, o: &db::Owner, s: &Settings, wav: Vec<u8>) -> R<String> {
+    if wav.len() < 64 { return Err("The recording was empty.".into()); }
+    if wav.len() > 24 * 1024 * 1024 { return Err("That recording is too long (the limit is about 24 MB). Try a shorter message.".into()); }
+    voice_url_ok(&s.stt_url)?;
+    let url = format!("{}/audio/transcriptions", s.stt_url.trim().trim_end_matches('/'));
+    let part = reqwest::multipart::Part::bytes(wav).file_name("voice.wav").mime_str("audio/wav").map_err(e)?;
+    let mut form = reqwest::multipart::Form::new().part("file", part).text("model", s.stt_model.trim().to_string()).text("response_format", "json");
+    if !s.stt_language.trim().is_empty() { form = form.text("language", s.stt_language.trim().to_string()); }
+    let mut req = st.http.post(&url).multipart(form).timeout(Duration::from_secs(90));
+    if let Some(key) = secrets::get(&st.data_dir, &skey(o, "stt")) { req = req.bearer_auth(key); }
+    let resp = req.send().await.map_err(|err| {
+        if err.is_connect() { format!("Couldn't reach the voice server at {}. Is it running?", s.stt_url.trim()) }
+        else if err.is_timeout() { "The voice server took too long to answer.".to_string() }
+        else { format!("Voice request failed: {}", err.without_url()) }
+    })?;
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        let detail = serde_json::from_str::<serde_json::Value>(&body).ok()
+            .and_then(|v| v.pointer("/error/message").or_else(|| v.get("error")).or_else(|| v.get("detail")).and_then(|m| m.as_str().map(String::from)))
+            .unwrap_or_else(|| body.chars().take(160).collect());
+        return Err(match status.as_u16() {
+            401 | 403 => format!("The voice server didn't accept your API key. {detail}"),
+            404 => format!("That server has no speech-to-text endpoint ({url}). Use OpenAI, Groq, or a Whisper server that offers /audio/transcriptions. {detail}"),
+            413 => "The recording was too big for the voice server.".to_string(),
+            _ => format!("The voice server answered {status}. {detail}"),
+        });
+    }
+    // OpenAI returns {"text": "..."}; some servers answer with plain text
+    let text = serde_json::from_str::<serde_json::Value>(&body).ok().and_then(|v| v.get("text").and_then(|t| t.as_str().map(String::from))).unwrap_or(body);
+    Ok(text.trim().to_string())
+}
+
+/// Transcribes a recording (16-bit WAV bytes as the raw request body) with the user's voice settings.
+#[tauri::command]
+pub async fn transcribe_audio(request: Request<'_>, state: State<'_, Shared>) -> R<String> {
+    let wav = raw_body(&request)?.to_vec();
+    let o = owner(&state)?;
+    let s = db::get_settings(&state.db.lock().unwrap(), &o);
+    stt_request(&state, &o, &s, wav).await
+}
+
+/// Checks the voice server and key with a second of silence.
+#[tauri::command]
+pub async fn test_voice(state: State<'_, Shared>) -> R<String> {
+    let o = owner(&state)?;
+    let s = db::get_settings(&state.db.lock().unwrap(), &o);
+    let n = 16_000usize; // 1 s of 16 kHz mono silence
+    let mut wav = Vec::with_capacity(44 + n * 2);
+    wav.extend_from_slice(b"RIFF"); wav.extend_from_slice(&((36 + n * 2) as u32).to_le_bytes()); wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16u32.to_le_bytes()); wav.extend_from_slice(&1u16.to_le_bytes()); wav.extend_from_slice(&1u16.to_le_bytes());
+    wav.extend_from_slice(&16_000u32.to_le_bytes()); wav.extend_from_slice(&32_000u32.to_le_bytes()); wav.extend_from_slice(&2u16.to_le_bytes()); wav.extend_from_slice(&16u16.to_le_bytes());
+    wav.extend_from_slice(b"data"); wav.extend_from_slice(&((n * 2) as u32).to_le_bytes()); wav.resize(44 + n * 2, 0);
+    stt_request(&state, &o, &s, wav).await?;
+    Ok(format!("Connected to {} ({})", s.stt_url.trim(), s.stt_model.trim()))
 }
 
 // ---------------------------------------------------------------------------
@@ -933,4 +1125,27 @@ pub fn set_auto_chat(state: State<'_, Shared>, chat_id: i64, on: bool) -> R<()> 
         st.autos.lock().unwrap().insert(chat_id, h);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod voice_tests {
+    use super::voice_url_ok;
+
+    #[test]
+    fn internet_voice_servers_need_https() {
+        assert!(voice_url_ok("https://api.openai.com/v1").is_ok());
+        assert!(voice_url_ok("https://api.groq.com/openai/v1").is_ok());
+        assert!(voice_url_ok("http://voice.example.com/v1").is_err());
+        assert!(voice_url_ok("http://8.8.8.8:8080/v1").is_err());
+        assert!(voice_url_ok("ftp://example.com").is_err());
+        assert!(voice_url_ok("not a url").is_err());
+    }
+
+    #[test]
+    fn local_voice_servers_may_use_plain_http() {
+        for u in ["http://127.0.0.1:8080/v1", "http://localhost:8080/v1", "http://192.168.1.20:9000/v1", "http://10.0.0.5/v1", "http://172.16.4.1/v1", "http://[::1]:8080/v1", "http://mybox.local:8080/v1"] {
+            assert!(voice_url_ok(u).is_ok(), "{u} should be allowed");
+        }
+        assert!(voice_url_ok("http://172.32.0.1/v1").is_err());
+    }
 }

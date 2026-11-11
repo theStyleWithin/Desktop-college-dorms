@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from PIL import Image
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.options import ArgOptions
@@ -41,6 +42,14 @@ class Fake(BaseHTTPRequestHandler):
         data = json.dumps({"data": [{"id": "fake-b"}, {"id": "fake-a"}]}).encode()
         self.send_response(200); self.send_header("content-type", "application/json"); self.send_header("content-length", str(len(data))); self.end_headers(); self.wfile.write(data)
     def do_POST(self):
+        if self.path.endswith("/audio/transcriptions"):  # voice input: a multipart upload, answered like OpenAI's Whisper API
+            n = int(self.headers.get("content-length", 0)); raw = self.rfile.read(n)
+            seen["stt"] = {"auth": self.headers.get("authorization"), "ctype": self.headers.get("content-type", ""), "raw": raw, "path": self.path}
+            if seen.get("stt_fail"):
+                data = json.dumps({"error": {"message": "Incorrect API key provided"}}).encode(); code = 401
+            else:
+                data = json.dumps({"text": " hello from the mic "}).encode(); code = 200
+            self.send_response(code); self.send_header("content-type", "application/json"); self.send_header("content-length", str(len(data))); self.end_headers(); self.wfile.write(data); return
         n = int(self.headers.get("content-length", 0)); body = json.loads(self.rfile.read(n))
         seen["auth"] = self.headers.get("authorization"); seen["body"] = body
         seen["path"] = self.path; seen["headers"] = {k.lower(): v for k, v in self.headers.items()}
@@ -201,6 +210,55 @@ try:
             has_canvas = d.execute_script("return !!document.querySelector('.editor-media canvas')")
             msg = d.execute_script("const e=document.querySelector('.editor-media');return e?e.innerText:''")
             check("VRM model loads into the 3D viewer", has_canvas and "Loading" not in msg and "isn't" not in msg, msg)
+            # ---- the 3D viewer: pose, controls, behaviour --------------------------------
+            def box_state(sel=".editor-media .vrm-box", secs=60):
+                for _ in range(secs * 2):
+                    r = d.execute_script("const e=document.querySelector(arguments[0]);return e&&e.dataset.ready==='1'?{...e.dataset}:null", sel)
+                    if r: return r
+                    time.sleep(0.5)
+                return None
+            st = box_state()
+            check("the model is posed (faces the camera, arms down)", bool(st) and st.get("facing") == "front" and st.get("pose") == "relaxed", str(st))
+            check("the file picker doesn't filter by type (so .vrm files show up everywhere)", d.execute_script("return !document.querySelector('input[type=file]').hasAttribute('accept')"))
+            check("physics starts on Natural", d.execute_script("return !!document.querySelector('[aria-label=\"Physics Natural\"]')"))
+            d.execute_script("document.querySelector('[aria-label^=\"Physics\"]').click()"); time.sleep(0.4)
+            check("the physics button cycles (Natural -> Bouncy)", d.execute_script("return !!document.querySelector('[aria-label=\"Physics Bouncy\"]')"))
+            d.execute_script("document.querySelector('[aria-label^=\"Physics\"]').click();document.querySelector('[aria-label^=\"Physics\"]').click()"); time.sleep(0.4)
+            check("physics cycles back to Natural", d.execute_script("return !!document.querySelector('[aria-label=\"Physics Natural\"]')"))
+            # a genuine mouse click on the expand button (a click on a <label> ancestor once closed the modal at once)
+            btn = d.find_element(By.CSS_SELECTOR, "[aria-label='Open big viewer']")
+            d.execute_script("arguments[0].scrollIntoView({block:'center'})", btn); time.sleep(0.4)
+            ActionChains(d).move_to_element(btn).click().perform(); time.sleep(1.2)
+            check("the expand button opens the big viewer", d.execute_script("return !!document.querySelector('.vrm-big canvas')"))
+            big = box_state(".vrm-big .vrm-box")
+            check("the big viewer loads the model, posed", bool(big) and big.get("facing") == "front", str(big))
+            # behaviour: she lives in the room; forcing an activity shows up in the state the viewer exposes
+            for plan in ("phone", "coffee", "sit", "sleep", "react-angry", "wander", "greet"):
+                d.execute_script("document.querySelector('.vrm-big .vrm-box').dispatchEvent(new CustomEvent('npc',{detail:arguments[0]}))", plan); time.sleep(0.8)
+                got = d.execute_script("const e=document.querySelector('.vrm-big .vrm-box');return e&&e.dataset.plan")
+                check(f"she can do '{plan}'", got == plan, str(got))
+            d.execute_script("document.querySelector('.vrm-big [aria-label=Lively]').click()"); time.sleep(0.5)
+            check("'Lively' can be turned off (she goes back to standing in the middle)", d.execute_script("return document.querySelector('.vrm-big [aria-label=Lively]').getAttribute('aria-pressed')") == "false")
+            d.execute_script("document.querySelector('.vrm-big [aria-label=Lively]').click()"); time.sleep(0.3)
+            # pause / play, like a video: pausing freezes her in place, playing lets time move again
+            d.execute_script("document.querySelector('.vrm-big .vrm-box').dispatchEvent(new CustomEvent('npc',{detail:'wander'}))"); time.sleep(3)
+            d.execute_script("document.querySelector('.vrm-big [aria-label=Pause]').click()"); time.sleep(0.6)
+            pos = lambda: d.execute_script("const e=document.querySelector('.vrm-big .vrm-box');return [e.dataset.frozen,e.dataset.npcx,e.dataset.npcz,e.dataset.npc].join(',')")
+            p1 = pos(); time.sleep(2.5); p2 = pos()
+            check("Pause freezes her in place", p1.startswith("1,") and p1 == p2, f"{p1} vs {p2}")
+            check("the Pause button turns into Play", d.execute_script("return !!document.querySelector('.vrm-big [aria-label=Play]')") and "Paused" in d.execute_script("return document.querySelector('.vrm-big').innerText"))
+            d.execute_script("document.querySelector('.vrm-big [aria-label=Play]').click()"); time.sleep(3)
+            p3 = pos()
+            check("Play lets time move again", p3.startswith("undefined,") or p3.startswith(",") or not p3.startswith("1,"), p3)
+            check("Pause is back after Play", d.execute_script("return !!document.querySelector('.vrm-big [aria-label=Pause]')"))
+            d.execute_script("document.querySelector('.vrm-big [aria-label=Hands]').click()"); time.sleep(0.6)
+            check("the hands turn on", d.execute_script("return document.querySelector('.vrm-big .vrm-box').dataset.hands") == "1")
+            cv = d.find_element(By.CSS_SELECTOR, ".vrm-big canvas")
+            ActionChains(d).move_to_element_with_offset(cv, 0, -60).click_and_hold().move_by_offset(30, 0).move_by_offset(-30, 0).release().perform(); time.sleep(0.6)
+            check("moving the hands doesn't break the viewer", d.execute_script("return !!document.querySelector('.vrm-big canvas')") and d.execute_script("return document.querySelector('.vrm-big .vrm-box').dataset.petting!==undefined"))
+            d.execute_script("document.querySelector('.vrm-big [aria-label=Hands]').click()")
+            ActionChains(d).send_keys(Keys.ESCAPE).perform(); time.sleep(0.8)
+            check("Escape closes the big viewer", not d.execute_script("return !!document.querySelector('.vrm-big')"))
     if not SKIP3D:
         # crash guard: simulate "the previous 3D attempt never finished", then recover with Try again
         time.sleep(2)
@@ -344,10 +402,80 @@ try:
           sent[0]["role"] == "system" and sent[-1]["role"] == "user" and all(a["role"] != b["role"] for a, b in zip(sent[1:], sent[2:])), str([m["role"] for m in sent]))
     check("lorebook/description/scenario reach the system prompt", "Edited scenario text" in sent[0]["content"] and "Sleepy RA" in sent[0]["content"])
     check("post-history/depth macros resolve with the user's name", "Sam" in json.dumps(sent))
+    if not SKIP3D:
+        # ---- talking from inside the 3D scene: the see-through message bar and the manga-style speech balloon ----------------
+        reload_ui(); nav("Dorms")
+        d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'cloud')]").click(); time.sleep(1.5)
+        for _ in range(60):
+            if d.execute_script("const e=document.querySelector('.stage .vrm-box');return !!e&&e.dataset.ready==='1'"): break
+            time.sleep(0.5)
+        check("the chat's side panel shows the live 3D character", d.execute_script("return !!document.querySelector('.stage .vrm-box[data-ready=\"1\"]')"))
+        eb = d.find_element(By.CSS_SELECTOR, ".stage [aria-label='Open big viewer']")
+        d.execute_script("arguments[0].scrollIntoView({block:'center'})", eb); time.sleep(0.3)
+        ActionChains(d).move_to_element(eb).click().perform(); time.sleep(1.5)
+        check("the big viewer has a see-through message bar", d.execute_script("const b=document.querySelector('.vrm-big .talkbar');if(!b)return false;const c=getComputedStyle(b).backgroundColor;const m=c.match(/[\\d.]+/g)||[];return m.length>=4&&parseFloat(m[3])<0.8"))
+        check("the mic button is in the bar too", d.execute_script("return !!document.querySelector('.vrm-big .talkbar button.mic')"))
+        inp = d.find_element(By.CSS_SELECTOR, ".vrm-big .talkbar input")
+        inp.send_keys("hello from the bar"); inp.send_keys(Keys.ENTER)
+        bubble = ""
+        for _ in range(60):
+            time.sleep(0.5)
+            bubble = d.execute_script("const m=document.querySelector('.vrm-big .manga');return m&&m.dataset.state!=='off'?m.innerText:''")
+            if "Hello" in bubble and "cloud" in bubble: break
+        check("her reply appears in a manga-style balloon above her head", "Hello" in bubble and "cloud" in bubble, bubble)
+        umsgs = [m for m in invoke("list_messages", {"chatId": chat2["id"]}) if m["role"] == "user"]
+        check("typing in the bar sends the message", umsgs and umsgs[-1]["swipes"][0] == "hello from the bar", str(umsgs[-1:] ))
+        check("the bar empties after sending", d.execute_script("return document.querySelector('.vrm-big .talkbar input').value") == "")
+        ActionChains(d).send_keys(Keys.ESCAPE).perform(); time.sleep(0.6)
     # error path: unreachable server shows a friendly error
     st["openai_base_url"] = "http://127.0.0.1:1/v1"; invoke("save_settings", {"settings": st})
     try: invoke("test_provider"); check("unreachable server gives a clear error", False)
     except RuntimeError as e: check("unreachable server gives a clear error", "Could not reach" in str(e), str(e))
+    # ---- voice input: speech to text against the fake server -----------------------------------------------------
+    def inv_err(cmd, args=None):
+        try: invoke(cmd, args); return None
+        except RuntimeError as ex: return str(ex)
+    nav("Settings")
+    d.find_element(By.XPATH, "//button[contains(@class,'tab') and contains(., 'Voice')]").click(); time.sleep(0.6)
+    check("Settings has a Voice tab with the server, model, key and auto-send options", all(d.execute_script("return !!document.querySelector(arguments[0])", q) for q in ["[aria-label='Voice server address']", "[aria-label='Voice model']", "[aria-label='Voice API key']"]) and "Send what I said straight away" in page_text())
+    st = invoke("get_settings")
+    check("voice defaults: OpenAI Whisper, send straight away", st["stt_url"] == "https://api.openai.com/v1" and st["stt_model"] == "whisper-1" and st["stt_auto_send"] is True, str({k: v for k, v in st.items() if k.startswith("stt")}))
+    st.update(stt_url="http://127.0.0.1:18999/v1", stt_model="whisper-test", stt_language="en"); invoke("save_settings", {"settings": st})
+    invoke("set_api_key", {"provider": "stt", "key": "stt-secret"})
+    wav = base64.b64decode("UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=") + b"\x00" * 4000  # a tiny WAV
+    wavb64 = base64.b64encode(wav).decode()
+    def transcribe(b64):
+        r = d.execute_async_script("const done=arguments[arguments.length-1];const b=Uint8Array.from(atob(arguments[0]),c=>c.charCodeAt(0));window.__TAURI_INTERNALS__.invoke('transcribe_audio', b).then(v=>done({ok:v})).catch(e=>done({err:String(e)}));", b64)
+        if "err" in r: raise RuntimeError(r["err"])
+        return r["ok"]
+    check("a recording is transcribed through the configured server", transcribe(wavb64) == "hello from the mic")
+    sttseen = seen.get("stt", {})
+    check("the upload is multipart to /audio/transcriptions with the model, language and key", sttseen.get("path") == "/v1/audio/transcriptions" and "multipart/form-data" in sttseen.get("ctype", "") and b"whisper-test" in sttseen.get("raw", b"") and b'name="language"' in sttseen.get("raw", b"") and b"voice.wav" in sttseen.get("raw", b"") and sttseen.get("auth") == "Bearer stt-secret", str({k: v for k, v in sttseen.items() if k != "raw"}))
+    check("'Test connection' for voice works", "Connected to" in invoke("test_voice"))
+    seen["stt_fail"] = True
+    check("a rejected voice key gives a clear message", "didn't accept your API key" in (inv_err("test_voice") or ""))
+    seen.pop("stt_fail")
+    def transcribe_err(n_bytes):
+        r = d.execute_async_script("const done=arguments[arguments.length-1];window.__TAURI_INTERNALS__.invoke('transcribe_audio', new Uint8Array(arguments[0])).then(v=>done({ok:v})).catch(e=>done({err:String(e)}));", n_bytes)
+        return r.get("err", "")
+    check("empty recordings are refused", "empty" in transcribe_err(10))
+    st = invoke("get_settings"); st["stt_url"] = "http://voice.example.com/v1"; invoke("save_settings", {"settings": st})
+    check("a voice server on the internet must use https", "https://" in (inv_err("test_voice") or ""))
+    st["stt_url"] = "https://api.openai.com/v1"; invoke("save_settings", {"settings": st})
+    invoke("set_api_key", {"provider": "stt", "key": ""})
+    check("the voice key is removable", invoke("has_api_key", {"provider": "stt"})["present"] is False)
+    # the 🎤 button in a chat: with no microphone in this machine it fails politely instead of breaking the page
+    vchat = invoke("create_chat", {"dormId": None, "name": "voice", "kind": "dm", "characterIds": [mira["id"]]})
+    reload_ui(); nav("Dorms")
+    d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'voice')]").click(); time.sleep(1.0)
+    mic_there = d.execute_script("return !!document.querySelector('button.mic')")
+    check("a chat has the 🎤 voice button", mic_there)
+    if mic_there:
+        d.execute_script("document.querySelector('button.mic').click()"); time.sleep(2)
+        t = page_text()
+        check("with no microphone the 🎤 button explains why instead of failing silently", d.execute_script("return document.querySelector('button.mic').dataset.phase") == "idle" and any(k in t for k in ["microphone", "Microphone", "Voice input isn't available"]), t[-200:])
+    st = invoke("get_settings"); st["stt_url"] = "https://api.openai.com/v1"; invoke("save_settings", {"settings": st})
+
     # ---- "Other API": user-defined profiles ---------------------------------------------------------
     prof = {"id": "abc123", "name": "Fake API", "format": "openai", "base_url": "http://127.0.0.1:18999/v1", "model": "fake-model",
             "chat_path": "/custom/chat", "auth": "header", "auth_header": "X-Token", "headers": [{"name": "X-Org", "value": "dorms"}],
@@ -568,6 +696,59 @@ try:
     check("after claiming, the guest space starts empty", chars() == [] and invoke("list_chats") == [] and invoke("has_api_key", {"provider": "openai"}) == {"present": False})
     # guest space can be ejected too, and guest has no passcode
     check("the guest space has no passcode to set", inv_err("set_passcode", {"current": None, "new": "abcd"}) is not None)
+
+    # ---- wardrobe: extra outfits (VRM files) for a 3D character ---------------------------------------------------
+    invoke("create_profile", {"handle": "Stylist", "displayName": None, "passcode": None})
+    wc = invoke("save_character", {"character": {"card": dict(blank_card, name="Model")}})
+    wid = wc["id"]
+    def add_outfit(path, name=None):
+        hdr = {"x-char-id": wid, "x-file-name": os.path.basename(path), "x-outfit-name": name or ""}
+        b64 = base64.b64encode(open(path, "rb").read()).decode()
+        r = d.execute_async_script("const done=arguments[arguments.length-1];const b=Uint8Array.from(atob(arguments[0]),c=>c.charCodeAt(0));window.__TAURI_INTERNALS__.invoke('add_outfit', b, {headers:arguments[1]}).then(v=>done({ok:v})).catch(e=>done({err:String(e)}));", b64, hdr)
+        if "err" in r: raise RuntimeError(r["err"])
+        return r["ok"]
+    def add_outfit_err(path, name=None):
+        try: add_outfit(path, name); return None
+        except RuntimeError as ex: return str(ex)
+    check("an image-only character can't have outfits", "VRM model first" in (add_outfit_err(os.path.join(FIX, "sample.vrm")) or ""))
+    wc = set_media_ipc(wid, os.path.join(FIX, "sample.vrm"))
+    check("the wardrobe starts empty on the original model", wc["outfits"] == [] and wc["outfit"] is None and wc["outfit_paths"] == [])
+    orig_path = wc["media_path"]
+    check("only VRM files are accepted as outfits", "has to be a VRM" in (add_outfit_err(os.path.join(FIX, "avatar.gif")) or ""))
+    wc = add_outfit(os.path.join(FIX, "sample.vrm"), "Summer dress")
+    check("adding an outfit puts it on", len(wc["outfits"]) == 1 and wc["outfits"][0]["name"] == "Summer dress" and wc["outfit"] == wc["outfits"][0]["id"])
+    check("the character now shows the outfit's file, the original is kept", wc["media_path"] != orig_path and wc["media_path"] == wc["outfit_paths"][0]["path"] and os.path.exists(orig_path) and os.path.exists(wc["media_path"]))
+    first = wc["outfits"][0]["id"]
+    wc = add_outfit(os.path.join(FIX, "sample.vrm"), "summer DRESS")
+    check("outfit names stay unique", [o["name"] for o in wc["outfits"]] == ["Summer dress", "summer DRESS 2"])
+    second = wc["outfits"][1]["id"]
+    wc = invoke("set_outfit", {"id": wid, "outfitId": None})
+    check("'Original' puts the original model back", wc["outfit"] is None and wc["media_path"] == orig_path)
+    wc = invoke("set_outfit", {"id": wid, "outfitId": first})
+    check("an outfit can be put on", wc["media_path"] == wc["outfit_paths"][0]["path"])
+    check("an unknown outfit is refused", "isn't in the wardrobe" in (inv_err("set_outfit", {"id": wid, "outfitId": "nope"}) or ""))
+    wc = invoke("rename_outfit", {"id": wid, "outfitId": second, "name": "  Pajamas  "})
+    check("outfits can be renamed (trimmed)", wc["outfits"][1]["name"] == "Pajamas")
+    check("renaming to an existing name is refused", "already an outfit" in (inv_err("rename_outfit", {"id": wid, "outfitId": second, "name": "summer dress"}) or ""))
+    saved_again = invoke("save_character", {"character": {"id": wid, "card": dict(blank_card, name="Model", description="edited"), "outfits": [], "outfit": None}})
+    check("editing the card never loses or changes the wardrobe (the backend owns it)", len(saved_again["outfits"]) == 2 and saved_again["outfit"] == first)
+    # backup, eject and restore: the wardrobe travels with the character
+    info = invoke("prepare_export")
+    check("the backup counts every outfit file", info["media"] == 3, str(info))
+    wpath = os.path.join(WORK, "stylist.dorms")
+    invoke("save_export", {"token": info["token"], "path": wpath})
+    n_media_now = len(os.listdir(media_dir))
+    invoke("eject_profile", {"token": info["token"]})
+    check("eject removes the outfit files too", len(os.listdir(media_dir)) == n_media_now - 3)
+    out = invoke_file("import_profile", wpath, {"x-mode": "import", "x-handle": "Stylist", "x-passcode": ""})
+    back = chars()[0]
+    check("the restored character has its whole wardrobe back, with the same outfit on", [o["name"] for o in back["outfits"]] == ["Summer dress", "Pajamas"] and back["outfit"] == first and all(os.path.exists(o["path"]) for o in back["outfit_paths"]), str(back.get("outfits")))
+    wid = back["id"]
+    wc = invoke("remove_outfit", {"id": wid, "outfitId": first})
+    check("removing the outfit being worn goes back to the original and deletes its file", wc["outfit"] is None and len(wc["outfits"]) == 1 and wc["media_path"] != "" and len(os.listdir(media_dir)) == n_media_now - 3 + 2)
+    invoke("delete_character", {"id": wid})
+    check("deleting the character deletes its outfit files", len(os.listdir(media_dir)) == n_media_now - 3)
+    invoke("sign_out")
 
     # -- delete needs the name typed
     gid = [p for p in invoke("session_state")["profiles"] if p["handle"] == "Guesty"][0]["id"]

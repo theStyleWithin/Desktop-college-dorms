@@ -60,7 +60,12 @@ export interface Character {
   id: string;
   card: CardData;
   media: Media | null;
+  /** What to show right now: the outfit being worn, or the original model. */
   media_path: string | null;
+  /** The wardrobe (3D characters): extra outfit models, and which one is on (null = the original). */
+  outfits?: { id: string; name: string; file: string }[];
+  outfit?: string | null;
+  outfit_paths?: { id: string; name: string; path: string }[];
   favorite: boolean;
   created_at: number;
   updated_at: number;
@@ -131,6 +136,11 @@ export interface Settings {
   use_card_system_prompt: boolean;
   default_system: string;
   theme: string;
+  /** Voice input: an OpenAI-compatible /audio/transcriptions server. */
+  stt_url: string;
+  stt_model: string;
+  stt_language: string;
+  stt_auto_send: boolean;
 }
 
 export interface Preset { id: string; label: string; blurb: string; file: string; url: string; size_gb: number; min_ram_gb: number }
@@ -178,10 +188,20 @@ export const api = {
     invoke<Character>("save_character", { character }),
   deleteCharacter: (id: string) => invoke<void>("delete_character", { id }),
   setFavorite: (id: string, favorite: boolean) => invoke<void>("set_favorite", { id, favorite }),
+  /** Sends a WAV recording to the voice server from Settings → Voice and returns what was said. */
+  transcribe: (wav: Uint8Array) => bin("transcribe_audio", wav, {}) as Promise<string>,
+  testVoice: () => invoke<string>("test_voice"),
   async setMedia(id: string, file: File): Promise<Character> {
     const bytes = new Uint8Array(await file.arrayBuffer());
     return bin("set_media", bytes, { "x-char-id": id, "x-file-name": enc(file.name) });
   },
+  async addOutfit(id: string, file: File, name?: string): Promise<Character> {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return bin("add_outfit", bytes, { "x-char-id": id, "x-file-name": enc(file.name), "x-outfit-name": enc(name ?? "") });
+  },
+  setOutfit: (id: string, outfitId: string | null) => invoke<Character>("set_outfit", { id, outfitId }),
+  renameOutfit: (id: string, outfitId: string, name: string) => invoke<Character>("rename_outfit", { id, outfitId, name }),
+  removeOutfit: (id: string, outfitId: string) => invoke<Character>("remove_outfit", { id, outfitId }),
   clearMedia: (id: string) => invoke<Character>("clear_media", { id }),
   async importCard(file: File): Promise<ImportResult> {
     const bytes = new Uint8Array(await file.arrayBuffer());

@@ -104,9 +104,34 @@ Layout ideas:
 
 None at the moment.
 
+## 3D viewer
+
+The profile viewer for VRM / VRoid models is a furnished dorm room built from simple shapes in code (no image files shipped). The model
+is posed from its humanoid rig (VRM 0.x and 1.0 handled, since their axes differ), breathes, blinks and tracks the camera, and its own
+spring bones are simulated for hair, skirt, sleeves, ears and chest, with a Natural / Bouncy / Off setting. Virtual hands (gamepad,
+mouse or touch) let the user pet the character. When nobody is chatting, a small rule-based NPC layer (no AI) runs her day: path-finding
+around the furniture, a procedural walk cycle, activities with props (phone, coffee), sitting and sleeping on the bed. Imported models
+are only ever the user's own files; nothing is bundled.
+
+## Wardrobe
+
+A 3D character can hold extra outfits: more VRM files of the same character (for example exported from VRoid Studio in other clothes).
+The backend owns them (add, switch, rename, remove; they follow the character through backup, eject, import and delete), and the viewer
+shows the one being worn. Accessories are found by material name (VRoid's `Accessory_CatEar_01_CLOTH` and friends) and can be switched
+on and off per model: cat, dog, fox, raccoon, bunny and wolf ears and tails, plus glasses, hats, hair accessories, bags and shoes.
+Garments such as tops and bottoms are changed by swapping to another outfit file, not hidden one by one.
+
+## Voice input
+
+A mic button in the chat composer records 16 kHz mono WAV in the webview (a voice-activity check ends the recording when the user stops
+talking), the Rust backend sends it to an OpenAI-compatible `/audio/transcriptions` endpoint chosen in Settings → Voice (OpenAI, Groq,
+or a local Whisper server for offline use), and the resulting text is sent as the user's message (or dropped into the box, by setting).
+The API key lives in the keychain like the chat keys; internet servers must use https. The 3D character pays attention while the mic is open.
+Not built (yet): spoken replies (text to speech), and bundling a Whisper engine inside the app.
+
 ## Status
 
-v0.2.0 adds local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.
+v0.3.0 adds a real 3D viewer for VRM / VRoid models (room, idle life, physics, hands, wardrobe) and voice input. v0.2.0 added local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.
 
 Built: everything above except battery-aware pausing and a standalone lorebook library (lorebooks are embedded in characters).
 Android builds without the local engine (the OS can't run the helper binary); it uses cloud or network models. See README for the verification status of each platform.

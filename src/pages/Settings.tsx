@@ -6,8 +6,8 @@ import { errText, fmtBytes } from "../lib/util";
 import type { SessionState } from "../api";
 import { useStore } from "../store";
 
-type Tab = "profile" | "models" | "chat" | "look" | "privacy" | "about";
-const TABS: [Tab, string][] = [["profile", "Profile"], ["models", "Models"], ["chat", "Chat"], ["look", "Appearance"], ["privacy", "Privacy"], ["about", "About"]];
+type Tab = "profile" | "models" | "chat" | "voice" | "look" | "privacy" | "about";
+const TABS: [Tab, string][] = [["profile", "Profile"], ["models", "Models"], ["chat", "Chat"], ["voice", "Voice"], ["look", "Appearance"], ["privacy", "Privacy"], ["about", "About"]];
 
 const ENDPOINTS: [string, string, string][] = [
   ["OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"],
@@ -45,6 +45,7 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
       {tab === "profile" && <ProfileTab s={s} patch={patch} />}
       {tab === "models" && <Models s={s} patch={patch} onChanged={refresh} />}
       {tab === "chat" && <ChatTab s={s} patch={patch} />}
+      {tab === "voice" && <VoiceTab s={s} patch={patch} ensureSaved={async () => { if (dirty) await setSettings(s); }} />}
       {tab === "look" && <Look s={s} patch={patch} />}
       {tab === "privacy" && <Privacy s={s} />}
       {tab === "about" && <About />}
@@ -234,6 +235,67 @@ function ChatTab({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => v
       <label className="f"><span>Top-p ({s.top_p.toFixed(2)}):</span><input type="range" min={0.1} max={1} step={0.05} value={s.top_p} onChange={(e) => patch({ top_p: Number(e.target.value) })} /></label>
       <label className="f"><span>Default system prompt:</span><span><textarea value={s.default_system} placeholder="Leave empty for the built-in roleplay prompt." onChange={(e) => patch({ default_system: e.target.value })} /><div className="hint">Use {"{{char}}"} and {"{{user}}"}.</div></span></label>
       <label className="f"><span>Character prompts:</span><label className="row"><input type="checkbox" checked={s.use_card_system_prompt} onChange={(e) => patch({ use_card_system_prompt: e.target.checked })} /> Use each card's own system prompt and post-history instructions</label></label>
+    </div>
+  );
+}
+
+const VOICE_PRESETS: [string, string, string, string][] = [
+  ["OpenAI", "https://api.openai.com/v1", "whisper-1", "Cloud: needs an OpenAI API key"],
+  ["Groq", "https://api.groq.com/openai/v1", "whisper-large-v3-turbo", "Cloud: fast, has a free tier"],
+  ["This computer", "http://127.0.0.1:8080/v1", "whisper-1", "Fully offline: run a local Whisper server (see below)"],
+];
+
+function VoiceTab({ s, patch, ensureSaved }: { s: Settings; patch: (p: Partial<Settings>) => void; ensureSaved: () => Promise<void> }) {
+  const toast = useToast();
+  const [keyDraft, setKeyDraft] = useState("");
+  const [hasKey, setHasKey] = useState(false);
+  const [testing, setTesting] = useState(false);
+  useEffect(() => { api.hasApiKey("stt").then((r) => setHasKey(r.present)).catch(() => {}); }, []);
+  const insecure = s.stt_url.startsWith("http://") && !/^http:\/\/(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[::1\])/.test(s.stt_url);
+  const saveKey = async () => {
+    try {
+      const where = await api.setApiKey("stt", keyDraft);
+      setKeyDraft(""); setHasKey(where !== "none");
+      toast(where === "none" ? "Key removed" : "Key saved", "ok");
+    } catch (e) { toast(errText(e), "err"); }
+  };
+  const test = async () => {
+    setTesting(true);
+    try { await ensureSaved(); toast(await api.testVoice(), "ok"); } catch (e) { toast(errText(e), "err"); } finally { setTesting(false); }
+  };
+  return (
+    <div className="card">
+      <h3>Voice input</h3>
+      <p className="hint" style={{ margin: "6px 0 12px" }}>
+        The <b>🎤 button</b> in a chat listens to you, turns your speech into text with the speech-to-text server below, and sends it, so the character
+        can hear you and answer. Nothing is recorded unless you press the mic, and the recording is sent only to the server you pick here.
+      </p>
+      <div className="chips" style={{ margin: "0 0 12px" }}>
+        {VOICE_PRESETS.map(([n, u, m, tip]) => <button key={n} className={`chip ${s.stt_url === u ? "on" : ""}`} title={tip} onClick={() => patch({ stt_url: u, stt_model: m })}>{n}</button>)}
+      </div>
+      <label className="f"><span>Server address:</span><span><input type="text" value={s.stt_url} onChange={(e) => patch({ stt_url: e.target.value })} aria-label="Voice server address" />
+        {insecure && <div className="hint" style={{ color: "var(--danger)" }}>This address isn't encrypted (http://) and isn't on your local network. Use https:// so nobody can listen in.</div>}</span></label>
+      <label className="f"><span>Model:</span><input type="text" value={s.stt_model} onChange={(e) => patch({ stt_model: e.target.value })} aria-label="Voice model" /></label>
+      <label className="f"><span>Language:</span><span><input type="text" placeholder="Auto-detect" maxLength={8} value={s.stt_language} onChange={(e) => patch({ stt_language: e.target.value })} aria-label="Voice language" />
+        <div className="hint">Optional: a code like en, es, ja. Leave empty to let the server work it out.</div></span></label>
+      <label className="f"><span>API key:</span>
+        <span>
+          <div className="row" style={{ flexWrap: "nowrap" }}>
+            <input type="password" autoComplete="off" placeholder={hasKey ? "A key is saved (type to replace)" : "Optional for a server on your own computer"} value={keyDraft} onChange={(e) => setKeyDraft(e.target.value)} aria-label="Voice API key" />
+            <button className="btn" disabled={!keyDraft && !hasKey} onClick={saveKey}>{keyDraft ? "Save key" : "Remove key"}</button>
+          </div>
+          <div className="hint">Stored the same way as your chat keys (system keychain when available), and sent only to the server above.</div>
+        </span>
+      </label>
+      <label className="f"><span>After listening:</span><label className="row"><input type="checkbox" checked={s.stt_auto_send} onChange={(e) => patch({ stt_auto_send: e.target.checked })} /> Send what I said straight away (otherwise it goes into the message box so you can check it first)</label></label>
+      <button className="btn" onClick={test} disabled={testing}>{testing ? "Testing…" : "Test connection"}</button>
+      <span className="hint"> Uses the settings above (they are saved first).</span>
+      <h3 style={{ marginTop: 18 }}>Fully offline voice</h3>
+      <p className="hint" style={{ marginTop: 6 }}>
+        Run any local server that offers <code>/v1/audio/transcriptions</code>, for example <b>whisper.cpp</b>'s <code>whisper-server</code>, then pick <i>This computer</i>
+        and adjust the port. Your voice then never leaves your machine. For the best experience, pair voice with a fast model (a cloud API, or a local model that fits your hardware),
+        since the reply starts only after the model has read what you said.
+      </p>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 [package]
 name = "desktop-college-dorms"
-version = "0.2.0"
+version = "0.3.0"
 description = "Offline-first AI character creator and chat rooms"
 authors = ["theStyleWithin"]
 license = "MIT"
@@ -21,7 +21,7 @@ dorms-core = { path = "../crates/dorms-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json", "multipart"] }
 tokio = { version = "1", features = ["sync", "time", "process", "fs", "io-util", "macros", "net"] }
 futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
@@ -44,3 +44,7 @@ embed-llama = []
 # Also embed the Vulkan (GPU) build. Needs DORMS_LLAMA_EMBED_VULKAN=<path>.
 embed-llama-vulkan = ["embed-llama"]
 custom-protocol = ["tauri/custom-protocol"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# the same webkit2gtk that wry uses: lets us allow microphone capture for voice input (and nothing else)
+webkit2gtk = "2"

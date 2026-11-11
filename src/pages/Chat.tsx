@@ -3,6 +3,9 @@ import {
   api, displayName, mediaUrl, onAutoStopped, onGen, tagline, type Character, type Chat, type ChatKind, type Message, type TurnMode,
 } from "../api";
 import Art from "../components/Art";
+import MicButton from "../components/MicButton";
+import { makeWardrobe } from "../components/WardrobePanel";
+import type { Speech } from "../components/SpeechBubble";
 import { Modal, useToast } from "../components/ui";
 import { errText, timeAgo } from "../lib/util";
 import { useStore } from "../store";
@@ -31,6 +34,8 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
   const [selected, setSelected] = useState<number | null>(initialChatId ?? chats[0]?.id ?? null);
   const [msgs, setMsgs] = useState<Message[]>([]);
   const [live, setLive] = useState<Live | null>(null);
+  // what the 3D character on stage is saying (a manga-style balloon above her head)
+  const [speech, setSpeech] = useState<(Speech & { characterId: string }) | null>(null);
   const [text, setText] = useState("");
   const [replyAs, setReplyAs] = useState<string>("");
   const [focus, setFocus] = useState<string | null>(null);
@@ -49,7 +54,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
 
   // load messages when switching chats
   useEffect(() => {
-    setLive(null); setEditing(null); setFocus(null); setReplyAs("");
+    setLive(null); setSpeech(null); setEditing(null); setFocus(null); setReplyAs("");
     if (selected == null) { setMsgs([]); return; }
     let alive = true;
     api.listMessages(selected).then((m) => alive && setMsgs(m));
@@ -61,13 +66,17 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
     const subs = [
       onGen((e) => {
         if (e.chat_id !== selectedRef.current) { if (e.kind === "done") refresh(); return; }
-        if (e.kind === "loading" || e.kind === "start") setLive({ rid: e.request_id, characterId: e.character_id, text: "", phase: e.kind });
-        else if (e.kind === "token") setLive((l) => ({ rid: e.request_id, characterId: e.character_id, text: (l?.rid === e.request_id ? l.text : "") + e.text, phase: "streaming" }));
+        if (e.kind === "loading" || e.kind === "start") { setLive({ rid: e.request_id, characterId: e.character_id, text: "", phase: e.kind }); setSpeech({ id: e.request_id, characterId: e.character_id, text: "", streaming: true }); }
+        else if (e.kind === "token") {
+          setLive((l) => ({ rid: e.request_id, characterId: e.character_id, text: (l?.rid === e.request_id ? l.text : "") + e.text, phase: "streaming" }));
+          setSpeech((sp) => ({ id: e.request_id, characterId: e.character_id, text: (sp?.id === e.request_id ? sp.text : "") + e.text, streaming: true }));
+        }
         else if (e.kind === "done") {
           setLive(null);
+          setSpeech({ id: String(e.message.id) + ":" + e.message.swipe_index, characterId: e.message.character_id ?? "", text: e.message.swipes[e.message.swipe_index] ?? "", streaming: false });
           setMsgs((m) => (m.some((x) => x.id === e.message.id) ? m.map((x) => (x.id === e.message.id ? e.message : x)) : [...m, e.message]));
           refresh();
-        } else if (e.kind === "error") { setLive(null); toast(e.error, "err"); }
+        } else if (e.kind === "error") { setLive(null); setSpeech(null); toast(e.error, "err"); }
       }),
       onAutoStopped((e) => {
         if (e.reason === "turn_limit") toast("The bots paused after reaching their turn limit. Say something to keep the conversation going.", "info");
@@ -86,9 +95,10 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
 
   const busy = live !== null;
 
-  const send = async () => {
+  const [listening, setListening] = useState(false);
+  const sendText = async (raw: string) => {
     if (!chat) return;
-    const t = text.trim();
+    const t = raw.trim();
     if (busy) return;
     if (!t && chat.kind === "dm") return;
     try {
@@ -100,6 +110,12 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
       if (chat.kind !== "channel" || replyAs || !t) await api.generate(chat.id, replyAs || null);
       else await api.generate(chat.id, null);
     } catch (e) { toast(errText(e), "err"); }
+  };
+  const send = () => sendText(text);
+  // voice: what was said is either sent straight away or dropped into the box to check first
+  const heard = (said: string, autoSend: boolean) => {
+    if (autoSend && !busy) void sendText(text.trim() ? `${text.trim()} ${said}` : said);
+    else setText((x) => (x.trim() ? `${x.trim()} ${said}` : said));
   };
   const stop = () => live && api.cancelGeneration(live.rid);
 
@@ -291,6 +307,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                   onChange={(e) => setText(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
                 />
+                <MicButton disabled={busy} onText={heard} onListening={setListening} />
                 {busy ? <button className="btn danger" onClick={stop}>■ Stop</button> : <button className="btn primary" onClick={send} disabled={!text.trim() && chat.kind === "dm"}>Send</button>}
               </div>
             </div>
@@ -301,7 +318,10 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
       <aside className="side-panel">
         {stageChar ? (
           <>
-            <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "")} kind={stageChar.media?.kind ?? null} url={mediaUrl(stageChar)} name={displayName(stageChar)} mode="full" /></div>
+            <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "")} kind={stageChar.media?.kind ?? null} url={mediaUrl(stageChar)} name={displayName(stageChar)} mode="full" attentive={busy || listening || text.trim().length > 0}
+              wardrobe={makeWardrobe(stageChar, () => void refresh(), toast)}
+              speech={speech && speech.characterId === stageChar.id ? speech : null}
+              talk={{ draft: text, setDraft: setText, send: (t) => void sendText(t), busy, onHeard: heard, onListening: setListening }} /></div>
             <div>
               <h3>{displayName(stageChar)}</h3>
               <div className="hint">{tagline(stageChar)}</div>

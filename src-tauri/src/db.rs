@@ -20,6 +20,15 @@ pub struct Media {
     pub file: String,
 }
 
+/// An extra model file for a 3D character (the same character in different clothes): the wardrobe.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Outfit {
+    pub id: String,
+    pub name: String,
+    /// Path relative to the data dir.
+    pub file: String,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Character {
     #[serde(default)]
@@ -27,6 +36,12 @@ pub struct Character {
     pub card: CharacterData,
     #[serde(default)]
     pub media: Option<Media>,
+    /// Extra outfits (VRM models) for a 3D character; `media` stays the original.
+    #[serde(default)]
+    pub outfits: Vec<Outfit>,
+    /// The outfit being worn (an `outfits` id); `None` means the original model.
+    #[serde(default)]
+    pub outfit: Option<String>,
     #[serde(default)]
     pub favorite: bool,
     #[serde(default)]
@@ -157,6 +172,13 @@ pub struct Settings {
     pub use_card_system_prompt: bool,
     pub default_system: String,
     pub theme: String,
+    /// Voice input: any OpenAI-compatible `/audio/transcriptions` server (OpenAI, Groq, or a local Whisper server).
+    pub stt_url: String,
+    pub stt_model: String,
+    /// Empty = let the server detect the language.
+    pub stt_language: String,
+    /// Send the message as soon as it has been transcribed.
+    pub stt_auto_send: bool,
 }
 
 impl Default for Settings {
@@ -178,6 +200,10 @@ impl Default for Settings {
             use_card_system_prompt: true,
             default_system: String::new(),
             theme: "dusk".into(),
+            stt_url: "https://api.openai.com/v1".into(),
+            stt_model: "whisper-1".into(),
+            stt_language: String::new(),
+            stt_auto_send: true,
         }
     }
 }
@@ -598,6 +624,8 @@ mod tests {
             id: id.into(),
             card: CharacterData { name: name.into(), ..Default::default() },
             media: None,
+            outfits: vec![],
+            outfit: None,
             favorite: false,
             created_at: 1,
             updated_at: 1,

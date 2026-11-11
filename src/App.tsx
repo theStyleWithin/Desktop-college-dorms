@@ -16,6 +16,7 @@ const DEFAULTS: Settings = {
   temperature: 0.8, top_p: 0.95, local_model: "", local_gpu: true, openai_base_url: "https://api.openai.com/v1",
   openai_model: "gpt-4o-mini", anthropic_model: "claude-haiku-5-5", use_card_system_prompt: true,
   default_system: "", theme: "dusk",
+  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true,
 };
 
 const NAV: { page: Route["page"]; label: string; icon: string }[] = [
