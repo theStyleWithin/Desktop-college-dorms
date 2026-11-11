@@ -116,9 +116,10 @@ def inv(cmd, args=None):
 def reload_ui():
     d.refresh(); time.sleep(2.2)
 def nav(label): d.execute_script("[...document.querySelectorAll('nav button')].find(b=>b.textContent.includes(arguments[0])).click()", label); time.sleep(0.8)
-def snap(name, size, scroll=0):
+def snap(name, size, scroll=0, bottom=False):
     d.set_window_size(*size); time.sleep(0.8)
-    d.execute_script("const m=document.querySelector('.msgs'); if(m) m.scrollTop=0;")  # show chats from their first message
+    # show chats from their first message, unless the shot is about the newest one
+    d.execute_script("const m=document.querySelector('.msgs'); if(m) m.scrollTop=arguments[0]?m.scrollHeight:0;", bottom)
     if scroll: d.execute_script("document.querySelector('.main').scrollTop=arguments[0]", scroll)
     d.execute_script("document.querySelectorAll('.toasts').forEach(e=>e.innerHTML='')"); time.sleep(0.3)
     tmp = os.path.join(WORK, name + ".png"); d.get_screenshot_as_file(tmp)
@@ -178,6 +179,10 @@ try:
     d.set_window_size(*PHONE); time.sleep(1)
     nav("Home"); snap("mobile-home", PHONE)
     nav("Characters"); snap("mobile-library", PHONE)
+    nav("Dorms")
+    d.execute_script("const b=[...document.querySelectorAll('.chathead button')].find(x=>x.textContent.trim()==='☰'); if(b) b.click();"); time.sleep(0.6)
+    d.execute_script("[...document.querySelectorAll('.chatlist .it')].find(b=>b.textContent.includes('Mira Okafor')).click()"); time.sleep(1.2)
+    snap("mobile-chat-actions", PHONE, bottom=True)
     nav("Dorms"); d.execute_script("document.querySelector('.chatlist.open')||0"); 
     d.execute_script("const b=[...document.querySelectorAll('.chathead button')].find(x=>x.textContent.trim()==='☰'); if(b) b.click();"); time.sleep(0.6)
     d.execute_script("[...document.querySelectorAll('.chatlist .it')].find(b=>b.textContent.includes('late-night')).click()"); time.sleep(1.2)

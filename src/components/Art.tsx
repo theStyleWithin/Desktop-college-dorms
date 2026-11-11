@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Modal } from "./ui";
+import ViewerWindow from "./ViewerWindow";
 import type { Speech } from "./SpeechBubble";
 import type { Talk } from "./TalkBar";
 import type { Wardrobe } from "./WardrobePanel";
@@ -65,9 +65,9 @@ function VrmStage({ url, name, bg, attentive, speech, talk, wardrobe }: { url: s
       <Suspense fallback={<span className="ph">…</span>}>{!big && <VrmViewer url={url} attentive={attentive} speech={speech} wardrobe={wardrobe} onExpand={() => setBig(true)} />}</Suspense>
       {big && <span className="ph" style={{ fontSize: "1rem" }}>Open in the big viewer</span>}
       {big && (
-        <Modal title={`${name || "3D model"}`} onClose={() => setBig(false)} wide>
+        <ViewerWindow title={`${name || "3D model"}`} onClose={() => setBig(false)}>
           <div className="vrm-big"><Suspense fallback={<span className="ph">…</span>}><VrmViewer url={url} large attentive={attentive} speech={speech} talk={talk} wardrobe={wardrobe} /></Suspense></div>
-        </Modal>
+        </ViewerWindow>
       )}
     </div>
   );
