@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import { Modal } from "./ui";
 import type { MediaKind } from "../api";
 import { hue, initials } from "../lib/util";
 
@@ -46,6 +47,22 @@ function VideoArt({ url, full, bg, name }: { url: string; full: boolean; bg: str
   );
 }
 
+/** The small live 3D panel, with a button that opens the big viewer. */
+function VrmStage({ url, name, bg }: { url: string; name: string; bg: string }) {
+  const [big, setBig] = useState(false);
+  return (
+    <div className="media" data-big={big ? "1" : "0"} style={{ background: bg }}>
+      <Suspense fallback={<span className="ph">…</span>}>{!big && <VrmViewer url={url} onExpand={() => setBig(true)} />}</Suspense>
+      {big && <span className="ph" style={{ fontSize: "1rem" }}>Open in the big viewer</span>}
+      {big && (
+        <Modal title={`${name || "3D model"}`} onClose={() => setBig(false)} wide>
+          <div className="vrm-big"><Suspense fallback={<span className="ph">…</span>}><VrmViewer url={url} large /></Suspense></div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 export default function Art({ kind, url, name, mode = "thumb" }: Props) {
   const bg = `linear-gradient(135deg, hsl(${hue(name)} 45% 35%), hsl(${(hue(name) + 50) % 360} 50% 22%))`;
 
@@ -57,13 +74,7 @@ export default function Art({ kind, url, name, mode = "thumb" }: Props) {
     );
   }
   if (kind === "vrm") {
-    if (mode === "full") {
-      return (
-        <div className="media" style={{ background: bg }}>
-          <Suspense fallback={<span className="ph">…</span>}><VrmViewer url={url} /></Suspense>
-        </div>
-      );
-    }
+    if (mode === "full") return <VrmStage url={url} name={name} bg={bg} />;
     return (
       <div className="media" style={{ background: bg }}>
         <span className="ph">{initials(name)}</span>

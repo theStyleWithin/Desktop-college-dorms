@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 // ---- toasts -------------------------------------------------------------
 type ToastKind = "info" | "ok" | "err";
@@ -25,22 +26,25 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 // ---- modal --------------------------------------------------------------
-export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, [onClose]);
-  return (
+  // Rendered on <body>, not where it was opened from: inside a <label>, the browser re-sends every click to the
+  // label's first control, which used to close a window the instant it opened.
+  return createPortal(
     <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-label={title}>
+      <div className={`modal${wide ? " wide" : ""}`} role="dialog" aria-label={title}>
         <div className="row" style={{ marginBottom: 12 }}>
           <h2 className="grow">{title}</h2>
           <button className="btn ghost sm" onClick={onClose} aria-label="Close">✕</button>
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

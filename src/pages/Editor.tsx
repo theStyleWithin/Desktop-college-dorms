@@ -16,16 +16,18 @@ const kindOf = (f: File): MediaKind | null => {
   return null;
 };
 
-function Field({ label, req, hint, count, children }: { label: string; req?: boolean; hint?: string; count?: string; children: React.ReactNode }) {
+function Field({ label, req, hint, count, plain, children }: { label: string; req?: boolean; hint?: string; count?: string; plain?: boolean; children: React.ReactNode }) {
+  // `plain` is for fields that hold several buttons (a <label> would hijack their clicks)
+  const Wrap = plain ? "div" : "label";
   return (
-    <label className="f">
+    <Wrap className="f">
       <span>{req && <span className="req">* </span>}{label}:</span>
       <span>
         {children}
         {hint && <div className="hint">{hint}</div>}
         {count && <div className="tok">{count}</div>}
       </span>
-    </label>
+    </Wrap>
   );
 }
 
@@ -164,9 +166,13 @@ export default function Editor({ id }: { id: string | null }) {
 
       <h2>Character Info <span className="sub" style={{ fontSize: ".9rem", fontFamily: "var(--sans)" }}>(how they look in your library)</span></h2>
       <Field label="Name" req><input type="text" value={name} placeholder="Name" onChange={(e) => { setName(e.target.value); setDirty(true); }} /></Field>
-      <Field label="Avatar" hint="JPG, PNG, WebP, GIF, MP4/WebM video, or a VRM / VRoid model. Videos and GIFs animate; VRM models show live in 3D.">
+      <Field label="Avatar" plain hint="JPG, PNG, WebP, GIF, MP4/WebM video, or a VRM / VRoid model (.vrm). Choose Upload, or drop a file onto the picture. Videos and GIFs animate; VRM models stand in a 3D room you can look around.">
         <div className="row" style={{ alignItems: "flex-start" }}>
-          <div className="editor-media"><Art kind={previewKind} url={previewUrl} name={name || "?"} mode="full" /></div>
+          <div className="editor-media" title="Drop an image, GIF, video or .vrm model here"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); pickMedia(e.dataTransfer.files?.[0]); }}>
+            <Art kind={previewKind} url={previewUrl} name={name || "?"} mode="full" />
+          </div>
           <div style={{ display: "grid", gap: 8 }}>
             <button type="button" className="btn" onClick={() => fileRef.current?.click()}>⇪ Upload</button>
             {(previewUrl) && (
@@ -175,8 +181,9 @@ export default function Editor({ id }: { id: string | null }) {
                 if (char) { hydrate(await api.clearMedia(char.id)); refresh(); }
               }}>Remove</button>
             )}
-            <input ref={fileRef} type="file" hidden accept="image/*,video/mp4,video/webm,.vrm,.gif,.mov,.m4v"
-              onChange={(e) => { pickMedia(e.target.files?.[0]); e.target.value = ""; }} />
+            {/* No `accept` filter on purpose: file pickers build their list from MIME types, and ".vrm" has none, so a
+                filter can hide VRM models entirely. Anything can be chosen; unsupported types get a clear message. */}
+            <input ref={fileRef} type="file" hidden onChange={(e) => { pickMedia(e.target.files?.[0]); e.target.value = ""; }} />
           </div>
         </div>
       </Field>
