@@ -293,6 +293,60 @@ try:
             cv = d.find_element(By.CSS_SELECTOR, ".vrm-big canvas")
             ActionChains(d).move_to_element_with_offset(cv, 0, -60).click_and_hold().move_by_offset(30, 0).move_by_offset(-30, 0).release().perform(); time.sleep(0.6)
             check("moving the hands doesn't break the viewer", d.execute_script("return !!document.querySelector('.vrm-big canvas')") and d.execute_script("return document.querySelector('.vrm-big .vrm-box').dataset.petting!==undefined"))
+            # the hands have three gestures: open (pet), a pointing finger (poke, tickle) and a pinch (pick her up)
+            vb = ".vrm-big .vrm-box"
+            vev = lambda name, detail=None: d.execute_script("document.querySelector(arguments[0]).dispatchEvent(new CustomEvent(arguments[1],{detail:arguments[2]}))", vb, name, detail)
+            vds = lambda k: d.execute_script("return document.querySelector(arguments[0]).dataset[arguments[1]]", vb, k)
+            check("with the hands on there are Poke and Pick up buttons", d.execute_script("return !!document.querySelector('.vrm-big [aria-label=Poke]') && !!document.querySelector('.vrm-big [aria-label=\"Pick up\"]')"))
+            d.execute_script("document.querySelector('.vrm-big [aria-label=Poke]').click()"); time.sleep(0.4)
+            check("Poke turns the hands into a pointing finger", vds("pointing") == "1" and vds("pinching") is None)
+            d.execute_script("document.querySelector('.vrm-big [aria-label=\"Pick up\"]').click()"); time.sleep(0.4)
+            check("Pick up switches to the pinch (and off pointing)", vds("pinching") == "1" and vds("pointing") is None)
+            d.execute_script("document.querySelector('.vrm-big [aria-label=\"Pick up\"]').click()"); time.sleep(0.4)
+            check("clicking it again goes back to open hands", vds("pinching") is None and vds("pointing") is None)
+            for key, want in (("p", "pointing"), ("g", "pinching"), ("g", None)):
+                ActionChains(d).send_keys(key).perform(); time.sleep(0.4)
+            check("P and G switch gestures from the keyboard", vds("pinching") is None and vds("pointing") is None)
+            ActionChains(d).send_keys("p").perform(); time.sleep(0.4)
+            check("P gives the pointing finger", vds("pointing") == "1")
+            # poking: every place she reacts to gives its own reaction (the tests aim without a mouse)
+            REG = ["nose", "forehead", "cheek", "ear", "head", "shoulder", "arm", "hand", "back", "other"]
+            got = []
+            for r in REG:
+                vev("poke", {"region": r, "side": 1}); time.sleep(0.45); got.append(vds("poke"))
+            check("poking each place on her gives its own reaction", got == REG, str(got))
+            check("every poke is counted", vds("pokes") == str(len(REG)))
+            time.sleep(2.5)
+            # tickling: the laugh builds while a finger tickles somewhere ticklish
+            vev("tickle", {"region": "ear", "seconds": 3}); time.sleep(2.6)
+            check("tickling somewhere ticklish makes her laugh", int(vds("tickle") or 0) > 30, str(vds("tickle")))
+            check("it counts as one tickle, not one per frame", vds("tickles") == "1", str(vds("tickles")))
+            time.sleep(4.5)
+            check("the laugh dies down when it stops", int(vds("tickle") or 0) < 10, str(vds("tickle")))
+            # tickled in the middle of a stretch: caught off guard, the stretch ends at once and she bursts out laughing
+            vev("npc", "stretch"); time.sleep(2.8)
+            check("she sometimes stretches with her arms over her head", vds("plan") == "stretch", str(vds("plan")))
+            vev("tickle", {"region": "arm", "seconds": 2}); time.sleep(1.4)
+            check("tickled mid-stretch she is caught off guard: full laughter at once and the stretch is over", int(vds("tickle") or 0) >= 90 and vds("plan") == "home", f"{vds('tickle')} {vds('plan')}")
+            time.sleep(6)
+            # picking her up: she dangles from the fingertips, kicks and yells, and lands where you put her
+            vev("pickup", {"calm": False}); time.sleep(1.6)
+            check("pinching her picks her up", vds("carry") == "held" and int(vds("carryY") or 0) > 5, f"{vds('carry')} {vds('carryY')}")
+            check("a panicking pick-up thrashes about", int(vds("panic") or 0) > 40 and vds("calm") == "0", str(vds("panic")))
+            vev("drop"); time.sleep(0.4)
+            check("letting go drops her", vds("carry") in ("fall", "dizzy"), str(vds("carry")))
+            for _ in range(40):
+                if vds("carry") == "none": break
+                time.sleep(0.4)
+            check("she lands, sees stars, and carries on with her day", vds("carry") == "none", str(vds("carry")))
+            vev("pickup", {"calm": True}); time.sleep(1.4)
+            check("sometimes she goes limp and sulks instead of panicking", vds("carry") == "held" and vds("calm") == "1" and int(vds("panic") or 0) < 50, f"{vds('calm')} {vds('panic')}")
+            vev("drop")
+            for _ in range(40):
+                if vds("carry") == "none": break
+                time.sleep(0.4)
+            check("and goes back to normal after being put down", vds("carry") == "none")
+            ActionChains(d).send_keys("p").perform(); time.sleep(0.3)
             d.execute_script("document.querySelector('.vrm-big [aria-label=Hands]').click()")
             # the big viewer is a real window: resize from the edges/corners, move by the title bar, theatre and full screen
             rect = lambda sel: d.execute_script("const r=document.querySelector(arguments[0]).getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}", sel)
@@ -825,6 +879,37 @@ try:
     invoke("add_user_message", {"chatId": rc["id"], "text": "hi from kai"}); reload_ui(); nav("Dorms"); time.sleep(0.8); click_text("button.it", "Rooftop hangout"); time.sleep(1.5)
     check("your messages show the persona's name and picture", d.execute_script("const u=document.querySelector('.msg.user');return !!u && u.querySelector('.who').textContent.includes('Kai') && !!u.querySelector('.avatar img')"))
     invoke("set_active_persona", {"id": None}); invoke("delete_persona", {"id": pe[0]["id"]})
+
+    # -- controllers: any pad, named the way the pad names its buttons, with bindings you can change
+    fake_pad = """
+      window.__fake = { id: arguments[0], index: 0, connected: true, mapping: 'standard', axes: [0,0,0,0], buttons: Array.from({length: 17}, () => ({pressed: false, value: 0})) };
+      window.__fakeDown = (i, on) => { window.__fake.buttons[i] = {pressed: !!on, value: on ? 1 : 0}; };
+      navigator.getGamepads = () => [window.__fake];"""
+    nav("Settings"); time.sleep(0.5); click_text("button[role=tab]", "Controller"); time.sleep(0.6)
+    check("Settings has a Controller tab (and says what to do when no controller is found)", text_present("Controller") and d.execute_script("return !!document.querySelector('[data-testid=pad-none]')"))
+    check("the default bindings are listed with button names", all(text_present(t) for t in ("Right hand: action", "Next hand gesture", "Pinch", "Pointing finger")))
+    d.execute_script(fake_pad, "Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)"); time.sleep(0.8)
+    check("a PlayStation pad is recognised", "PlayStation controller" in page_text(), page_text()[:300])
+    right_text = lambda: d.execute_script("return document.querySelector('[data-action=right]').innerText")
+    check("its buttons are named the PlayStation way (Cross, L3...)", "Cross" in right_text() and "R3" in right_text(), right_text())
+    check("the top button is Triangle, D-pad left/up/right pick the gestures", "Triangle" in d.execute_script("return document.querySelector('[data-action=cycle]').innerText") and "D-pad up" in d.execute_script("return document.querySelector('[data-action=point]').innerText"))
+    d.execute_script("window.__fakeDown(5, true)"); time.sleep(0.4)
+    check("pressing a button shows its name", "R1" in d.execute_script("return document.querySelector('[data-testid=pad-down]').innerText"))
+    d.execute_script("window.__fakeDown(5, false)"); time.sleep(0.3)
+    d.execute_script("document.querySelector('[aria-label=\"Change Right hand: action button 1\"]').click()"); time.sleep(0.4)
+    check("Change waits for a button", d.execute_script("return !!document.querySelector('[data-testid=pad-capture]')"))
+    d.execute_script("window.__fakeDown(1, true)"); time.sleep(0.5); d.execute_script("window.__fakeDown(1, false)"); time.sleep(0.4)
+    check("the next button pressed becomes the binding", "Circle" in right_text() and "Cross" not in right_text(), right_text())
+    check("bindings are remembered", "[1," in (d.execute_script("return localStorage.getItem('dorms.pad.bindings')") or ""))
+    click_text("button", "Reset to defaults"); time.sleep(0.4)
+    check("Reset puts the defaults back", "Cross" in right_text())
+    d.execute_script("window.__fake.id = 'Pro Controller (STANDARD GAMEPAD Vendor: 057e Product: 2009)'"); time.sleep(0.6)
+    check("a Nintendo pad is recognised and named its own way (B is the bottom button)", "Nintendo controller" in page_text() and right_text().startswith("Right hand") and "B" in right_text(), right_text())
+    d.execute_script("window.__fake.id = 'Xbox 360 Controller (XInput STANDARD GAMEPAD)'"); time.sleep(0.6)
+    check("an Xbox pad too", "Xbox controller" in page_text())
+    d.execute_script("window.__fake.id = 'Valve Software Steam Controller (STANDARD GAMEPAD Vendor: 28de Product: 11ff)'"); time.sleep(0.6)
+    check("and a Steam Controller / Steam Deck", "Steam controller" in page_text())
+    d.execute_script("delete navigator.getGamepads"); time.sleep(0.3)
 
     # -- background music in the chat
     rr2 = [r for r in invoke("list_rooms") if r["name"] == "Rooftop hangout"]

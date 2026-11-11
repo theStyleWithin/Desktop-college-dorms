@@ -59,9 +59,20 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
   such as whisper.cpp's `whisper-server` for fully offline voice. Nothing is recorded unless you press the mic; the recording goes only to the
   server you choose in Settings → Voice (https required unless it's on your own network). Voice works best with a fast cloud API or a local
   model that fits your hardware. Microphone access depends on the system: the app opts in on Linux, Windows asks you, and Android asks for the permission.
-- **Virtual hands** for the 3D viewer: use a **game controller** (sticks move your hands, triggers reach in, bumpers pull back, A grips),
-  or the mouse or touch (press and hold to reach in). Stroke her head or ears and she leans into your hand, half-closes her eyes
-  and smiles; your controller rumbles gently.
+- **Virtual hands** for the 3D viewer, with three gestures (🖐 open, 👆 point, 🤏 pinch; switch with the buttons, **P** and **G**, or your controller):
+  - **Pet** (open hands): stroke her head or ears and she leans into your hand, half-closes her eyes and smiles; your controller rumbles gently.
+  - **Poke** (pointing finger): click a spot and she reacts to *where* you poked: a giggle for a cheek, a flick of annoyance for the forehead,
+    a boop on the nose, a squeal for an ear, a startled look over her shoulder from behind, a playful poke back at her hand. Poke her again and again
+    and she gets annoyed. (Only ordinary places react: face, ears, shoulders, arms, hands and back.)
+  - **Tickle**: press and hold with the pointing finger and the fingers wiggle. The laugh builds the longer you go (ears, arms, shoulders, back and hands are
+    ticklish), and if you catch her in the middle of a big stretch she is caught off guard and bursts out laughing.
+  - **Pick up** (pinch): pinch her by the scruff and lift her into the air. She dangles from your fingertips and swings like a pendulum as you move
+    your hand, and she either panics (kicking, flailing, yelling) or hangs limp and sulks. Carry her somewhere else in the room (scroll to push her
+    in or out), then let go: she drops, squashes on the floor, sees stars, and carries on from wherever you put her. Silly on purpose.
+  - **Controllers**: Xbox, PlayStation (DualShock 4, DualSense), Nintendo (Switch Pro, Joy-Con), Steam Controller and Steam Deck (through Steam Input)
+    and most other pads work. Sticks move the hands, triggers reach in, bumpers pull back; D-pad left / up / right pick open hands / point / pinch,
+    the top button cycles, the bottom button (A, Cross, B) and left button act with the right and left hand (tap to poke, hold to tickle or pinch). Hints show
+    your pad's own button names, and Settings → Controller lets you rebind every one.
 - **Rooms**: make a place (a living room, a rooftop, a character's bedroom) with a name, a description and a backdrop (your own
   image or a built-in scene), set a dorm in it, and the characters know where they are while the chat shows the room behind it.
   Make the room first and the dorm after ("Create & enter"), or add a room to a dorm you already have.

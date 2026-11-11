@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { getBindings } from "./gamepad";
 
 /**
  * Virtual hands: the user's own hands, placed in the 3D room so they can reach out and pet the character.
@@ -6,6 +7,17 @@ import * as THREE from "three";
  *  - gamepad: sticks move the hands (relative to the camera), triggers push forward, bumpers pull back, A grips
  *  - mouse / touch: the pointer moves the right hand, pressing and holding reaches in to touch
  * Touching the head, ears or hair counts as petting; `state` reports how hard, for the character to react to.
+ *
+ * Pointing: switch a hand to its pointing gesture (button Y, the 👆 button, or the P key) and it becomes a single extended
+ * finger. The mouse follows her body (the fingertip rests on whatever you aim at), and a click, tap, A (right hand) or X (left
+ * hand) jabs the finger forward: that is a poke, reported through `onPoke` with where the fingertip is and which way it points.
+ * Press and HOLD (about a third of a second) instead and the fingers spread and wiggle: that is tickling, reported every frame
+ * through `onTickle` while the fingertip is held there.
+ *
+ * Pinching: the third gesture (👌): thumb and first finger pinch. Hover over her, press and hold (A or X on a controller)
+ * to pinch her up by the scruff; while the pinch is held she hangs from the fingertips (`onGrab` says whether she let herself be
+ * picked up, `onCarry` reports where the fingertips are every frame, `onDrop` when you let go). The scroll wheel pushes the
+ * hand deeper into or out of the room while you carry her.
  */
 export interface PetState {
   /** 0..1, how much the character is being petted right now (smoothed) */
@@ -27,6 +39,20 @@ export function createHands(opts: {
   head: THREE.Vector3;
   /** room/character scale (character height / 1.6) */
   scale: number;
+  /** Where a ray from the camera meets her body (for the fingertip to rest on it while pointing with the mouse). */
+  pick?: (origin: THREE.Vector3, dir: THREE.Vector3, max: number) => { point: THREE.Vector3 } | null;
+  /** The finger jabbed: where the fingertip is, and the direction it points. */
+  onPoke?: (origin: THREE.Vector3, dir: THREE.Vector3, hand: "left" | "right") => void;
+  /** Fingers tickling right now (every frame): where the fingertip is, where it points, and how vigorously it is moving (0..1). */
+  onTickle?: (origin: THREE.Vector3, dir: THREE.Vector3, hand: "left" | "right", strength: number) => void;
+  /** The pinch closed on her: may she be picked up? `tip` is where the fingertips are. Return true to start carrying. */
+  onGrab?: (origin: THREE.Vector3, dir: THREE.Vector3, tip: THREE.Vector3) => boolean;
+  /** Every frame while carrying: where the fingertips are. */
+  onCarry?: (tip: THREE.Vector3) => void;
+  /** The pinch opened: put her down. */
+  onDrop?: () => void;
+  /** A controller button changed what the hands do. */
+  onTool?: (tool: "pet" | "point" | "pinch") => void;
 }) {
   const { scene, camera, dom, head } = opts;
   const s = opts.scale;
@@ -82,8 +108,8 @@ export function createHands(opts: {
   group.add(L.root, R.root);
   scene.add(group);
 
-  type H = { rig: Rig; pos: THREE.Vector3; vel: THREE.Vector3; grip: number; touch: number; prev: THREE.Vector3 };
-  const mk = (rig: Rig, x: number): H => ({ rig, pos: new THREE.Vector3(x * s, 1.38 * s, 0.75 * s), vel: new THREE.Vector3(), grip: 0, touch: 0, prev: new THREE.Vector3() });
+  type H = { rig: Rig; pos: THREE.Vector3; vel: THREE.Vector3; grip: number; touch: number; prev: THREE.Vector3; jab: number; fired: boolean; aim: THREE.Vector3; tipGoal: THREE.Vector3 | null; point: number; tick: number; ticklish: boolean; pinch: number; pinchGoal: number; grabTried: boolean };
+  const mk = (rig: Rig, x: number): H => ({ rig, pos: new THREE.Vector3(x * s, 1.38 * s, 0.75 * s), vel: new THREE.Vector3(), grip: 0, touch: 0, prev: new THREE.Vector3(), jab: -1, fired: false, aim: new THREE.Vector3(0, 0, -1), tipGoal: null, point: 0, tick: 0, ticklish: false, pinch: 0, pinchGoal: 0, grabTried: false });
   const hl = mk(L, -0.34), hr = mk(R, 0.34);
   const lo = new THREE.Vector3(-1.3 * s, 0.15 * s, -0.25 * s), hi = new THREE.Vector3(1.3 * s, 2.1 * s, 1.7 * s);
   /** the hands may roam a box around this point (the viewer keeps it on the character, who may be walking about) */
@@ -92,14 +118,23 @@ export function createHands(opts: {
 
   // ---- input ----
   let enabled = false;
+  let pointing = false;                // pointing fingers for poking
+  let pinching = false;                // thumb and finger pinch, for picking her up
+  const hold: { hand: H | null; depth: number } = { hand: null, depth: 3 };
   const ptr = { x: 0, y: 0, down: false, active: false };
   const rect = () => dom.getBoundingClientRect();
   const onMove = (e: PointerEvent) => { const r = rect(); ptr.x = ((e.clientX - r.left) / r.width) * 2 - 1; ptr.y = -(((e.clientY - r.top) / r.height) * 2 - 1); ptr.active = true; };
-  const onDown = (e: PointerEvent) => { if (!enabled) return; onMove(e); ptr.down = true; dom.setPointerCapture?.(e.pointerId); };
+  const startJab = (h: H) => { if (h.jab < 0) h.jab = 0; };
+  const HOLD = 320;                    // ms: a press shorter than this is a poke (on release), longer is tickling
+  let downAt = 0;
+  const onDown = (e: PointerEvent) => { if (!enabled) return; onMove(e); ptr.down = true; downAt = performance.now(); dom.setPointerCapture?.(e.pointerId); };
   const onUp = () => { ptr.down = false; };
+  const onWheel = (e: WheelEvent) => { if (!hold.hand) return; e.preventDefault(); hold.depth = Math.min(9 * s, Math.max(1.2 * s, hold.depth * (e.deltaY < 0 ? 0.93 : 1.07))); };
+  const onRelease = (e: PointerEvent) => { if (enabled && pointing && ptr.down && e.button === 0 && performance.now() - downAt < HOLD) startJab(hr); onUp(); };
   dom.addEventListener("pointermove", onMove);
   dom.addEventListener("pointerdown", onDown);
-  dom.addEventListener("pointerup", onUp);
+  dom.addEventListener("pointerup", onRelease);
+  dom.addEventListener("wheel", onWheel, { passive: false });
   dom.addEventListener("pointercancel", onUp);
 
   const pad = () => { const g = navigator.getGamepads?.() ?? []; for (const p of g) if (p && p.connected) return p; return null; };
@@ -112,6 +147,15 @@ export function createHands(opts: {
   const tmp = new THREE.Vector3();
 
   const pet: PetState = { amount: 0, lx: 0, ly: 0, stroke: 0, near: 0 };
+  const padPrev: number[] = [];   // (keyed by action name)
+  const padHold: (number | null)[] = [null, null];
+  const bdown = (p: Gamepad, i: number) => (p.buttons[i]?.value ?? 0) > 0.5;
+  const anyDown = (p: Gamepad, l: number[]) => l.some((i) => bdown(p, i));
+  /** true once when any of these buttons goes down */
+  const edgeOf = (p: Gamepad, key: string, l: number[]) => { const v = anyDown(p, l) ? 1 : 0; const was = padPrev[key as unknown as number] ?? 0; padPrev[key as unknown as number] = v; return !!v && !was; };
+  const lookM = new THREE.Matrix4(), zero = new THREE.Vector3(), vis = new THREE.Vector3(), camRight = new THREE.Vector3(), camUp = new THREE.Vector3();
+  const tipW = new THREE.Vector3(), tipL = new THREE.Vector3(0, 0, -0.03 * s), qa = new THREE.Quaternion();
+  const JAB = 0.32;                  // seconds for a jab out and back; the poke lands at the far end of the stab
   let rumbleAt = 0;
   let padActive = false;
 
@@ -134,38 +178,139 @@ export function createHands(opts: {
     if (p) {
       const b = (i: number) => p.buttons[i]?.value ?? 0;
       const a = (i: number) => dz(p.axes[i] ?? 0);
-      const grip = b(0);
+      // the buttons come from the person's own bindings (any controller: the layout is by position, see gamepad.ts)
+      const bind = getBindings();
+      const before = pinching ? "pinch" : pointing ? "point" : "pet";
+      if (edgeOf(p, "cycle", bind.cycle)) { if (pointing) { pointing = false; pinching = true; } else if (pinching) pinching = false; else pointing = true; }
+      if (edgeOf(p, "pet", bind.pet)) { pointing = false; pinching = false; }
+      if (edgeOf(p, "point", bind.point)) { pointing = true; pinching = false; }
+      if (edgeOf(p, "pinch", bind.pinch)) { pointing = false; pinching = true; }
+      const after = pinching ? "pinch" : pointing ? "point" : "pet";
+      if (after !== before) opts.onTool?.(after);
+      // the action buttons: a tap pokes, holding tickles (or pinches)
+      const nowMs = performance.now();
+      for (const [list, h, k] of [[bind.right, hr, 0], [bind.left, hl, 1]] as const) {
+        const down = anyDown(p, list);
+        if (pinching) { h.pinchGoal = down ? 1 : 0; continue; }
+        if (!pointing) { padHold[k] = null; h.ticklish = false; h.pinchGoal = 0; continue; }
+        if (down && padHold[k] === null) padHold[k] = nowMs;
+        if (!down && padHold[k] !== null) { if (nowMs - padHold[k]! < HOLD) startJab(h); padHold[k] = null; }
+        h.ticklish = down && padHold[k] !== null && nowMs - padHold[k]! >= HOLD;
+      }
+      const grip = pointing || pinching ? 0 : Math.max(0, ...bind.right.map((i) => b(i)));
       reach(hl, dt, a(0), -a(1), b(6) - b(4), grip);
       reach(hr, dt, a(2), -a(3), b(7) - b(5), grip);
     }
+    // where the fingers point: along the camera, unless the mouse is aiming at her body
+    camera.getWorldDirection(fwd);
+    hl.aim.copy(fwd); hr.aim.copy(fwd); hl.tipGoal = null; hr.tipGoal = null;
+    if (!p) { hl.ticklish = false; hr.ticklish = pointing && ptr.active && ptr.down && performance.now() - downAt >= HOLD; hl.pinchGoal = 0; hr.pinchGoal = pinching && ptr.active && ptr.down ? 1 : 0; }
     if (ptr.active && !p) {
       // the pointer places the right hand on a plane facing the camera, a little in front of the head; pressing reaches in
       camera.getWorldDirection(fwd);
-      const depth = ptr.down ? 0.1 * s : 0.3 * s;
-      plane.setFromNormalAndCoplanarPoint(fwd.clone().negate(), tmp.copy(head).addScaledVector(fwd, -depth));
       ray.setFromCamera(new THREE.Vector2(ptr.x, ptr.y), camera);
-      if (ray.ray.intersectPlane(plane, hit)) {
-        clampNear(hit);
-        hr.pos.lerp(hit, Math.min(1, dt * 14));
+      if (pinching && hold.hand === hr) {
+        // carrying: the fingertips follow the pointer on a plane facing the camera, at the depth she was picked up
+        plane.setFromNormalAndCoplanarPoint(fwd.clone().negate(), tmp.copy(camera.position).addScaledVector(fwd, hold.depth));
+        if (ray.ray.intersectPlane(plane, hit)) hr.tipGoal = hit.clone();
+        hr.aim.copy(ray.ray.direction);
+        hr.grip += (0 - hr.grip) * Math.min(1, dt * 10);
+      } else if (pointing || pinching) {
+        // pointing: the fingertip rests on whatever you aim at (her body), a hair above it
+        const hitBody = opts.pick?.(ray.ray.origin, ray.ray.direction, 50);
+        hr.aim.copy(ray.ray.direction);
+        if (hitBody) hr.tipGoal = hitBody.point.clone().addScaledVector(ray.ray.direction, -0.04 * s);
+        else {
+          plane.setFromNormalAndCoplanarPoint(fwd.clone().negate(), tmp.copy(head).addScaledVector(fwd, -0.3 * s));
+          if (ray.ray.intersectPlane(plane, hit)) { clampNear(hit); hr.tipGoal = hit.clone(); }
+        }
+        hr.grip += (0 - hr.grip) * Math.min(1, dt * 10);
+      } else {
+        const depth = ptr.down ? 0.1 * s : 0.3 * s;
+        plane.setFromNormalAndCoplanarPoint(fwd.clone().negate(), tmp.copy(head).addScaledVector(fwd, -depth));
+        if (ray.ray.intersectPlane(plane, hit)) {
+          clampNear(hit);
+          hr.pos.lerp(hit, Math.min(1, dt * 14));
+        }
+        hr.grip += ((ptr.down ? 0.25 : 0) - hr.grip) * Math.min(1, dt * 10);
       }
-      hr.grip += ((ptr.down ? 0.25 : 0) - hr.grip) * Math.min(1, dt * 10);
     }
 
     // pose the hands: flat over the head, fingers pointing away from the camera, tilted a little toward the viewer
     let touching = 0, strokeV = 0;
     for (const h of [hl, hr]) {
       h.vel.copy(h.pos).sub(h.prev).divideScalar(Math.max(dt, 1e-3));
-      h.rig.root.position.copy(h.pos);
-      h.rig.root.scale.setScalar(1.3);                  // a touch larger than life, so they read at a distance
-      camera.getWorldDirection(fwd);
-      h.rig.root.quaternion.copy(camera.quaternion);
-      h.rig.root.rotateX(-0.35);                        // fingers tilt down toward the character
-      h.rig.root.rotateZ(h === hl ? 0.08 : -0.08);
-      const curl = 0.18 + h.grip * 1.25;
-      h.rig.fingers.forEach(([a, b], i) => { a.rotation.x = -(curl * (0.9 + 0.08 * i)); b.rotation.x = -(curl * 0.9); });
-      h.rig.thumb[0].rotation.x = -curl * 0.35; h.rig.thumb[1].rotation.x = -curl * 0.5;
+      const root = h.rig.root;
+      h.point += ((pointing || pinching ? 1 : 0) - h.point) * Math.min(1, dt * 12);
+      h.pinch += ((pinching ? h.pinchGoal : 0) - h.pinch) * Math.min(1, dt * 14);
+      root.position.copy(h.pos);
+      root.scale.setScalar(1.3);                        // a touch larger than life, so they read at a distance
+      root.quaternion.copy(camera.quaternion);
+      root.rotateX(-0.35);                              // fingers tilt down toward the character
+      root.rotateZ(h === hl ? 0.08 : -0.08);
+      // the hand comes in from below and to the side (so the pointing finger reads from the camera), the fingertip still on the aim
+      vis.copy(h.aim).applyAxisAngle(camRight.set(1, 0, 0).applyQuaternion(camera.quaternion), pinching ? -0.7 : 0.5)
+        .applyAxisAngle(camUp.set(0, 1, 0).applyQuaternion(camera.quaternion), h === hl ? -0.4 : 0.4);
+      if (h.point > 0.01) {                             // the pointing gesture: the hand turns to aim along the finger
+        lookM.lookAt(zero, vis, up); qa.setFromRotationMatrix(lookM);
+        root.quaternion.slerp(qa, h.point);
+      }
+      const curl = 0.18 + h.grip * 1.25, pt = h.point;
+      h.tick += ((pointing && h.ticklish ? 1 : 0) - h.tick) * Math.min(1, dt * 14);
+      const wig = performance.now() / 1000 * 16;
+      h.rig.fingers.forEach(([a, b], i) => {
+        const open = -(curl * (0.9 + 0.08 * i)), openTip = -(curl * 0.9);
+        let goA = i === 0 ? -0.02 : -1.45, goB = i === 0 ? -0.02 : -1.2;   // index straight, the others curled into the palm
+        if (pinching && i === 0) { goA = -(0.3 + 0.55 * h.pinch); goB = -(0.25 + 0.55 * h.pinch); }   // index curls round to meet the thumb
+        // tickling: every finger out and wiggling
+        goA += (-0.12 + Math.sin(wig + i * 1.4) * 0.5 - goA) * h.tick; goB += (-0.1 + Math.sin(wig + i * 1.4 + 0.8) * 0.45 - goB) * h.tick;
+        a.rotation.x = open + (goA - open) * pt; b.rotation.x = openTip + (goB - openTip) * pt;
+      });
+      h.rig.thumb[0].rotation.x = -curl * 0.35 + (-0.7 + curl * 0.35) * pt; h.rig.thumb[1].rotation.x = -curl * 0.5 + (-0.7 + curl * 0.5) * pt;
+      if (pinching) {                                  // the thumb comes round to meet the index finger
+        const fl = h === hl ? -1 : 1;
+        h.rig.thumb[0].rotation.x = -0.15 - 0.3 * h.pinch; h.rig.thumb[0].rotation.y = (0.7 + 0.55 * h.pinch) * fl; h.rig.thumb[1].rotation.x = -(0.2 + 0.35 * h.pinch);
+      } else { h.rig.thumb[0].rotation.y = 0.7 * (h === hl ? -1 : 1); }
+      if ((pointing || pinching) && h.tipGoal) {        // rest the fingertip on the goal: move the hand so the tip lands there
+        root.updateMatrixWorld(true);
+        tipW.copy(tipL).applyMatrix4(h.rig.fingers[0][1].matrixWorld);
+        h.pos.lerp(tmp.copy(h.tipGoal).sub(tipW).add(h.pos), Math.min(1, dt * 14));
+        root.position.copy(h.pos);
+      }
+      if (h.jab >= 0) {                                 // a jab: the finger stabs forward and comes back; the poke lands at the far end
+        h.jab += dt;
+        const u = h.jab / JAB, peak = 0.45;
+        const k = u < peak ? u / peak : 1 - (u - peak) / (1 - peak);
+        root.position.addScaledVector(vis, 0.06 * s * Math.max(0, k));
+        if (!h.fired && u >= peak) {
+          h.fired = true;
+          root.updateMatrixWorld(true);
+          tipW.copy(tipL).applyMatrix4(h.rig.fingers[0][1].matrixWorld);
+          opts.onPoke?.(tipW.clone().addScaledVector(h.aim, -0.06 * s), h.aim.clone(), h === hl ? "left" : "right");
+        }
+        if (u >= 1) { h.jab = -1; h.fired = false; }
+      }
+      if (!pointing && h.jab >= 0) { h.jab = -1; h.fired = false; }
+      if (pointing && h.ticklish && h.jab < 0) {       // tickling: report the fingertip every frame
+        root.updateMatrixWorld(true);
+        tipW.copy(tipL).applyMatrix4(h.rig.fingers[0][1].matrixWorld);
+        opts.onTickle?.(tipW.clone().addScaledVector(h.aim, -0.04 * s), h.aim.clone(), h === hl ? "left" : "right", Math.min(1, 0.45 + h.vel.length() / (0.9 * s)));
+      }
       // contact with the head (ears and hair included: the sphere is a little generous)
-      const d = h.pos.distanceTo(head);
+      // pinching: the pinch closing on her picks her up; opening it puts her down
+      if (pinching) {
+        root.updateMatrixWorld(true);
+        tipW.copy(tipL).applyMatrix4(h.rig.fingers[0][1].matrixWorld);
+        if (h.pinchGoal === 0) { h.grabTried = false; if (hold.hand === h) { hold.hand = null; opts.onDrop?.(); } }
+        else if (h.pinch > 0.85 && !hold.hand && !h.grabTried) {
+          h.grabTried = true;
+          if (opts.onGrab?.(tipW.clone().addScaledVector(h.aim, -0.05 * s), h.aim.clone(), tipW.clone())) {
+            hold.hand = h; camera.getWorldDirection(tmp); hold.depth = tipW.clone().sub(camera.position).dot(tmp);
+          }
+        }
+        if (hold.hand === h) opts.onCarry?.(tipW.clone());
+      } else if (hold.hand === h) { hold.hand = null; opts.onDrop?.(); }
+      const d = pointing || pinching ? 1e9 : h.pos.distanceTo(head);
       const reachR = 0.15 * s + 0.045 * s;
       const t = THREE.MathUtils.clamp(1 - d / reachR, 0, 1);
       h.touch += (t - h.touch) * Math.min(1, dt * 14);
@@ -199,10 +344,20 @@ export function createHands(opts: {
     get enabled() { return enabled; },
     set enabled(v: boolean) { enabled = v; if (!v) { ptr.active = false; ptr.down = false; } },
     get usingGamepad() { return padActive; },
+    /** pointing fingers (poke) or open hands (pet) */
+    get pointing() { return pointing; },
+    set pointing(v: boolean) { pointing = v; if (v) pinching = false; },
+    /** open hands (pet), pointing fingers (poke and tickle), or a pinch (pick her up) */
+    get tool(): "pet" | "point" | "pinch" { return pinching ? "pinch" : pointing ? "point" : "pet"; },
+    set tool(v: "pet" | "point" | "pinch") { pointing = v === "point"; pinching = v === "pinch"; },
+    get holding() { return !!hold.hand; },
+    /** Jab a finger now (tests, and the on-screen button). */
+    jab(hand: "left" | "right" = "right") { if (pointing) startJab(hand === "left" ? hl : hr); },
     dispose() {
       dom.removeEventListener("pointermove", onMove);
       dom.removeEventListener("pointerdown", onDown);
-      dom.removeEventListener("pointerup", onUp);
+      dom.removeEventListener("pointerup", onRelease);
+      dom.removeEventListener("wheel", onWheel);
       dom.removeEventListener("pointercancel", onUp);
       scene.remove(group);
       group.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.geometry.dispose(); });

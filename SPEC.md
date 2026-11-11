@@ -141,6 +141,18 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   applied with CSS, so the original image is untouched.
 - **Notes** and **lorebooks** are per profile. Backups carry all of it (rooms, music, packs and their per-chat state, notes, folders, lorebooks, framing).
 
+## Hands: pet, poke, tickle, pick up
+
+- Three gestures share the virtual hands: open (pet), pointing finger (poke, hold to tickle) and pinch (pick up). Where a poke lands is found from simple body proxies
+  (spheres along her skeleton), not the mesh, so it is the same for every model and costs nothing per frame. Only ordinary regions react (face, ears, shoulders, arms,
+  hands, back); anywhere else she just looks puzzled.
+- Reactions are additive poses and expressions applied after the NPC pose each frame, so they work whatever she was doing. Tickling builds a laugh level; a tickle during
+  the stretch plan ends the stretch and jumps straight to full laughter.
+- Pick-up: the scruff follows the fingertips (a spring), the body hangs from it as a damped pendulum driven by the hand's acceleration, then free-falls with cartoon
+  gravity, squashes, and is placed on the floor (clamped to the room and out of the furniture). The NPC is paused while she is carried and resumes after.
+- Controllers are read through the standard Gamepad layout (buttons by position). Bindings are per device in local storage; labels come from the pad's vendor (Xbox, PlayStation,
+  Nintendo, Steam).
+
 ## Status
 
 v0.3.0 adds a real 3D viewer for VRM / VRoid models (room, idle life, physics, hands, wardrobe) and voice input. v0.2.0 added local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.
