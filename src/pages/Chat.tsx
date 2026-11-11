@@ -4,6 +4,9 @@ import {
 } from "../api";
 import Art from "../components/Art";
 import MicButton from "../components/MicButton";
+import MechanicsPanel from "../components/MechanicsPanel";
+import PhoneView from "../components/PhoneView";
+import { hideDirectives, roomBackground, kindLabel } from "../lib/rooms";
 import { makeWardrobe } from "../components/WardrobePanel";
 import type { Speech } from "../components/SpeechBubble";
 import { Modal, useToast } from "../components/ui";
@@ -29,7 +32,7 @@ function Avatar({ c, name }: { c?: Character; name: string }) {
 }
 
 export default function ChatPage({ initialChatId }: { initialChatId?: number }) {
-  const { chats, dorms, characters, settings, go, refresh, modelCount } = useStore();
+  const { chats, dorms, rooms, characters, settings, go, refresh, modelCount } = useStore();
   const toast = useToast();
   const [selected, setSelected] = useState<number | null>(initialChatId ?? chats[0]?.id ?? null);
   const [msgs, setMsgs] = useState<Message[]>([]);
@@ -40,7 +43,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
   const [replyAs, setReplyAs] = useState<string>("");
   const [focus, setFocus] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
-  const [modal, setModal] = useState<null | { type: "chat"; dormId: number | null } | { type: "dorm" } | { type: "who" }>(null);
+  const [modal, setModal] = useState<null | { type: "chat"; dormId: number | null } | { type: "dorm" } | { type: "who" } | { type: "mech" } | { type: "dormroom"; dormId: number }>(null);
   const [listOpen, setListOpen] = useState(false);
   const [optsOpen, setOptsOpen] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
@@ -50,6 +53,9 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
   const byId = useMemo(() => new Map(characters.map((c) => [c.id, c])), [characters]);
   const chat = chats.find((c) => c.id === selected) ?? null;
   const members = useMemo(() => (chat?.character_ids ?? []).map((i) => byId.get(i)).filter(Boolean) as Character[], [chat, byId]);
+  const room = useMemo(() => { const d = dorms.find((x) => x.id === chat?.dorm_id); return d?.room_id != null ? rooms.find((r) => r.id === d.room_id) ?? null : null; }, [chat, dorms, rooms]);
+  const roomBg = roomBackground(room);
+  const phone = chat?.style === "phone";
   const stageChar = (focus && byId.get(focus)) || members[0] || null;
 
   // load messages when switching chats
@@ -181,6 +187,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
             <h4>
               <span>🏠 {d.name}</span>
               <span>
+                <button className="btn ghost sm" title="Set this dorm in a room" aria-label={`Room for ${d.name}`} onClick={() => setModal({ type: "dormroom", dormId: d.id })}>🛋️</button>
                 <button className="btn ghost sm" title="New channel in this dorm" onClick={() => setModal({ type: "chat", dormId: d.id })}>＋</button>
                 <button className="btn ghost sm" title="Delete dorm" onClick={async () => { if (window.confirm(`Delete the dorm "${d.name}" and its channels?`)) { await api.deleteDorm(d.id); await refresh(); } }}>🗑</button>
               </span>
@@ -194,7 +201,8 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
         {!(grouped.get(null) ?? []).length && <div className="hint" style={{ padding: "0 10px" }}>Nothing here yet</div>}
       </aside>
 
-      <section className="chatmain">
+      <section className={`chatmain${roomBg ? " has-room" : ""}`}>
+        {roomBg && <div className="room-bg" style={{ background: roomBg }} aria-hidden="true" data-room={room?.name} />}
         {!chat ? (
           <div className="page" style={{ margin: "auto", textAlign: "center" }}>
             <h2>Welcome to the dorms</h2>
@@ -209,7 +217,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               <button className="btn sm only-mobile" onClick={() => setListOpen(true)} aria-label="Chats">☰</button>
               <div>
                 <h3>{KIND_ICON[chat.kind]} {chat.name}</h3>
-                <div className="tok">{members.map((m) => displayName(m)).join(", ") || "No characters"}</div>
+                <div className="tok">{members.map((m) => displayName(m)).join(", ") || "No characters"}{room ? <> · <button className="linklike" onClick={() => go({ page: "rooms", edit: room.id })} title={`${kindLabel(room.kind)} — edit this room`}>🛋️ {room.name}</button></> : null}</div>
               </div>
               <div className="grow" />
               <button className="btn sm only-mobile" onClick={() => setOptsOpen((o) => !o)} aria-label="Chat options" aria-expanded={optsOpen}>⋯</button>
@@ -235,12 +243,17 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                   </select>
                 </>
               )}
+              <button className={`btn sm ${phone ? "primary" : ""}`} aria-pressed={phone} onClick={() => patchChat({ style: phone ? "chat" : "phone" })} title="Switch between the normal chat and a texting view">📱 Phone</button>
+              <button className="btn sm" onClick={() => setModal({ type: "mech" })} title="Optional story layers: affection, status, and more">🧩 Mechanics</button>
               <button className="btn sm" onClick={() => setModal({ type: "who" })}>👥 Who's here</button>
               <button className="btn sm" onClick={async () => { if (window.confirm("Clear every message in this chat?")) { await api.clearChat(chat.id); setMsgs([]); } }}>Clear</button>
               <button className="btn sm danger" onClick={deleteChat}>Delete</button>
               </div>
             </header>
 
+            {phone ? (
+              <PhoneView msgs={msgs} live={live} members={members} userName={settings.user_name} busy={busy} text={text} setText={setText} send={send} stop={stop} nameOf={nameOf} onExit={() => patchChat({ style: "chat" })} />
+            ) : (<>
             <div className="msgs" ref={scroller}>
               {msgs.length === 0 && !live && <div className="empty">{chat.kind === "channel" ? "A quiet channel. Say something, or press Next to let a character start." : "No messages yet."}</div>}
               {msgs.filter((m) => m.role !== "system").map((m, idx, arr) => {
@@ -249,7 +262,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                 const saved = m.swipes[m.swipe_index] ?? m.swipes[m.swipes.length - 1] ?? "";
                 // while a continuation streams, show it growing inside this message
                 const extending = live?.continueOf === m.id;
-                const body = extending ? saved + (saved && live.text && !/\s$/.test(saved) && !/^\s/.test(live.text) ? " " : "") + live.text : saved;
+                const body = extending ? saved + (saved && live.text && !/\s$/.test(saved) && !/^\s/.test(live.text) ? " " : "") + hideDirectives(live.text) : saved;
                 return (
                   <div className={`msg ${m.role}`} key={m.id}>
                     <Avatar c={c} name={nameOf(m)} />
@@ -287,7 +300,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                   <Avatar c={byId.get(live.characterId)} name={byId.get(live.characterId)?.card.name ?? "?"} />
                   <div>
                     <div className="who">{byId.get(live.characterId)?.card.name ?? "…"}</div>
-                    {live.text ? <div className="txt">{renderText(live.text)}</div>
+                    {live.text ? <div className="txt">{renderText(hideDirectives(live.text))}</div>
                       : <div className="typing">{live.phase === "loading" ? "Waking up the model…" : "typing…"}</div>}
                   </div>
                 </div>
@@ -315,6 +328,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                 {busy ? <button className="btn danger" onClick={stop}>■ Stop</button> : <button className="btn primary" onClick={send} disabled={!text.trim() && chat.kind === "dm"}>Send</button>}
               </div>
             </div>
+            </>)}
           </>
         )}
       </section>
@@ -324,7 +338,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
           <>
             <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "")} kind={stageChar.media?.kind ?? null} url={mediaUrl(stageChar)} name={displayName(stageChar)} mode="full" attentive={busy || listening || text.trim().length > 0}
               wardrobe={makeWardrobe(stageChar, () => void refresh(), toast)}
-              speech={speech && speech.characterId === stageChar.id ? speech : null}
+              speech={speech && speech.characterId === stageChar.id ? { ...speech, text: hideDirectives(speech.text) } : null}
               talk={{ draft: text, setDraft: setText, send: (t) => void sendText(t), busy, onHeard: heard, onListening: setListening }} /></div>
             <div>
               <h3>{displayName(stageChar)}</h3>
@@ -345,6 +359,8 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
         ) : <div className="hint">Characters in this chat show up here.</div>}
       </aside>
 
+      {modal?.type === "mech" && chat && <MechanicsPanel chatId={chat.id} onClose={() => setModal(null)} />}
+      {modal?.type === "dormroom" && <DormRoom dormId={modal.dormId} onClose={() => setModal(null)} />}
       {modal?.type === "dorm" && <NewDorm onClose={() => setModal(null)} onDone={refresh} />}
       {modal?.type === "chat" && (
         <NewChat dormId={modal.dormId} onClose={() => setModal(null)}
@@ -378,15 +394,43 @@ function CharacterPicker({ value, onChange, single }: { value: string[]; onChang
   );
 }
 
+function RoomSelect({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
+  const { rooms, go } = useStore();
+  return (
+    <div className="row" style={{ marginTop: 10 }}>
+      <select value={value ?? ""} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)} aria-label="Room" style={{ flex: 1 }}>
+        <option value="">No room (no setting)</option>
+        {rooms.map((r) => <option key={r.id} value={r.id}>🛋️ {r.name}</option>)}
+      </select>
+      <button className="btn sm" onClick={() => go({ page: "rooms", edit: "new" })}>＋ New room</button>
+    </div>
+  );
+}
+
+function DormRoom({ dormId, onClose }: { dormId: number; onClose: () => void }) {
+  const { dorms, refresh } = useStore();
+  const d = dorms.find((x) => x.id === dormId);
+  const [room, setRoom] = useState<number | null>(d?.room_id ?? null);
+  return (
+    <Modal title={`Room for ${d?.name ?? "dorm"}`} onClose={onClose}>
+      <p className="sub">The room's description tells the characters where they are, and its backdrop shows behind every chat in this dorm.</p>
+      <RoomSelect value={room} onChange={setRoom} />
+      <div className="row" style={{ marginTop: 14 }}><button className="btn primary" onClick={async () => { await api.setDormRoom(dormId, room); await refresh(); onClose(); }}>Save</button></div>
+    </Modal>
+  );
+}
+
 function NewDorm({ onClose, onDone }: { onClose: () => void; onDone: () => Promise<void> }) {
   const [name, setName] = useState("");
+  const [room, setRoom] = useState<number | null>(null);
   return (
     <Modal title="New dorm" onClose={onClose}>
       <p className="sub">A dorm is a space with its own channels, like a Discord server.</p>
       <input type="text" autoFocus placeholder="Maple Hall, 3rd floor…" value={name} onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && name.trim() && api.createDorm(name).then(onDone).then(onClose)} />
+        onKeyDown={(e) => e.key === "Enter" && name.trim() && api.createDorm(name, room).then(onDone).then(onClose)} />
+      <RoomSelect value={room} onChange={setRoom} />
       <div className="row" style={{ marginTop: 14 }}>
-        <button className="btn primary" disabled={!name.trim()} onClick={() => api.createDorm(name).then(onDone).then(onClose)}>Create dorm</button>
+        <button className="btn primary" disabled={!name.trim()} onClick={() => api.createDorm(name, room).then(onDone).then(onClose)}>Create dorm</button>
       </div>
     </Modal>
   );

@@ -74,7 +74,26 @@ export interface Character {
   trusted: boolean;
 }
 
-export interface Dorm { id: number; name: string; created_at: number }
+export interface Dorm { id: number; name: string; created_at: number; room_id?: number | null }
+
+export type RoomKind = "living_room" | "bedroom" | "kitchen" | "bathroom" | "dining_room" | "games_room" | "office" | "garage" | "garden" | "balcony" | "basement" | "rooftop" | "other";
+export interface Room {
+  id: number; name: string; kind: RoomKind; description: string;
+  owner_kind: "character" | "self"; character_id: string | null;
+  /** "" | "preset:<key>" | "file:<path>" */
+  backdrop: string; created_at: number;
+  /** absolute path of an uploaded backdrop (use roomBackdrop() to turn it into something drawable) */
+  backdrop_path?: string | null;
+}
+
+export interface MechanicVar { id: string; name: string; kind: string; min: number | null; max: number | null; description: string }
+export interface MechanicPack {
+  id: string; name: string; description: string; tags: string[];
+  /** which built-in panel shows it */
+  app: "relations" | "status" | "phone" | "vars";
+  variables: MechanicVar[]; entries: number; reactions: number; has_ui: boolean;
+}
+export interface ChatMechanic { mech_id: string; enabled: boolean; state: Record<string, any> }
 export type ChatKind = "dm" | "group" | "channel";
 export type TurnMode = "round_robin" | "random" | "mention";
 export interface Chat {
@@ -89,6 +108,8 @@ export interface Chat {
   max_auto_turns: number;
   created_at: number;
   updated_at: number;
+  /** chat | phone (shown and written as texting) */
+  style?: "chat" | "phone";
 }
 export interface Message {
   id: number;
@@ -221,7 +242,27 @@ export const api = {
   },
   // dorms & chats
   listDorms: () => invoke<Dorm[]>("list_dorms"),
-  createDorm: (name: string) => invoke<Dorm>("create_dorm", { name }),
+  createDorm: (name: string, roomId: number | null = null) => invoke<Dorm>("create_dorm", { name, roomId }),
+  setDormRoom: (id: number, roomId: number | null) => invoke<void>("set_dorm_room", { id, roomId }),
+  // rooms
+  listRooms: () => invoke<Room[]>("list_rooms"),
+  createRoom: (room: Omit<Room, "id" | "created_at" | "backdrop_path">) => invoke<Room>("create_room", { room: { ...room, id: 0, created_at: 0 } }),
+  updateRoom: (room: Room) => invoke<Room>("update_room", { room }),
+  deleteRoom: (id: number) => invoke<void>("delete_room", { id }),
+  async setRoomBackdrop(id: number, file: File): Promise<Room> {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return bin("set_room_backdrop", bytes, { "x-room-id": String(id), "x-file-name": enc(file.name) });
+  },
+  // mechanic packs
+  listMechanics: () => invoke<MechanicPack[]>("list_mechanics"),
+  async importMechanic(file: File): Promise<MechanicPack> {
+    return bin("import_mechanic", new Uint8Array(await file.arrayBuffer()), {});
+  },
+  deleteMechanic: (id: string) => invoke<void>("delete_mechanic", { id }),
+  chatMechanics: (chatId: number) => invoke<ChatMechanic[]>("chat_mechanics", { chatId }),
+  setChatMechanic: (chatId: number, mechId: string, enabled: boolean) => invoke<ChatMechanic[]>("set_chat_mechanic", { chatId, mechId, enabled }),
+  resetChatMechanic: (chatId: number, mechId: string) => invoke<ChatMechanic[]>("reset_chat_mechanic", { chatId, mechId }),
+  setChatVariable: (chatId: number, mechId: string, path: string, value: unknown) => invoke<ChatMechanic[]>("set_chat_variable", { chatId, mechId, path, value }),
   renameDorm: (id: number, name: string) => invoke<void>("rename_dorm", { id, name }),
   deleteDorm: (id: number) => invoke<void>("delete_dorm", { id }),
   listChats: () => invoke<Chat[]>("list_chats"),
@@ -286,11 +327,14 @@ export const api = {
 
 export const onGen = (cb: (e: GenEvent) => void): Promise<UnlistenFn> =>
   listen<GenEvent>("dorms://gen", (ev) => cb(ev.payload));
+export const onMechanics = (cb: (e: { chat_id: number }) => void): Promise<UnlistenFn> =>
+  listen("dorms://mechanics", (ev) => cb(ev.payload as { chat_id: number }));
 export const onModelProgress = (cb: (e: ModelProgress) => void): Promise<UnlistenFn> =>
   listen<ModelProgress>("dorms://model-progress", (ev) => cb(ev.payload));
 export const onAutoStopped = (cb: (e: { chat_id: number; reason: string }) => void): Promise<UnlistenFn> =>
   listen("dorms://auto-stopped", (ev) => cb(ev.payload as { chat_id: number; reason: string }));
 
+export const roomBackdrop = (r: { backdrop_path?: string | null }) => (r.backdrop_path ? convertFileSrc(r.backdrop_path) : null);
 export const mediaUrl = (c: { media_path: string | null }) => (c.media_path ? convertFileSrc(c.media_path) : null);
 
 // ---- card helpers -------------------------------------------------------

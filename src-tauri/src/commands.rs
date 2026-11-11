@@ -19,12 +19,12 @@ type R<T> = Result<T, String>;
 /// Largest card file we will parse (cards are normally well under 5 MB).
 const MAX_CARD_BYTES: usize = 64 * 1024 * 1024;
 
-fn e<E: std::fmt::Display>(err: E) -> String {
+pub(crate) fn e<E: std::fmt::Display>(err: E) -> String {
     err.to_string()
 }
 
 /// Whose data this session may touch. `None` is the guest space. Chosen by signing in, never by the web view.
-fn owner(st: &AppState) -> R<db::Owner> {
+pub(crate) fn owner(st: &AppState) -> R<db::Owner> {
     let s = st.session.lock().unwrap();
     if s.chosen { Ok(s.profile.clone()) } else { Err("Pick a profile first.".into()) }
 }
@@ -37,11 +37,11 @@ fn skey(o: &db::Owner, name: &str) -> String {
     }
 }
 
-fn uid() -> String {
+pub(crate) fn uid() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
-fn emit(st: &AppState, event: &str, payload: serde_json::Value) {
+pub(crate) fn emit(st: &AppState, event: &str, payload: serde_json::Value) {
     let _ = st.app.emit(event, payload);
 }
 
@@ -98,14 +98,14 @@ fn out(st: &AppState, c: Character) -> CharacterOut {
     CharacterOut { c, media_path, outfit_paths }
 }
 
-fn raw_body<'a>(req: &'a Request<'_>) -> R<&'a [u8]> {
+pub(crate) fn raw_body<'a>(req: &'a Request<'_>) -> R<&'a [u8]> {
     match req.body() {
         InvokeBody::Raw(b) => Ok(b.as_slice()),
         _ => Err("Expected a binary payload".into()),
     }
 }
 
-fn header(req: &Request<'_>, name: &str) -> String {
+pub(crate) fn header(req: &Request<'_>, name: &str) -> String {
     let raw = req.headers().get(name).and_then(|v| v.to_str().ok()).unwrap_or("");
     // header values are percent-encoded by the frontend (file names may be non-ASCII)
     let b = raw.as_bytes();
@@ -421,8 +421,8 @@ pub fn list_dorms(state: State<'_, Shared>) -> R<Vec<Dorm>> {
 }
 
 #[tauri::command]
-pub fn create_dorm(state: State<'_, Shared>, name: String) -> R<Dorm> {
-    db::create_dorm(&state.db.lock().unwrap(), name.trim(), &owner(&state)?).map_err(e)
+pub fn create_dorm(state: State<'_, Shared>, name: String, room_id: Option<i64>) -> R<Dorm> {
+    db::create_dorm(&state.db.lock().unwrap(), name.trim(), room_id, &owner(&state)?).map_err(e)
 }
 
 #[tauri::command]
@@ -501,7 +501,9 @@ pub fn add_user_message(state: State<'_, Shared>, chat_id: i64, text: String) ->
     let o = owner(&state)?;
     let db = state.db.lock().unwrap();
     db::get_chat(&db, chat_id, &o).map_err(e)?.ok_or("Chat not found")?;
-    db::add_message(&db, chat_id, "user", None, &[text]).map_err(e)
+    let m = db::add_message(&db, chat_id, "user", None, &[text.clone()]).map_err(e)?;
+    crate::extras::on_user_message(&state, &db, chat_id, &o, &text);
+    Ok(m)
 }
 
 #[tauri::command]
@@ -924,6 +926,12 @@ async fn run_generation(
         .collect();
     emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "loading", "continue_of": cont }));
     let (endpoint, context_tokens) = resolve_endpoint(st, o, &settings).await?;
+    // the room, the texting style and the switched-on packs
+    let extra = {
+        let db = st.db.lock().unwrap();
+        let recent: String = history.iter().rev().take(6).map(|m| m.content()).collect::<Vec<_>>().join("\n");
+        crate::extras::extra_system(&db, &chat, o, &recent)
+    };
     let ps = PromptSettings {
         user_name: settings.user_name.clone(),
         user_description: settings.user_description.clone(),
@@ -942,6 +950,7 @@ async fn run_generation(
         settings: &ps,
         group: chat.kind != "dm",
         trusted: speaker_char.trusted,
+        extra_system: &extra,
     });
     emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "start", "continue_of": cont }));
 
@@ -958,6 +967,12 @@ async fn run_generation(
         if t.starts_with(&prefix) { t[prefix.len()..].trim_start().to_string() } else { full.clone() }
     } else {
         clean_reply(&full, &speaker_char.card.name)
+    };
+    // hidden [variable: add 3] lines of any switched-on mechanic pack are taken out and applied
+    let text = {
+        let db = st.db.lock().unwrap();
+        let turns = db::list_messages(&db, chat_id).map(|m| m.iter().filter(|x| x.role == "character").count() as u64).unwrap_or(0) + u64::from(target.is_none());
+        crate::extras::after_reply(st, &db, chat_id, o, &text, turns)
     };
     if text.trim().is_empty() {
         return Err("The model returned an empty reply. Try again, or raise the max length in Settings.".into());

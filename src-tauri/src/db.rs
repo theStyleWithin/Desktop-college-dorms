@@ -65,6 +65,43 @@ pub struct Dorm {
     pub id: i64,
     pub name: String,
     pub created_at: i64,
+    /// The room this dorm is set in (its description and backdrop belong to every chat in the dorm).
+    #[serde(default)]
+    pub room_id: Option<i64>,
+}
+
+/// A place: where a dorm happens. Made once, used by any number of dorms.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Room {
+    pub id: i64,
+    pub name: String,
+    /// living_room | bedroom | kitchen | … | other
+    pub kind: String,
+    pub description: String,
+    /// character | self
+    pub owner_kind: String,
+    pub character_id: Option<String>,
+    /// "" | "preset:<key>" | "file:<name inside the data folder>"
+    pub backdrop: String,
+    pub created_at: i64,
+}
+
+/// A mechanic pack in the library (the imported .bundle.json, verbatim).
+#[derive(Serialize, Deserialize, Clone)]
+pub struct MechanicRow {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub json: String,
+    pub created_at: i64,
+}
+
+/// A pack's place in one chat: switched on or off, and the story state it keeps there.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ChatMechanic {
+    pub mech_id: String,
+    pub enabled: bool,
+    pub state: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -82,6 +119,13 @@ pub struct Chat {
     pub max_auto_turns: i64,
     pub created_at: i64,
     pub updated_at: i64,
+    /// chat | phone (the same conversation, shown and written as texting)
+    #[serde(default = "default_style")]
+    pub style: String,
+}
+
+fn default_style() -> String {
+    "chat".into()
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -240,8 +284,23 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
          CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS profiles(
             id TEXT PRIMARY KEY, handle TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL,
-            passcode_hash TEXT, created_at INTEGER NOT NULL, last_login INTEGER NOT NULL DEFAULT 0);",
+            passcode_hash TEXT, created_at INTEGER NOT NULL, last_login INTEGER NOT NULL DEFAULT 0);
+         CREATE TABLE IF NOT EXISTS rooms(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id TEXT, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'other',
+            description TEXT NOT NULL DEFAULT '', owner_kind TEXT NOT NULL DEFAULT 'self', character_id TEXT,
+            backdrop TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS mechanics(
+            id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+            json TEXT NOT NULL, created_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS chat_mechanics(
+            chat_id INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE, mech_id TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL DEFAULT '{}', PRIMARY KEY(chat_id, mech_id));",
     )?;
+    ensure_column(&conn, "dorms", "room_id", "INTEGER")?;
+    ensure_column(&conn, "chats", "style", "TEXT NOT NULL DEFAULT 'chat'")?;
+    for t in ["rooms", "mechanics"] {
+        conn.execute_batch(&format!("CREATE INDEX IF NOT EXISTS idx_{t}_profile ON {t}(profile_id);"))?;
+    }
     // Local profiles: everything a person owns carries their profile id. NULL is the guest space, which is
     // also where everything made before profiles existed lives, so upgrading loses nothing.
     for t in ["characters", "dorms", "chats"] {
@@ -303,16 +362,127 @@ pub fn delete_character(c: &Connection, id: &str, owner: &Owner) -> R<()> {
 // ----- dorms -----
 
 pub fn list_dorms(c: &Connection, owner: &Owner) -> R<Vec<Dorm>> {
-    let mut s = c.prepare("SELECT id,name,created_at FROM dorms WHERE profile_id IS ?1 ORDER BY id")?;
-    let rows = s.query_map([owner], |r| Ok(Dorm { id: r.get(0)?, name: r.get(1)?, created_at: r.get(2)? }))?;
+    let mut s = c.prepare("SELECT id,name,created_at,room_id FROM dorms WHERE profile_id IS ?1 ORDER BY id")?;
+    let rows = s.query_map([owner], |r| Ok(Dorm { id: r.get(0)?, name: r.get(1)?, created_at: r.get(2)?, room_id: r.get(3)? }))?;
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
-pub fn create_dorm(c: &Connection, name: &str, owner: &Owner) -> R<Dorm> {
+pub fn create_dorm(c: &Connection, name: &str, room_id: Option<i64>, owner: &Owner) -> R<Dorm> {
     let t = now();
-    c.execute("INSERT INTO dorms(name,created_at,profile_id) VALUES(?1,?2,?3)", params![name, t, owner])?;
-    Ok(Dorm { id: c.last_insert_rowid(), name: name.into(), created_at: t })
+    // a dorm may only be set in a room of the same profile
+    let room_id = match room_id {
+        Some(r) if get_room(c, r, owner)?.is_some() => Some(r),
+        _ => None,
+    };
+    c.execute("INSERT INTO dorms(name,created_at,profile_id,room_id) VALUES(?1,?2,?3,?4)", params![name, t, owner, room_id])?;
+    Ok(Dorm { id: c.last_insert_rowid(), name: name.into(), created_at: t, room_id })
 }
+
+pub fn set_dorm_room(c: &Connection, id: i64, room_id: Option<i64>, owner: &Owner) -> R<()> {
+    let room_id = match room_id {
+        Some(r) if get_room(c, r, owner)?.is_some() => Some(r),
+        _ => None,
+    };
+    c.execute("UPDATE dorms SET room_id=?2 WHERE id=?1 AND profile_id IS ?3", params![id, room_id, owner])?;
+    Ok(())
+}
+
+pub fn get_dorm(c: &Connection, id: i64, owner: &Owner) -> R<Option<Dorm>> {
+    c.query_row("SELECT id,name,created_at,room_id FROM dorms WHERE id=?1 AND profile_id IS ?2", params![id, owner], |r| {
+        Ok(Dorm { id: r.get(0)?, name: r.get(1)?, created_at: r.get(2)?, room_id: r.get(3)? })
+    })
+    .optional()
+}
+
+// ----- rooms -----
+
+fn row_room(r: &rusqlite::Row) -> R<Room> {
+    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)? })
+}
+const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at";
+
+pub fn list_rooms(c: &Connection, owner: &Owner) -> R<Vec<Room>> {
+    let mut s = c.prepare(&format!("SELECT {ROOM_COLS} FROM rooms WHERE profile_id IS ?1 ORDER BY id DESC"))?;
+    let rows = s.query_map([owner], row_room)?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_room(c: &Connection, id: i64, owner: &Owner) -> R<Option<Room>> {
+    c.query_row(&format!("SELECT {ROOM_COLS} FROM rooms WHERE id=?1 AND profile_id IS ?2"), params![id, owner], row_room).optional()
+}
+
+pub fn create_room(c: &Connection, r: &Room, owner: &Owner) -> R<Room> {
+    c.execute(
+        "INSERT INTO rooms(profile_id,name,kind,description,owner_kind,character_id,backdrop,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+        params![owner, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, now()],
+    )?;
+    Ok(get_room(c, c.last_insert_rowid(), owner)?.expect("just inserted"))
+}
+
+pub fn update_room(c: &Connection, r: &Room, owner: &Owner) -> R<()> {
+    c.execute(
+        "UPDATE rooms SET name=?2,kind=?3,description=?4,owner_kind=?5,character_id=?6,backdrop=?7 WHERE id=?1 AND profile_id IS ?8",
+        params![r.id, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, owner],
+    )?;
+    Ok(())
+}
+
+pub fn delete_room(c: &Connection, id: i64, owner: &Owner) -> R<()> {
+    c.execute("UPDATE dorms SET room_id=NULL WHERE room_id=?1 AND profile_id IS ?2", params![id, owner])?;
+    c.execute("DELETE FROM rooms WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
+// ----- mechanic packs -----
+
+pub fn list_mechanics(c: &Connection, owner: &Owner) -> R<Vec<MechanicRow>> {
+    let mut s = c.prepare("SELECT id,name,description,json,created_at FROM mechanics WHERE profile_id IS ?1 ORDER BY created_at, name")?;
+    let rows = s.query_map([owner], |r| Ok(MechanicRow { id: r.get(0)?, name: r.get(1)?, description: r.get(2)?, json: r.get(3)?, created_at: r.get(4)? }))?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_mechanic(c: &Connection, id: &str, owner: &Owner) -> R<Option<MechanicRow>> {
+    c.query_row("SELECT id,name,description,json,created_at FROM mechanics WHERE id=?1 AND profile_id IS ?2", params![id, owner], |r| {
+        Ok(MechanicRow { id: r.get(0)?, name: r.get(1)?, description: r.get(2)?, json: r.get(3)?, created_at: r.get(4)? })
+    })
+    .optional()
+}
+
+pub fn save_mechanic(c: &Connection, m: &MechanicRow, owner: &Owner) -> R<()> {
+    c.execute(
+        "INSERT INTO mechanics(id,profile_id,name,description,json,created_at) VALUES(?1,?2,?3,?4,?5,?6)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, json=excluded.json WHERE profile_id IS ?2",
+        params![m.id, owner, m.name, m.description, m.json, m.created_at],
+    )?;
+    Ok(())
+}
+
+pub fn delete_mechanic(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    if get_mechanic(c, id, owner)?.is_some() {
+        c.execute("DELETE FROM chat_mechanics WHERE mech_id=?1 AND chat_id IN (SELECT id FROM chats WHERE profile_id IS ?2)", params![id, owner])?;
+        c.execute("DELETE FROM mechanics WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    }
+    Ok(())
+}
+
+pub fn list_chat_mechanics(c: &Connection, chat_id: i64) -> R<Vec<ChatMechanic>> {
+    let mut s = c.prepare("SELECT mech_id,enabled,state FROM chat_mechanics WHERE chat_id=?1 ORDER BY rowid")?;
+    let rows = s.query_map([chat_id], |r| {
+        let st: String = r.get(2)?;
+        Ok(ChatMechanic { mech_id: r.get(0)?, enabled: r.get::<_, i64>(1)? != 0, state: serde_json::from_str(&st).unwrap_or_default() })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn save_chat_mechanic(c: &Connection, chat_id: i64, m: &ChatMechanic) -> R<()> {
+    c.execute(
+        "INSERT INTO chat_mechanics(chat_id,mech_id,enabled,state) VALUES(?1,?2,?3,?4)
+         ON CONFLICT(chat_id,mech_id) DO UPDATE SET enabled=excluded.enabled, state=excluded.state",
+        params![chat_id, m.mech_id, m.enabled as i64, serde_json::to_string(&m.state).unwrap_or_else(|_| "{}".into())],
+    )?;
+    Ok(())
+}
+
 
 pub fn rename_dorm(c: &Connection, id: i64, name: &str, owner: &Owner) -> R<()> {
     c.execute("UPDATE dorms SET name=?2 WHERE id=?1 AND profile_id IS ?3", params![id, name, owner])?;
@@ -340,10 +510,11 @@ fn row_chat(r: &rusqlite::Row) -> R<Chat> {
         max_auto_turns: r.get(8)?,
         created_at: r.get(9)?,
         updated_at: r.get(10)?,
+        style: r.get(11)?,
     })
 }
 
-const CHAT_COLS: &str = "id,dorm_id,name,kind,character_ids,auto_chat,auto_interval_s,turn_mode,max_auto_turns,created_at,updated_at";
+const CHAT_COLS: &str = "id,dorm_id,name,kind,character_ids,auto_chat,auto_interval_s,turn_mode,max_auto_turns,created_at,updated_at,style";
 
 pub fn list_chats(c: &Connection, owner: &Owner) -> R<Vec<Chat>> {
     let sql = format!("SELECT {CHAT_COLS} FROM chats WHERE profile_id IS ?1 ORDER BY updated_at DESC");
@@ -374,11 +545,12 @@ pub fn create_chat(c: &Connection, dorm_id: Option<i64>, name: &str, kind: &str,
 pub fn update_chat(c: &Connection, ch: &Chat, owner: &Owner) -> R<()> {
     c.execute(
         "UPDATE chats SET dorm_id=?2,name=?3,kind=?4,character_ids=?5,auto_chat=?6,auto_interval_s=?7,
-         turn_mode=?8,max_auto_turns=?9,updated_at=?10 WHERE id=?1 AND profile_id IS ?11",
+         turn_mode=?8,max_auto_turns=?9,updated_at=?10,style=?12 WHERE id=?1 AND profile_id IS ?11",
         params![
             ch.id, ch.dorm_id, ch.name, ch.kind,
             serde_json::to_string(&ch.character_ids).unwrap_or_default(),
-            ch.auto_chat as i64, ch.auto_interval_s.max(5), ch.turn_mode, ch.max_auto_turns.max(1), now(), owner
+            ch.auto_chat as i64, ch.auto_interval_s.max(5), ch.turn_mode, ch.max_auto_turns.max(1), now(), owner,
+            if ch.style == "phone" { "phone" } else { "chat" }
         ],
     )?;
     Ok(())
@@ -584,6 +756,8 @@ pub fn touch_login(c: &Connection, id: &str) -> R<()> {
 /// Remove everything a profile owns (chats take their messages with them) and, for a named profile, the
 /// profile itself. For the guest space this just empties it.
 pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM rooms WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM mechanics WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM chats WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM dorms WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM characters WHERE profile_id IS ?1", [owner])?;
@@ -596,7 +770,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
@@ -635,12 +809,51 @@ mod tests {
     }
 
     #[test]
+    fn rooms_and_packs_belong_to_their_owner_and_dorms_can_only_use_their_own_rooms() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0 };
+        let ra = create_room(&c, &room("A's kitchen"), &a).unwrap();
+        let rb = create_room(&c, &room("B's kitchen"), &b).unwrap();
+        assert_eq!(list_rooms(&c, &a).unwrap().len(), 1);
+        assert!(get_room(&c, rb.id, &a).unwrap().is_none(), "A can't read B's room by id");
+        let d = create_dorm(&c, "d", Some(rb.id), &a).unwrap();
+        assert_eq!(d.room_id, None, "a dorm can't be set in someone else's room");
+        let d = create_dorm(&c, "d2", Some(ra.id), &a).unwrap();
+        assert_eq!(d.room_id, Some(ra.id));
+        assert_eq!(list_dorms(&c, &a).unwrap()[1].room_id, Some(ra.id));
+        delete_room(&c, ra.id, &b).unwrap();
+        assert!(get_room(&c, ra.id, &a).unwrap().is_some(), "B can't delete A's room");
+        delete_room(&c, ra.id, &a).unwrap();
+        assert_eq!(list_dorms(&c, &a).unwrap()[1].room_id, None, "deleting a room frees its dorms");
+
+        let m = MechanicRow { id: "m1".into(), name: "Aff".into(), description: "".into(), json: "{}".into(), created_at: 1 };
+        save_mechanic(&c, &m, &a).unwrap();
+        assert!(list_mechanics(&c, &b).unwrap().is_empty());
+        assert!(get_mechanic(&c, "m1", &b).unwrap().is_none());
+        let chat = create_chat(&c, None, "c", "dm", &[], &a).unwrap();
+        save_chat_mechanic(&c, chat.id, &ChatMechanic { mech_id: "m1".into(), enabled: true, state: serde_json::Map::new() }).unwrap();
+        delete_mechanic(&c, "m1", &b).unwrap();
+        assert_eq!(list_chat_mechanics(&c, chat.id).unwrap().len(), 1, "B can't remove A's pack");
+        delete_mechanic(&c, "m1", &a).unwrap();
+        assert!(list_chat_mechanics(&c, chat.id).unwrap().is_empty());
+        // a chat's texting style survives an update and rejects nonsense
+        let mut ch = get_chat(&c, chat.id, &a).unwrap().unwrap();
+        ch.style = "phone".into();
+        update_chat(&c, &ch, &a).unwrap();
+        assert_eq!(get_chat(&c, chat.id, &a).unwrap().unwrap().style, "phone");
+        ch.style = "weird".into();
+        update_chat(&c, &ch, &a).unwrap();
+        assert_eq!(get_chat(&c, chat.id, &a).unwrap().unwrap().style, "chat");
+    }
+
+    #[test]
     fn every_kind_of_row_is_invisible_to_other_owners() {
         let c = fresh();
         let (a, b, guest) = (me("a"), me("b"), None);
         for o in [&a, &b, &guest] {
             save_character(&c, &ch(&format!("char-{}", o.clone().unwrap_or_else(|| "g".into())), "X"), o).unwrap();
-            let d = create_dorm(&c, "dorm", o).unwrap();
+            let d = create_dorm(&c, "dorm", None, o).unwrap();
             let chat = create_chat(&c, Some(d.id), "chat", "dm", &[], o).unwrap();
             add_message(&c, chat.id, "user", None, &["hi".into()]).unwrap();
         }
@@ -672,7 +885,7 @@ mod tests {
     #[test]
     fn a_chat_can_only_live_in_a_dorm_of_its_own_profile() {
         let c = fresh();
-        let d = create_dorm(&c, "A's dorm", &me("a")).unwrap();
+        let d = create_dorm(&c, "A's dorm", None, &me("a")).unwrap();
         let chat = create_chat(&c, Some(d.id), "x", "dm", &[], &me("b")).unwrap();
         assert_eq!(chat.dorm_id, None);
     }

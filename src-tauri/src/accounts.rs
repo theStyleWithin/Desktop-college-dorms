@@ -446,6 +446,21 @@ struct Data {
     dorms: Vec<Dorm>,
     chats: Vec<Chat>,
     messages: Vec<Message>,
+    /// Added in v0.4: files made by older versions don't have these.
+    #[serde(default)]
+    rooms: Vec<db::Room>,
+    #[serde(default)]
+    mechanics: Vec<db::MechanicRow>,
+    #[serde(default)]
+    chat_mechanics: Vec<ChatMechanicExport>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ChatMechanicExport {
+    chat_id: i64,
+    mech_id: String,
+    enabled: bool,
+    state: serde_json::Map<String, serde_json::Value>,
 }
 
 struct Parsed {
@@ -539,21 +554,27 @@ pub struct ExportInfo {
 }
 
 fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
-    let (characters, dorms, chats, messages, settings, profile) = {
+    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics) = {
         let db = st.db.lock().unwrap();
         let characters = db::list_characters(&db, o).map_err(e)?;
         let dorms = db::list_dorms(&db, o).map_err(e)?;
         let chats = db::list_chats(&db, o).map_err(e)?;
         let mut messages = vec![];
+        let mut chat_mechanics = vec![];
         for c in &chats {
             messages.extend(db::list_messages(&db, c.id).map_err(e)?);
+            for m in db::list_chat_mechanics(&db, c.id).map_err(e)? {
+                chat_mechanics.push(ChatMechanicExport { chat_id: c.id, mech_id: m.mech_id, enabled: m.enabled, state: m.state });
+            }
         }
+        let rooms = db::list_rooms(&db, o).map_err(e)?;
+        let mechanics = db::list_mechanics(&db, o).map_err(e)?;
         let settings = db::get_settings(&db, o);
         let profile = match o {
             Some(id) => db::get_profile(&db, id).map_err(e)?,
             None => None,
         };
-        (characters, dorms, chats, messages, settings, profile)
+        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics)
     };
     let mut chats = chats;
     for c in chats.iter_mut() {
@@ -604,6 +625,24 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
         c.outfits = keep;
         if let Some(cur) = &c.outfit { if !c.outfits.iter().any(|x| &x.id == cur) { c.outfit = None; } }
     }
+    // room backdrops travel with their rooms
+    let mut rooms = rooms;
+    for r in rooms.iter_mut() {
+        if let Some(f) = r.backdrop.strip_prefix("file:") {
+            let base = std::path::Path::new(f).file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+            match std::fs::read(st.data_dir.join(f)) {
+                Ok(bytes) if safe_media_name(&base) => {
+                    if seen.insert(base.clone()) {
+                        zip.start_file(format!("media/{base}"), stored).map_err(e)?;
+                        zip.write_all(&bytes).map_err(e)?;
+                        media_count += 1;
+                    }
+                    r.backdrop = format!("file:media/{base}");
+                }
+                _ => r.backdrop.clear(),
+            }
+        }
+    }
     let counts = Counts { characters: characters.len(), dorms: dorms.len(), chats: chats.len(), messages: messages.len(), media: media_count };
     let manifest = Manifest {
         format: EXPORT_FORMAT.into(),
@@ -616,7 +655,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     // API keys, passcodes and per-device model choices are deliberately not part of the file.
     let mut exported_settings = settings;
     exported_settings.local_model = String::new();
-    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages };
+    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics };
     zip.start_file("manifest.json", deflated).map_err(e)?;
     zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(e)?).map_err(e)?;
     zip.start_file("data.json", deflated).map_err(e)?;
@@ -713,7 +752,8 @@ fn remove_owner_data(st: &AppState, o: &Owner) -> R<()> {
     let (settings, media_files) = {
         let db = st.db.lock().unwrap();
         let settings = db::get_settings(&db, o);
-        let files: Vec<String> = db::list_characters(&db, o).map_err(e)?.into_iter().flat_map(|c| c.media.map(|m| m.file).into_iter().chain(c.outfits.into_iter().map(|x| x.file))).collect();
+        let mut files: Vec<String> = db::list_characters(&db, o).map_err(e)?.into_iter().flat_map(|c| c.media.map(|m| m.file).into_iter().chain(c.outfits.into_iter().map(|x| x.file))).collect();
+        files.extend(db::list_rooms(&db, o).map_err(e)?.into_iter().filter_map(|r| r.backdrop.strip_prefix("file:").map(str::to_string)));
         (settings, files)
     };
     end_session(st);
@@ -838,7 +878,7 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
 
         let mut dorm_map: HashMap<i64, i64> = HashMap::new();
         for d in &parsed.data.dorms {
-            let nd = db::create_dorm(&db, &d.name, &o).map_err(e)?;
+            let nd = db::create_dorm(&db, &d.name, None, &o).map_err(e)?;
             dorm_map.insert(d.id, nd.id);
         }
 
@@ -880,14 +920,54 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             db::save_character(&db, &c, &o).map_err(e)?;
         }
 
+        // rooms (after the characters, since a room can belong to one) and the dorms' place in them
+        let mut room_map: HashMap<i64, i64> = HashMap::new();
+        for (i, r) in parsed.data.rooms.iter().enumerate() {
+            let mut room = r.clone();
+            room.character_id = room.character_id.as_ref().and_then(|c| char_map.get(c).cloned());
+            if room.character_id.is_none() { room.owner_kind = "self".into(); }
+            let had_file = room.backdrop.starts_with("file:");
+            if had_file { room.backdrop.clear(); }
+            let mut nr = db::create_room(&db, &room, &o).map_err(e)?;
+            if let Some(base) = r.backdrop.strip_prefix("file:media/").filter(|b| had_file && safe_media_name(b)) {
+                if let Some(bytes) = parsed.media.get(base) {
+                    let ext = std::path::Path::new(base).extension().and_then(|x| x.to_str()).unwrap_or("png");
+                    if ["png", "jpg", "jpeg", "webp", "gif", "avif", "bmp"].contains(&ext.to_lowercase().as_str()) {
+                        let rel = format!("media/room-{}-{}-{i}.{ext}", nr.id, db::now());
+                        let abs = st.data_dir.join(&rel);
+                        std::fs::write(&abs, bytes).map_err(e)?;
+                        written.push(abs);
+                        nr.backdrop = format!("file:{rel}");
+                        db::update_room(&db, &nr, &o).map_err(e)?;
+                    }
+                }
+            } else if !had_file {
+                // a built-in scene: keep it
+                nr.backdrop = r.backdrop.clone();
+                db::update_room(&db, &nr, &o).map_err(e)?;
+            }
+            room_map.insert(r.id, nr.id);
+        }
+        for d in &parsed.data.dorms {
+            if let (Some(rid), Some(nd)) = (d.room_id.and_then(|r| room_map.get(&r)), dorm_map.get(&d.id)) {
+                db::set_dorm_room(&db, *nd, Some(*rid), &o).map_err(e)?;
+            }
+        }
+        let mut mech_map: HashMap<String, String> = HashMap::new();
+        for m in &parsed.data.mechanics {
+            let id = uid();
+            db::save_mechanic(&db, &db::MechanicRow { id: id.clone(), name: m.name.clone(), description: m.description.clone(), json: m.json.clone(), created_at: m.created_at }, &o).map_err(e)?;
+            mech_map.insert(m.id.clone(), id);
+        }
+
         let mut chat_map: HashMap<i64, i64> = HashMap::new();
         for ch in &parsed.data.chats {
             let ids: Vec<String> = ch.character_ids.iter().filter_map(|i| char_map.get(i).cloned()).collect();
             let dorm = ch.dorm_id.and_then(|d| dorm_map.get(&d).copied());
             db.execute(
-                "INSERT INTO chats(dorm_id,name,kind,character_ids,auto_chat,auto_interval_s,turn_mode,max_auto_turns,created_at,updated_at,profile_id)
-                 VALUES(?1,?2,?3,?4,0,?5,?6,?7,?8,?9,?10)",
-                rusqlite::params![dorm, ch.name, ch.kind, serde_json::to_string(&ids).unwrap_or_default(), ch.auto_interval_s.max(5), ch.turn_mode, ch.max_auto_turns.max(1), ch.created_at, ch.updated_at, pid],
+                "INSERT INTO chats(dorm_id,name,kind,character_ids,auto_chat,auto_interval_s,turn_mode,max_auto_turns,created_at,updated_at,profile_id,style)
+                 VALUES(?1,?2,?3,?4,0,?5,?6,?7,?8,?9,?10,?11)",
+                rusqlite::params![dorm, ch.name, ch.kind, serde_json::to_string(&ids).unwrap_or_default(), ch.auto_interval_s.max(5), ch.turn_mode, ch.max_auto_turns.max(1), ch.created_at, ch.updated_at, pid, if ch.style == "phone" { "phone" } else { "chat" }],
             )
             .map_err(e)?;
             chat_map.insert(ch.id, db.last_insert_rowid());
@@ -900,6 +980,12 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
                 rusqlite::params![chat, m.role, cid, serde_json::to_string(&m.swipes).unwrap_or_default(), m.swipe_index, m.created_at],
             )
             .map_err(e)?;
+        }
+
+        for cm in &parsed.data.chat_mechanics {
+            if let (Some(chat), Some(mid)) = (chat_map.get(&cm.chat_id), mech_map.get(&cm.mech_id)) {
+                db::save_chat_mechanic(&db, *chat, &db::ChatMechanic { mech_id: mid.clone(), enabled: cm.enabled, state: cm.state.clone() }).map_err(e)?;
+            }
         }
 
         let mut settings = parsed.data.settings.clone();

@@ -54,7 +54,7 @@ class Fake(BaseHTTPRequestHandler):
         seen["auth"] = self.headers.get("authorization"); seen["body"] = body
         seen["path"] = self.path; seen["headers"] = {k.lower(): v for k, v in self.headers.items()}
         self.send_response(200); self.send_header("content-type", "text/event-stream"); self.end_headers()
-        for piece in ["Hello ", "from ", "*the cloud*", "!"]:
+        for piece in seen.get("pieces") or ["Hello ", "from ", "*the cloud*", "!"]:
             self.wfile.write(("data: " + json.dumps({"choices": [{"delta": {"content": piece}}]}) + "\n\n").encode()); self.wfile.flush(); time.sleep(0.05)
         self.wfile.write(b"data: [DONE]\n\n")
 srv = HTTPServer(("127.0.0.1", 18999), Fake); threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -99,6 +99,17 @@ def invoke_bytes(cmd, args):
     r = d.execute_async_script("const done=arguments[arguments.length-1]; window.__TAURI_INTERNALS__.invoke(arguments[0], arguments[1]).then(v=>{const b=new Uint8Array(v);let s='';for(const x of b)s+=String.fromCharCode(x);done({ok:btoa(s)})}).catch(e=>done({err:String(e)}));", cmd, args)
     if "err" in r: raise RuntimeError(r["err"])
     return base64.b64decode(r["ok"])
+def invoke_file(cmd, path, headers):
+    b64 = base64.b64encode(open(path, "rb").read()).decode()
+    r = d.execute_async_script("const done=arguments[arguments.length-1];const b=Uint8Array.from(atob(arguments[0]),c=>c.charCodeAt(0));window.__TAURI_INTERNALS__.invoke(arguments[1], b, {headers:arguments[2]}).then(v=>done({ok:v})).catch(e=>done({err:String(e)}));", b64, cmd, headers)
+    if "err" in r: raise RuntimeError(r["err"])
+    return r["ok"]
+def inv_err_file(cmd, path, headers):
+    try: invoke_file(cmd, path, headers); return None
+    except RuntimeError as ex: return str(ex)
+def inv_err(cmd, args=None):
+    try: invoke(cmd, args); return None
+    except RuntimeError as ex: return str(ex)
 def nav(label):
     d.find_element(By.XPATH, f"//nav//button[contains(., '{label}')]").click(); time.sleep(0.4)
 def upload(paths, scope=None):
@@ -466,6 +477,122 @@ try:
           sent[0]["role"] == "system" and sent[-1]["role"] == "user" and all(a["role"] != b["role"] for a, b in zip(sent[1:], sent[2:])), str([m["role"] for m in sent]))
     check("lorebook/description/scenario reach the system prompt", "Edited scenario text" in sent[0]["content"] and "Sleepy RA" in sent[0]["content"])
     check("post-history/depth macros resolve with the user's name", "Sam" in json.dumps(sent))
+
+    # ---- rooms, mechanic packs and the texting style ------------------------------------------------------------------
+    def gen_and_wait(chat_id, pieces=None, n_before=None):
+        seen["pieces"] = pieces
+        n0 = len(invoke("list_messages", {"chatId": chat_id})) if n_before is None else n_before
+        invoke("generate", {"chatId": chat_id, "characterId": None, "regenerateMessageId": None, "continueMessageId": None})
+        for _ in range(40):
+            time.sleep(0.5)
+            if len(invoke("list_messages", {"chatId": chat_id})) > n0: break
+        seen["pieces"] = None
+        return invoke("list_messages", {"chatId": chat_id})
+    def sysprompt(): return seen["body"]["messages"][0]["content"]
+    room_in = {"name": "  Mira's loft  ", "kind": "bogus", "description": "A tiny loft with a crooked window and a very loud radiator.", "owner_kind": "character", "character_id": mira["id"], "backdrop": "file:media/../../etc/passwd"}
+    room = invoke("create_room", {"room": dict(room_in, id=0, created_at=0)})
+    check("a room is saved with a trimmed name, a safe kind and no smuggled backdrop path", room["name"] == "Mira's loft" and room["kind"] == "other" and room["backdrop"] == "", str(room))
+    check("an unnamed room is refused", "name" in (inv_err("create_room", {"room": dict(room_in, name="   ", id=0, created_at=0)}) or "").lower())
+    check("a character that doesn't exist can't own a room", invoke("create_room", {"room": dict(room_in, name="Ghost", character_id="nope", id=0, created_at=0)})["owner_kind"] == "self")
+    kit = invoke("update_room", {"room": dict(room, kind="living_room", backdrop="preset:lamplight")})
+    check("rooms can be edited and take a built-in backdrop", kit["kind"] == "living_room" and kit["backdrop"] == "preset:lamplight")
+    check("a room can't be given an arbitrary file as its backdrop", invoke("update_room", {"room": dict(kit, backdrop="file:media/room-1-1.png")})["backdrop"] == "preset:lamplight")
+    check("a backdrop has to be an image", "image" in (inv_err_file("set_room_backdrop", os.path.join(FIX, "loose.json"), {"x-room-id": str(room["id"]), "x-file-name": "loose.json"}) or "").lower())
+    kit = invoke_file("set_room_backdrop", os.path.join(FIX, "avatar.gif"), {"x-room-id": str(room["id"]), "x-file-name": "avatar.gif"})
+    check("an uploaded backdrop is stored in the app's media folder", kit["backdrop"].startswith("file:media/room-") and os.path.exists(kit["backdrop_path"]), str(kit))
+    dorm_r = invoke("create_dorm", {"name": "Loft dorm", "roomId": room["id"]})
+    check("a dorm can be set in a room", dorm_r["room_id"] == room["id"] and [x for x in invoke("list_dorms") if x["id"] == dorm_r["id"]][0]["room_id"] == room["id"])
+    check("a dorm set in a room that doesn't exist just has none", invoke("create_dorm", {"name": "x", "roomId": 99999})["room_id"] is None)
+    chat_r = invoke("create_chat", {"dormId": dorm_r["id"], "name": "loft chat", "kind": "dm", "characterIds": [mira["id"]]})
+    invoke("add_user_message", {"chatId": chat_r["id"], "text": "hello there"}); gen_and_wait(chat_r["id"])
+    check("the room's name, kind and description reach the system prompt", "Setting: Mira's loft" in sysprompt() and "a living room" in sysprompt() and "crooked window" in sysprompt() and "own place" in sysprompt(), sysprompt()[-400:])
+    check("a chat outside any room gets no setting", "Setting:" not in (lambda: (gen_and_wait(chat2["id"]), sysprompt())[1])())
+
+    pack_json = json.dumps({"name": "Heartbeat", "description": "Two numbers.", "entries": [
+        {"id": "e1", "name": "Stages", "content": "HEARTBEAT-LORE: read affection like this.", "alwaysSend": True},
+        {"id": "e2", "name": "Secret", "content": "LOCKET-LORE: the locket was her mother's.", "keywords": ["locket"]}],
+        "variables": [{"id": "aff", "name": "Affection", "type": "number", "min": 0, "max": 100, "deltaUp": 15, "deltaDown": 15, "precise": True, "defaultValue": 20, "behaviorRules": "How she feels about the player."},
+                      {"id": "log", "name": "Log", "type": "json", "defaultValue": []}],
+        "reactions": [{"id": "warm", "when": {"eventType": "message:user", "match": {"content": {"value": "thank you,thanks", "operator": "contains"}}}, "then": [{"path": "aff", "type": "set", "value": 3, "operation": "add"}]}],
+        "rootComponent": {"id": "x", "files": {"index.tsx": "export default () => null"}, "entryFile": "index.tsx"}})
+    pack_path = os.path.join(WORK, "heartbeat.bundle.json"); open(pack_path, "w").write(pack_json)
+    check("a file that isn't a mechanic pack is refused", "mechanic pack" in (inv_err_file("import_mechanic", os.path.join(FIX, "loose.json"), {}) or ""))
+    pk = invoke_file("import_mechanic", pack_path, {})
+    check("a mechanic pack imports (name, variables, notes, reactions counted; its own screens flagged as not run)", pk["name"] == "Heartbeat" and len(pk["variables"]) == 2 and pk["entries"] == 2 and pk["reactions"] == 1 and pk["has_ui"] is True and pk["app"] == "vars", str(pk))
+    check("importing the same pack again replaces it instead of duplicating", invoke_file("import_mechanic", pack_path, {})["id"] == pk["id"] and len(invoke("list_mechanics")) == 1)
+    check("a pack is OFF in a chat until it's switched on", invoke("chat_mechanics", {"chatId": chat_r["id"]}) == [])
+    gen_and_wait(chat_r["id"])
+    check("an unused pack adds nothing to the prompt", "HEARTBEAT-LORE" not in sysprompt() and "[aff:" not in sysprompt())
+    cms = invoke("set_chat_mechanic", {"chatId": chat_r["id"], "mechId": pk["id"], "enabled": True})
+    check("switching a pack on gives it its starting values in that chat", cms[0]["enabled"] and cms[0]["state"]["aff"] == 20, str(cms))
+    gen_and_wait(chat_r["id"])
+    sp = sysprompt()
+    check("a switched-on pack puts its notes, current values, rules and the directive format in the prompt", "HEARTBEAT-LORE" in sp and "Affection [aff] (range 0–100): 20" in sp and "How she feels about the player." in sp and "[variable: operation value]" in sp)
+    check("keyword notes stay out until their keyword comes up", "LOCKET-LORE" not in sp)
+    invoke("add_user_message", {"chatId": chat_r["id"], "text": "do you still have the locket?"}); gen_and_wait(chat_r["id"])
+    check("...and come in when it does", "LOCKET-LORE" in sysprompt())
+    invoke("add_user_message", {"chatId": chat_r["id"], "text": "Thank you for listening"})
+    check("a keyword reaction runs when the player writes (+3 affection)", invoke("chat_mechanics", {"chatId": chat_r["id"]})[0]["state"]["aff"] == 23)
+    msgs_r = gen_and_wait(chat_r["id"], ["She smiles softly. ", "[aff: add 40]", "\n\n", "[log: push {text: \"told her about the locket\"}] ", "Stay a while."])
+    last = msgs_r[-1]["swipes"][msgs_r[-1]["swipe_index"]]
+    check("hidden [variable: op value] lines never reach the reader", "[aff" not in last and "[log" not in last and last.startswith("She smiles softly.") and last.endswith("Stay a while."), repr(last))
+    st_r = invoke("chat_mechanics", {"chatId": chat_r["id"]})[0]["state"]
+    check("the model's directives were applied (a single change is capped at the pack's +15 step)", st_r["aff"] == 38, str(st_r["aff"]))
+    check("json variables take pushes (relaxed JSON from the model is understood)", st_r["log"] == [{"text": "told her about the locket"}], str(st_r["log"]))
+    invoke("set_chat_variable", {"chatId": chat_r["id"], "mechId": pk["id"], "path": "aff", "value": 250})
+    check("the player can set a number by hand (clamped to the range)", invoke("chat_mechanics", {"chatId": chat_r["id"]})[0]["state"]["aff"] == 100)
+    check("starting a pack over restores its defaults", invoke("reset_chat_mechanic", {"chatId": chat_r["id"], "mechId": pk["id"]})[0]["state"]["aff"] == 20)
+    cms = invoke("set_chat_mechanic", {"chatId": chat_r["id"], "mechId": pk["id"], "enabled": False})
+    gen_and_wait(chat_r["id"])
+    check("switching it off removes it from the prompt but keeps its progress", not cms[0]["enabled"] and "HEARTBEAT-LORE" not in sysprompt() and cms[0]["state"]["aff"] == 20)
+    gen_and_wait(chat_r["id"], ["Fine. [aff: add 5]"])
+    check("an off pack ignores directives (and the text is left alone)", invoke("chat_mechanics", {"chatId": chat_r["id"]})[0]["state"]["aff"] == 20)
+    invoke("set_chat_mechanic", {"chatId": chat_r["id"], "mechId": pk["id"], "enabled": True})
+    chats_now = {c["id"]: c for c in invoke("list_chats")}
+    check("a brand-new chat has no packs on", invoke("chat_mechanics", {"chatId": chat2["id"]}) == [])
+    ph = dict(chats_now[chat_r["id"]], style="phone"); invoke("update_chat", {"chat": ph})
+    gen_and_wait(chat_r["id"])
+    check("the phone style asks for texting-style replies", "texting each other" in sysprompt() and "No *actions*" in sysprompt())
+    check("the style is kept on the chat", {c["id"]: c for c in invoke("list_chats")}[chat_r["id"]]["style"] == "phone")
+
+    # -- the screens: make a room, enter it, text on the phone, switch a pack on and off
+    def click_text(sel, text, root="document"):
+        return d.execute_script("const el=[...document.querySelectorAll(arguments[0])].find(b=>b.textContent.includes(arguments[1])&&!b.disabled);if(!el)return false;el.scrollIntoView({block:'center'});el.click();return true", sel, text)
+    def set_value(sel, value):
+        d.execute_script("const el=document.querySelector(arguments[0]);const proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(el,arguments[1]);el.dispatchEvent(new Event('input',{bubbles:true}))", sel, value)
+    reload_ui(); nav("Rooms"); time.sleep(0.6)
+    check("the Rooms page lists the rooms made so far", text_present("Mira's loft") and text_present("Make a room"))
+    check("Make a room opens the creation form", click_text("button", "Make a room") and text_present("Who is this room for?"))
+    set_value("input[placeholder='e.g. My loft']", "Rooftop hangout")
+    click_text("button.chip", "Rooftop"); click_text("button.chip", "A character's place")
+    set_value("textarea", "A rooftop with string lights, two beanbags and a view of the whole campus.")
+    check("choosing a backdrop shows the shelf of scenes", click_text("button", "Choose a backdrop") and d.execute_script("return document.querySelectorAll('.preset').length") >= 6)
+    d.execute_script("document.querySelector('.preset').click()"); time.sleep(0.3)
+    check("a picked backdrop previews in the form", d.execute_script("return getComputedStyle(document.querySelector('.room-preview')).backgroundImage.includes('gradient')"))
+    check("Create & enter makes the room and drops you into a chat set in it", click_text("button", "Create & enter") and text_present("Rooftop hangout") and wait(15).until(lambda x: x.execute_script("return !!document.querySelector('.chatmain .room-bg')")))
+    rr = [r for r in invoke("list_rooms") if r["name"] == "Rooftop hangout"]
+    check("the room, a dorm in it and a first chat now exist", len(rr) == 1 and any(dd["room_id"] == rr[0]["id"] for dd in invoke("list_dorms")) and rr[0]["owner_kind"] == "character" and rr[0]["character_id"])
+    check("the chat header shows which room it is in", d.execute_script("return !!document.querySelector('.chathead .linklike')") and "Rooftop hangout" in d.execute_script("return document.querySelector('.chathead .linklike').textContent"))
+    d.execute_script("document.querySelector('.chatopts')?.classList.add('open')")
+    check("the phone view starts off", not d.execute_script("return !!document.querySelector('[data-testid=phone]')"))
+    click_text(".chathead button", "Phone"); time.sleep(0.8)
+    check("📱 Phone turns the chat into a texting view", d.execute_script("return !!document.querySelector('[data-testid=phone]')") and d.execute_script("return !!document.querySelector('.phone-head')"))
+    seen["pieces"] = ["omg hi!!\n\n", "*waves* ", "you came 😊"]
+    box = d.find_element(By.CSS_SELECTOR, "input[aria-label='Text message']"); box.send_keys("hey it's me"); box.send_keys(Keys.ENTER)
+    check("a text you send appears as your own bubble", wait(10).until(lambda x: x.execute_script("return [...document.querySelectorAll('.bub.me')].some(b=>b.textContent.includes('hey it'))")))
+    check("her reply arrives as separate text bubbles (blank line = new text, *actions* dropped)", wait(20).until(lambda x: x.execute_script("const t=[...document.querySelectorAll('.bub.them')].map(b=>b.textContent.trim());return t.includes('omg hi!!')&&t.some(v=>v.includes('you came'))")) and not d.execute_script("return [...document.querySelectorAll('.bub')].some(b=>b.textContent.includes('*waves*'))"))
+    seen["pieces"] = None
+    click_text(".phone-head button", "‹"); time.sleep(0.6)
+    check("the back arrow returns to the normal chat", not d.execute_script("return !!document.querySelector('[data-testid=phone]')") and d.execute_script("return !!document.querySelector('.msgs')"))
+    click_text(".chathead button", "Mechanics"); time.sleep(0.7)
+    check("🧩 Mechanics lists the packs with switches (off by default)", text_present("Heartbeat") and d.execute_script("const s=document.querySelector('[role=switch][aria-label=\"Heartbeat on\"]');return !!s&&!s.checked"))
+    d.execute_script("document.querySelector('[role=switch][aria-label=\"Heartbeat on\"]').click()"); time.sleep(0.8)
+    rc = [c for c in invoke("list_chats") if c["name"] == "Rooftop hangout"][0]
+    check("flipping a switch turns the pack on for this chat only", invoke("chat_mechanics", {"chatId": rc["id"]})[0]["enabled"] is True and invoke("chat_mechanics", {"chatId": chat2["id"]}) == [])
+    check("a switched-on pack shows what it tracks, with a slider to adjust", text_present("Affection") and d.execute_script("return !!document.querySelector('input[type=range][aria-label=\"Set Affection\"]')"))
+    d.execute_script("document.querySelector('[role=switch][aria-label=\"Heartbeat on\"]').click()"); time.sleep(0.6)
+    check("and the same switch turns it off again", invoke("chat_mechanics", {"chatId": rc["id"]})[0]["enabled"] is False)
+    check("Escape closes the Mechanics window", (ActionChains(d).send_keys(Keys.ESCAPE).perform() or True) and not time.sleep(0.5) and not d.execute_script("return !!document.querySelector('[role=dialog][aria-label=Mechanics]')"))
     if not SKIP3D:
         # ---- talking from inside the 3D scene: the see-through message bar and the manga-style speech balloon ----------------
         reload_ui(); nav("Dorms")
@@ -812,6 +939,30 @@ try:
     check("removing the outfit being worn goes back to the original and deletes its file", wc["outfit"] is None and len(wc["outfits"]) == 1 and wc["media_path"] != "" and len(os.listdir(media_dir)) == n_media_now - 3 + 2)
     invoke("delete_character", {"id": wid})
     check("deleting the character deletes its outfit files", len(os.listdir(media_dir)) == n_media_now - 3)
+    # rooms, packs and texting style travel in a backup, and go with an ejected profile
+    rm = invoke("create_room", {"room": {"id": 0, "created_at": 0, "name": "Backed-up den", "kind": "basement", "description": "Low ceiling, big couch.", "owner_kind": "self", "character_id": None, "backdrop": ""}})
+    rm = invoke_file("set_room_backdrop", os.path.join(FIX, "avatar.gif"), {"x-room-id": str(rm["id"]), "x-file-name": "avatar.gif"})
+    pk2 = invoke_file("import_mechanic", pack_path, {})
+    dm = invoke("create_dorm", {"name": "Packed dorm", "roomId": rm["id"]})
+    pc = invoke("create_chat", {"dormId": dm["id"], "name": "packed chat", "kind": "channel", "characterIds": []})
+    invoke("set_chat_mechanic", {"chatId": pc["id"], "mechId": pk2["id"], "enabled": True})
+    invoke("set_chat_variable", {"chatId": pc["id"], "mechId": pk2["id"], "path": "aff", "value": 77})
+    invoke("update_chat", {"chat": dict(invoke("list_chats")[0], style="phone")})
+    info = invoke("prepare_export")
+    check("the backup counts the room's backdrop image", info["media"] == 1, str(info))
+    rpath = os.path.join(WORK, "rooms.dorms"); invoke("save_export", {"token": info["token"], "path": rpath})
+    n_media_now = len(os.listdir(media_dir))
+    invoke("eject_profile", {"token": info["token"]})
+    check("eject removes the backdrop file too", len(os.listdir(media_dir)) == n_media_now - 1)
+    invoke_file("import_profile", rpath, {"x-mode": "import", "x-handle": "Stylist2", "x-passcode": ""})
+    r2 = invoke("list_rooms")
+    check("the restored profile has its room, with the backdrop file", len(r2) == 1 and r2[0]["name"] == "Backed-up den" and r2[0]["backdrop"].startswith("file:media/room-") and os.path.exists(r2[0]["backdrop_path"]), str(r2))
+    d2 = invoke("list_dorms")
+    check("the dorm is still set in that room", len(d2) == 1 and d2[0]["room_id"] == r2[0]["id"], str(d2))
+    c2 = invoke("list_chats")[0]
+    check("the chat kept its texting style", c2["style"] == "phone")
+    cm2 = invoke("chat_mechanics", {"chatId": c2["id"]})
+    check("the pack came back in the library, switched on in that chat with its progress (affection 77)", len(invoke("list_mechanics")) == 1 and len(cm2) == 1 and cm2[0]["enabled"] and cm2[0]["state"]["aff"] == 77, str(cm2))
     invoke("sign_out")
 
     # -- delete needs the name typed

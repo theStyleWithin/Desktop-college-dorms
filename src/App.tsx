@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type AppInfo, type Character, type Chat, type Dorm, type SessionState, type Settings } from "./api";
+import { api, type AppInfo, type Character, type Chat, type Dorm, type Room, type SessionState, type Settings } from "./api";
 import { StoreCtx, type Route, type Store } from "./store";
 import { Logo, ToastProvider, useToast } from "./components/ui";
 import { ProfileAvatar } from "./components/ProfileForms";
 import Welcome from "./pages/Welcome";
 import Home from "./pages/Home";
 import Library from "./pages/Library";
+import Rooms from "./pages/Rooms";
 import Editor from "./pages/Editor";
 import ChatPage from "./pages/Chat";
 import SettingsPage from "./pages/Settings";
@@ -22,6 +23,7 @@ const DEFAULTS: Settings = {
 const NAV: { page: Route["page"]; label: string; icon: string }[] = [
   { page: "home", label: "Home", icon: "🏠" },
   { page: "library", label: "Characters", icon: "🧑‍🎤" },
+  { page: "rooms", label: "Rooms", icon: "🛋️" },
   { page: "chat", label: "Dorms", icon: "💬" },
   { page: "settings", label: "Settings", icon: "⚙️" },
 ];
@@ -32,6 +34,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
   const [characters, setCharacters] = useState<Character[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
   const [dorms, setDorms] = useState<Dorm[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [settings, setSettingsState] = useState<Settings>(DEFAULTS);
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [modelCount, setModelCount] = useState(0);
@@ -39,10 +42,10 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
 
   const refresh = useCallback(async () => {
     try {
-      const [c, ch, d, s, m] = await Promise.all([
-        api.listCharacters(), api.listChats(), api.listDorms(), api.getSettings(), api.listModels(),
+      const [c, ch, d, s, m, rm] = await Promise.all([
+        api.listCharacters(), api.listChats(), api.listDorms(), api.getSettings(), api.listModels(), api.listRooms(),
       ]);
-      setCharacters(c); setChats(ch); setDorms(d); setSettingsState(s); setModelCount(m.length);
+      setCharacters(c); setChats(ch); setDorms(d); setRooms(rm); setSettingsState(s); setModelCount(m.length);
     } catch (e) {
       toast(`Could not load your data: ${errText(e)}`, "err");
     } finally {
@@ -58,8 +61,8 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
   }, []);
 
   const store: Store = useMemo(
-    () => ({ characters, chats, dorms, settings, info, modelCount, go: setRoute, refresh, setSettings, session, setSession }),
-    [characters, chats, dorms, settings, info, modelCount, refresh, setSettings, session, setSession],
+    () => ({ characters, chats, dorms, rooms, settings, info, modelCount, go: setRoute, refresh, setSettings, session, setSession }),
+    [characters, chats, dorms, rooms, settings, info, modelCount, refresh, setSettings, session, setSession],
   );
 
   return (
@@ -85,6 +88,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
             <>
               {route.page === "home" && <Home />}
               {route.page === "library" && <Library />}
+              {route.page === "rooms" && <Rooms key={String(route.edit ?? "list")} edit={route.edit} />}
               {route.page === "editor" && <Editor key={route.id ?? "new"} id={route.id} />}
               {route.page === "chat" && <ChatPage initialChatId={route.chatId} />}
               {route.page === "settings" && <SettingsPage initialTab={route.tab} />}

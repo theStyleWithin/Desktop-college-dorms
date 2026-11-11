@@ -1,9 +1,10 @@
 import { createContext, useContext } from "react";
-import type { AppInfo, Character, Chat, Dorm, SessionState, Settings } from "./api";
+import type { AppInfo, Character, Chat, Dorm, Room, SessionState, Settings } from "./api";
 
 export type Route =
   | { page: "home" }
   | { page: "library" }
+  | { page: "rooms"; edit?: number | "new" }
   | { page: "editor"; id: string | null }
   | { page: "chat"; chatId?: number }
   | { page: "settings"; tab?: string };
@@ -12,6 +13,7 @@ export interface Store {
   characters: Character[];
   chats: Chat[];
   dorms: Dorm[];
+  rooms: Room[];
   settings: Settings;
   info: AppInfo | null;
   modelCount: number;

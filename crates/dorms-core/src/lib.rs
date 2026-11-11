@@ -3,6 +3,7 @@
 
 pub mod card;
 pub mod card_io;
+pub mod mechanics;
 pub mod png;
 pub mod prompt;
 

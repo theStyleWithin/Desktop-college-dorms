@@ -1,6 +1,7 @@
 mod accounts;
 mod commands;
 mod db;
+mod extras;
 mod llama;
 mod llm;
 mod secrets;
@@ -117,6 +118,19 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            extras::list_rooms,
+            extras::create_room,
+            extras::update_room,
+            extras::delete_room,
+            extras::set_room_backdrop,
+            extras::set_dorm_room,
+            extras::list_mechanics,
+            extras::import_mechanic,
+            extras::delete_mechanic,
+            extras::chat_mechanics,
+            extras::set_chat_mechanic,
+            extras::reset_chat_mechanic,
+            extras::set_chat_variable,
             commands::list_characters,
             commands::get_character,
             commands::save_character,
