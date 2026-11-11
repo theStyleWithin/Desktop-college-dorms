@@ -131,6 +131,11 @@ export interface Settings {
   use_card_system_prompt: boolean;
   default_system: string;
   theme: string;
+  /** Voice input: an OpenAI-compatible /audio/transcriptions server. */
+  stt_url: string;
+  stt_model: string;
+  stt_language: string;
+  stt_auto_send: boolean;
 }
 
 export interface Preset { id: string; label: string; blurb: string; file: string; url: string; size_gb: number; min_ram_gb: number }
@@ -178,6 +183,9 @@ export const api = {
     invoke<Character>("save_character", { character }),
   deleteCharacter: (id: string) => invoke<void>("delete_character", { id }),
   setFavorite: (id: string, favorite: boolean) => invoke<void>("set_favorite", { id, favorite }),
+  /** Sends a WAV recording to the voice server from Settings → Voice and returns what was said. */
+  transcribe: (wav: Uint8Array) => bin("transcribe_audio", wav, {}) as Promise<string>,
+  testVoice: () => invoke<string>("test_voice"),
   async setMedia(id: string, file: File): Promise<Character> {
     const bytes = new Uint8Array(await file.arrayBuffer());
     return bin("set_media", bytes, { "x-char-id": id, "x-file-name": enc(file.name) });

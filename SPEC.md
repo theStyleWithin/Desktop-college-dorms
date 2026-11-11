@@ -113,6 +113,14 @@ mouse or touch) let the user pet the character. When nobody is chatting, a small
 around the furniture, a procedural walk cycle, activities with props (phone, coffee), sitting and sleeping on the bed. Imported models
 are only ever the user's own files; nothing is bundled.
 
+## Voice input
+
+A mic button in the chat composer records 16 kHz mono WAV in the webview (a voice-activity check ends the recording when the user stops
+talking), the Rust backend sends it to an OpenAI-compatible `/audio/transcriptions` endpoint chosen in Settings → Voice (OpenAI, Groq,
+or a local Whisper server for offline use), and the resulting text is sent as the user's message (or dropped into the box, by setting).
+The API key lives in the keychain like the chat keys; internet servers must use https. The 3D character pays attention while the mic is open.
+Not built (yet): spoken replies (text to speech), and bundling a Whisper engine inside the app.
+
 ## Status
 
 v0.2.0 adds local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.

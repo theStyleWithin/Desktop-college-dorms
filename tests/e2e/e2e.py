@@ -42,6 +42,14 @@ class Fake(BaseHTTPRequestHandler):
         data = json.dumps({"data": [{"id": "fake-b"}, {"id": "fake-a"}]}).encode()
         self.send_response(200); self.send_header("content-type", "application/json"); self.send_header("content-length", str(len(data))); self.end_headers(); self.wfile.write(data)
     def do_POST(self):
+        if self.path.endswith("/audio/transcriptions"):  # voice input: a multipart upload, answered like OpenAI's Whisper API
+            n = int(self.headers.get("content-length", 0)); raw = self.rfile.read(n)
+            seen["stt"] = {"auth": self.headers.get("authorization"), "ctype": self.headers.get("content-type", ""), "raw": raw, "path": self.path}
+            if seen.get("stt_fail"):
+                data = json.dumps({"error": {"message": "Incorrect API key provided"}}).encode(); code = 401
+            else:
+                data = json.dumps({"text": " hello from the mic "}).encode(); code = 200
+            self.send_response(code); self.send_header("content-type", "application/json"); self.send_header("content-length", str(len(data))); self.end_headers(); self.wfile.write(data); return
         n = int(self.headers.get("content-length", 0)); body = json.loads(self.rfile.read(n))
         seen["auth"] = self.headers.get("authorization"); seen["body"] = body
         seen["path"] = self.path; seen["headers"] = {k.lower(): v for k, v in self.headers.items()}
@@ -394,10 +402,80 @@ try:
           sent[0]["role"] == "system" and sent[-1]["role"] == "user" and all(a["role"] != b["role"] for a, b in zip(sent[1:], sent[2:])), str([m["role"] for m in sent]))
     check("lorebook/description/scenario reach the system prompt", "Edited scenario text" in sent[0]["content"] and "Sleepy RA" in sent[0]["content"])
     check("post-history/depth macros resolve with the user's name", "Sam" in json.dumps(sent))
+    if not SKIP3D:
+        # ---- talking from inside the 3D scene: the see-through message bar and the manga-style speech balloon ----------------
+        reload_ui(); nav("Dorms")
+        d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'cloud')]").click(); time.sleep(1.5)
+        for _ in range(60):
+            if d.execute_script("const e=document.querySelector('.stage .vrm-box');return !!e&&e.dataset.ready==='1'"): break
+            time.sleep(0.5)
+        check("the chat's side panel shows the live 3D character", d.execute_script("return !!document.querySelector('.stage .vrm-box[data-ready=\"1\"]')"))
+        eb = d.find_element(By.CSS_SELECTOR, ".stage [aria-label='Open big viewer']")
+        d.execute_script("arguments[0].scrollIntoView({block:'center'})", eb); time.sleep(0.3)
+        ActionChains(d).move_to_element(eb).click().perform(); time.sleep(1.5)
+        check("the big viewer has a see-through message bar", d.execute_script("const b=document.querySelector('.vrm-big .talkbar');if(!b)return false;const c=getComputedStyle(b).backgroundColor;const m=c.match(/[\\d.]+/g)||[];return m.length>=4&&parseFloat(m[3])<0.8"))
+        check("the mic button is in the bar too", d.execute_script("return !!document.querySelector('.vrm-big .talkbar button.mic')"))
+        inp = d.find_element(By.CSS_SELECTOR, ".vrm-big .talkbar input")
+        inp.send_keys("hello from the bar"); inp.send_keys(Keys.ENTER)
+        bubble = ""
+        for _ in range(60):
+            time.sleep(0.5)
+            bubble = d.execute_script("const m=document.querySelector('.vrm-big .manga');return m&&m.dataset.state!=='off'?m.innerText:''")
+            if "Hello" in bubble and "cloud" in bubble: break
+        check("her reply appears in a manga-style balloon above her head", "Hello" in bubble and "cloud" in bubble, bubble)
+        umsgs = [m for m in invoke("list_messages", {"chatId": chat2["id"]}) if m["role"] == "user"]
+        check("typing in the bar sends the message", umsgs and umsgs[-1]["swipes"][0] == "hello from the bar", str(umsgs[-1:] ))
+        check("the bar empties after sending", d.execute_script("return document.querySelector('.vrm-big .talkbar input').value") == "")
+        ActionChains(d).send_keys(Keys.ESCAPE).perform(); time.sleep(0.6)
     # error path: unreachable server shows a friendly error
     st["openai_base_url"] = "http://127.0.0.1:1/v1"; invoke("save_settings", {"settings": st})
     try: invoke("test_provider"); check("unreachable server gives a clear error", False)
     except RuntimeError as e: check("unreachable server gives a clear error", "Could not reach" in str(e), str(e))
+    # ---- voice input: speech to text against the fake server -----------------------------------------------------
+    def inv_err(cmd, args=None):
+        try: invoke(cmd, args); return None
+        except RuntimeError as ex: return str(ex)
+    nav("Settings")
+    d.find_element(By.XPATH, "//button[contains(@class,'tab') and contains(., 'Voice')]").click(); time.sleep(0.6)
+    check("Settings has a Voice tab with the server, model, key and auto-send options", all(d.execute_script("return !!document.querySelector(arguments[0])", q) for q in ["[aria-label='Voice server address']", "[aria-label='Voice model']", "[aria-label='Voice API key']"]) and "Send what I said straight away" in page_text())
+    st = invoke("get_settings")
+    check("voice defaults: OpenAI Whisper, send straight away", st["stt_url"] == "https://api.openai.com/v1" and st["stt_model"] == "whisper-1" and st["stt_auto_send"] is True, str({k: v for k, v in st.items() if k.startswith("stt")}))
+    st.update(stt_url="http://127.0.0.1:18999/v1", stt_model="whisper-test", stt_language="en"); invoke("save_settings", {"settings": st})
+    invoke("set_api_key", {"provider": "stt", "key": "stt-secret"})
+    wav = base64.b64decode("UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=") + b"\x00" * 4000  # a tiny WAV
+    wavb64 = base64.b64encode(wav).decode()
+    def transcribe(b64):
+        r = d.execute_async_script("const done=arguments[arguments.length-1];const b=Uint8Array.from(atob(arguments[0]),c=>c.charCodeAt(0));window.__TAURI_INTERNALS__.invoke('transcribe_audio', b).then(v=>done({ok:v})).catch(e=>done({err:String(e)}));", b64)
+        if "err" in r: raise RuntimeError(r["err"])
+        return r["ok"]
+    check("a recording is transcribed through the configured server", transcribe(wavb64) == "hello from the mic")
+    sttseen = seen.get("stt", {})
+    check("the upload is multipart to /audio/transcriptions with the model, language and key", sttseen.get("path") == "/v1/audio/transcriptions" and "multipart/form-data" in sttseen.get("ctype", "") and b"whisper-test" in sttseen.get("raw", b"") and b'name="language"' in sttseen.get("raw", b"") and b"voice.wav" in sttseen.get("raw", b"") and sttseen.get("auth") == "Bearer stt-secret", str({k: v for k, v in sttseen.items() if k != "raw"}))
+    check("'Test connection' for voice works", "Connected to" in invoke("test_voice"))
+    seen["stt_fail"] = True
+    check("a rejected voice key gives a clear message", "didn't accept your API key" in (inv_err("test_voice") or ""))
+    seen.pop("stt_fail")
+    def transcribe_err(n_bytes):
+        r = d.execute_async_script("const done=arguments[arguments.length-1];window.__TAURI_INTERNALS__.invoke('transcribe_audio', new Uint8Array(arguments[0])).then(v=>done({ok:v})).catch(e=>done({err:String(e)}));", n_bytes)
+        return r.get("err", "")
+    check("empty recordings are refused", "empty" in transcribe_err(10))
+    st = invoke("get_settings"); st["stt_url"] = "http://voice.example.com/v1"; invoke("save_settings", {"settings": st})
+    check("a voice server on the internet must use https", "https://" in (inv_err("test_voice") or ""))
+    st["stt_url"] = "https://api.openai.com/v1"; invoke("save_settings", {"settings": st})
+    invoke("set_api_key", {"provider": "stt", "key": ""})
+    check("the voice key is removable", invoke("has_api_key", {"provider": "stt"})["present"] is False)
+    # the 🎤 button in a chat: with no microphone in this machine it fails politely instead of breaking the page
+    vchat = invoke("create_chat", {"dormId": None, "name": "voice", "kind": "dm", "characterIds": [mira["id"]]})
+    reload_ui(); nav("Dorms")
+    d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'voice')]").click(); time.sleep(1.0)
+    mic_there = d.execute_script("return !!document.querySelector('button.mic')")
+    check("a chat has the 🎤 voice button", mic_there)
+    if mic_there:
+        d.execute_script("document.querySelector('button.mic').click()"); time.sleep(2)
+        t = page_text()
+        check("with no microphone the 🎤 button explains why instead of failing silently", d.execute_script("return document.querySelector('button.mic').dataset.phase") == "idle" and any(k in t for k in ["microphone", "Microphone", "Voice input isn't available"]), t[-200:])
+    st = invoke("get_settings"); st["stt_url"] = "https://api.openai.com/v1"; invoke("save_settings", {"settings": st})
+
     # ---- "Other API": user-defined profiles ---------------------------------------------------------
     prof = {"id": "abc123", "name": "Fake API", "format": "openai", "base_url": "http://127.0.0.1:18999/v1", "model": "fake-model",
             "chat_path": "/custom/chat", "auth": "header", "auth_header": "X-Token", "headers": [{"name": "X-Org", "value": "dorms"}],

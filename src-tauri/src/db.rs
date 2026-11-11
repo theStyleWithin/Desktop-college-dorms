@@ -157,6 +157,13 @@ pub struct Settings {
     pub use_card_system_prompt: bool,
     pub default_system: String,
     pub theme: String,
+    /// Voice input: any OpenAI-compatible `/audio/transcriptions` server (OpenAI, Groq, or a local Whisper server).
+    pub stt_url: String,
+    pub stt_model: String,
+    /// Empty = let the server detect the language.
+    pub stt_language: String,
+    /// Send the message as soon as it has been transcribed.
+    pub stt_auto_send: bool,
 }
 
 impl Default for Settings {
@@ -178,6 +185,10 @@ impl Default for Settings {
             use_card_system_prompt: true,
             default_system: String::new(),
             theme: "dusk".into(),
+            stt_url: "https://api.openai.com/v1".into(),
+            stt_model: "whisper-1".into(),
+            stt_language: String::new(),
+            stt_auto_send: true,
         }
     }
 }

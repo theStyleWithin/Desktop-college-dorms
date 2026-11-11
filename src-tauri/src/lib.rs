@@ -66,6 +66,23 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
+            // Voice input: WebKitGTK keeps getUserMedia off and refuses microphone requests unless the app opts in.
+            // Only audio capture is allowed (never camera or screen), and only the app's own pages can ask.
+            #[cfg(target_os = "linux")]
+            if let Some(w) = tauri::Manager::get_webview_window(app, "main") {
+                let _ = w.with_webview(|wv| {
+                    use webkit2gtk::{glib::prelude::Cast, PermissionRequestExt, SettingsExt, UserMediaPermissionRequest, UserMediaPermissionRequestExt, WebViewExt};
+                    let view = wv.inner();
+                    if let Some(settings) = WebViewExt::settings(&view) { settings.set_enable_media_stream(true); }
+                    view.connect_permission_request(|_, request| {
+                        if let Some(m) = request.downcast_ref::<UserMediaPermissionRequest>() {
+                            if m.is_for_audio_device() && !m.is_for_video_device() { request.allow(); } else { request.deny(); }
+                            return true;
+                        }
+                        false
+                    });
+                });
+            }
             let data_dir = resolve_data_dir(app.handle());
             std::fs::create_dir_all(data_dir.join("media"))?;
             std::fs::create_dir_all(data_dir.join("models"))?;
@@ -106,6 +123,8 @@ pub fn run() {
             commands::delete_character,
             commands::set_favorite,
             commands::set_media,
+            commands::transcribe_audio,
+            commands::test_voice,
             commands::clear_media,
             commands::import_card,
             commands::export_card,

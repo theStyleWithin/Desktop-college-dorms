@@ -8,6 +8,8 @@ import { createIdle } from "../lib/idle";
 import { buildRoom } from "../lib/room";
 import { createHands } from "../lib/hands";
 import { createNpc, type PlanName } from "../lib/npc";
+import SpeechBubble, { type Speech } from "./SpeechBubble";
+import TalkBar, { type Talk } from "./TalkBar";
 
 // One verdict per app run, shared by every viewer (see the crash guard in the backend).
 let verdict: Promise<boolean> | null = null;
@@ -21,6 +23,10 @@ interface Props {
   large?: boolean;
   /** Someone is talking to her (typing or waiting for a reply): she stops her routine and pays attention. */
   attentive?: boolean;
+  /** What she is saying (streamed as it is written): shown in a manga-style balloon above her head. */
+  speech?: Speech | null;
+  /** When given (in the big viewer), shows a see-through message bar so you can talk to her from inside the scene. */
+  talk?: Talk;
   /** Shows an expand button that opens the big viewer. */
   onExpand?: () => void;
 }
@@ -29,7 +35,7 @@ interface Props {
  * A 3D viewer for VRM / VRoid models: the character stands idle in a furnished room, with soft shadows, orbit
  * camera controls (drag to turn, scroll or pinch to zoom, double-click to reset) and eyes that follow the camera.
  */
-export default function VrmViewer({ url, large, attentive, onExpand }: Props) {
+export default function VrmViewer({ url, large, attentive, speech, talk, onExpand }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const resetView = useRef<() => void>(() => {});
   const idleRef = useRef<ReturnType<typeof createIdle> | null>(null);
@@ -41,6 +47,9 @@ export default function VrmViewer({ url, large, attentive, onExpand }: Props) {
     try { const v = localStorage.getItem("dorms.vrm.physics"); if (v === "off" || v === "bouncy" || v === "natural") return v; } catch { /* storage unavailable */ }
     return "natural";
   });
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const speechOn = useRef(false);
+  speechOn.current = !!speech;
   const npcRef = useRef<ReturnType<typeof createNpc> | null>(null);
   const [lively, setLively] = useState<boolean>(() => {
     try { return localStorage.getItem("dorms.vrm.lively") !== "0"; } catch { return true; }
@@ -214,6 +223,7 @@ export default function VrmViewer({ url, large, attentive, onExpand }: Props) {
       const clock = new THREE.Clock();
       let simT = 0;
       const pw = new THREE.Vector3();
+      const bp = new THREE.Vector3();
       let confirmed = false;
       let framesWithModel = 0;
       let tLoaded = Infinity;
@@ -247,6 +257,17 @@ export default function VrmViewer({ url, large, attentive, onExpand }: Props) {
             hemi.intensity = 1.15 - 0.6 * sl; key.intensity = 2.4 - 1.5 * sl; cool.intensity = 0.9 - 0.5 * sl;
             el.dataset.npc = npc.label; el.dataset.plan = npc.plan; el.dataset.npcx = String(Math.round(npcPos.x * 100)); el.dataset.npcz = String(Math.round(npcPos.z * 100));
           }
+          }
+          // the speech balloon sits above her head: project the head to the screen, and keep the balloon fully on screen
+          const bel = bubbleRef.current;
+          if (bel && speechOn.current && hb) {
+            hb.getWorldPosition(bp); bp.y += 0.38 * room.group.scale.x; bp.project(camera);
+            const w = el.clientWidth, h = el.clientHeight;
+            const x = (bp.x * 0.5 + 0.5) * w, y = (-bp.y * 0.5 + 0.5) * h;
+            const half = Math.min(bel.offsetWidth / 2, w / 2) + 8;
+            const cx = Math.min(Math.max(x, half), w - half), cy = Math.min(Math.max(y, bel.offsetHeight + 8), h - 8);
+            bel.style.setProperty("--bx", `${cx.toFixed(1)}px`); bel.style.setProperty("--by", `${cy.toFixed(1)}px`);
+            bel.style.setProperty("--tail", `${Math.max(-bel.offsetWidth * 0.38, Math.min(bel.offsetWidth * 0.38, x - cx)).toFixed(1)}px`);
           }
           // exposes what the viewer sees, so tests (and bug reports) can check the model faces us with arms down
           if (framesWithModel === 6 && idle.bones.lArm && idle.bones.rArm && idle.bones.lHand) {
@@ -344,8 +365,10 @@ export default function VrmViewer({ url, large, attentive, onExpand }: Props) {
           {onExpand && <button className="iconbtn" title="Open the big 3D viewer" aria-label="Open big viewer" onClick={onExpand}>⛶</button>}
         </div>
       )}
+      {state === "ready" && <SpeechBubble ref={bubbleRef} speech={speech ?? null} small={!large} />}
+      {state === "ready" && large && talk && <TalkBar talk={talk} />}
       {state === "ready" && frozen && <div className="vrm-frozen" aria-live="polite"><svg width="10" height="10" viewBox="0 0 14 14" aria-hidden="true" fill="currentColor"><rect x="2" y="1" width="3.6" height="12" rx="1" /><rect x="8.4" y="1" width="3.6" height="12" rx="1" /></svg> Paused</div>}
-      {state === "ready" && large && (
+      {state === "ready" && large && !talk && (
         <div className="vrm-hint">
           {handsOn
             ? pad

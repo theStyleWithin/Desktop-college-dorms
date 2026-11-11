@@ -181,3 +181,42 @@ button.chip { cursor: pointer; } button.chip.on { background: var(--accent); col
 .iconbtn.on { background: var(--accent); color: var(--accent-ink); }
 .vrm-box[data-frozen="1"] canvas { filter: saturate(0.55) brightness(1.04) contrast(1.04); }
 .vrm-frozen { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 3; padding: 4px 12px; border-radius: 999px; background: #0008; color: #fff; font-size: 0.78rem; letter-spacing: 0.04em; pointer-events: none; }
+.btn.mic { position: relative; display: inline-grid; place-items: center; width: 42px; padding: 0; overflow: visible; }
+.btn.mic.listening { background: #c2253f; border-color: #c2253f; color: #fff; }
+.btn.mic.transcribing { opacity: 0.8; }
+.btn.mic .mic-level { position: absolute; inset: 0; border-radius: inherit; background: #c2253f; z-index: -1; pointer-events: none; transition: transform 0.08s linear; }
+.mic-dots { animation: micdots 1s steps(3) infinite; letter-spacing: 1px; }
+@keyframes micdots { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
+
+/* ---- manga-style speech balloon above her head ---- */
+.manga { position: absolute; left: 0; top: 0; z-index: 4; max-width: min(78%, 380px); width: max-content; cursor: pointer;
+  transform: translate(var(--bx, 50%), var(--by, 30%)) translate(-50%, calc(-100% - 14px)); --tail: 0px; }
+.manga.off { display: none; }
+.manga .balloon { position: relative; background: #fff; color: #14101c; border: 3px solid #14101c; border-radius: 30px / 24px; padding: 10px 18px 12px;
+  font: 700 0.98rem/1.32 "Comic Sans MS", "Chalkboard SE", "Comic Neue", "Segoe Print", "Marker Felt", system-ui, sans-serif;
+  box-shadow: 4px 4px 0 #14101c; text-align: center; animation: manga-pop 0.22s ease-out; transform-origin: 50% 100%; overflow-wrap: anywhere; }
+.manga .balloon::before, .manga .balloon::after { content: ""; position: absolute; left: calc(50% + var(--tail)); transform: translateX(-50%); border-style: solid; border-color: transparent; }
+.manga .balloon::before { bottom: -22px; border-width: 22px 14px 0; border-top-color: #14101c; }
+.manga .balloon::after { bottom: -15px; border-width: 18px 11px 0; border-top-color: #fff; }
+.manga .act { font-weight: 500; font-style: italic; font-size: 0.86em; color: #5a4f6e; }
+.manga .more { position: absolute; right: 10px; bottom: 2px; font-size: 0.6rem; animation: manga-blink 1s infinite; }
+.manga .caret { display: inline-block; width: 0.5ch; height: 1em; margin-left: 2px; vertical-align: -0.12em; background: #14101c; animation: manga-blink 0.7s steps(2) infinite; }
+.manga .dots i { display: inline-block; width: 7px; height: 7px; margin: 0 3px; border-radius: 50%; background: #14101c; animation: manga-dot 1s infinite; }
+.manga .dots i:nth-child(2) { animation-delay: 0.15s; } .manga .dots i:nth-child(3) { animation-delay: 0.3s; }
+.manga.small .balloon { font-size: 0.78rem; padding: 7px 12px 9px; border-width: 2.5px; box-shadow: 3px 3px 0 #14101c; }
+@keyframes manga-pop { 0% { transform: scale(0.55); opacity: 0; } 70% { transform: scale(1.06); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes manga-blink { 50% { opacity: 0.15; } }
+@keyframes manga-dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-4px); opacity: 1; } }
+
+/* ---- see-through message bar along the bottom of the big viewer ---- */
+.talkbar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(720px, calc(100% - 28px)); z-index: 5; display: flex; gap: 8px; align-items: center;
+  padding: 7px 8px 7px 16px; border-radius: 999px; background: rgba(16, 12, 30, 0.38); border: 1px solid rgba(255, 255, 255, 0.2);
+  -webkit-backdrop-filter: blur(8px) saturate(1.2); backdrop-filter: blur(8px) saturate(1.2); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25); }
+.talkbar:focus-within { background: rgba(16, 12, 30, 0.55); border-color: rgba(255, 255, 255, 0.4); }
+.talkbar input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: #fff; font-size: 1rem; padding: 6px 0; box-shadow: none; }
+.talkbar input::placeholder { color: rgba(255, 255, 255, 0.65); }
+.talkbar .btn { background: rgba(255, 255, 255, 0.14); border: 0; color: #fff; width: 40px; height: 40px; padding: 0; border-radius: 50%; display: inline-grid; place-items: center; }
+.talkbar .btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.28); }
+.talkbar .btn.send { background: var(--accent); color: var(--accent-ink); }
+.talkbar .btn:disabled { opacity: 0.45; }
+.talkbar .btn.mic.listening { background: #c2253f; }

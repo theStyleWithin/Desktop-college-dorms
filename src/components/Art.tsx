@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Modal } from "./ui";
+import type { Speech } from "./SpeechBubble";
+import type { Talk } from "./TalkBar";
 import type { MediaKind } from "../api";
 import { hue, initials } from "../lib/util";
 
@@ -13,6 +15,9 @@ interface Props {
   mode?: "thumb" | "full";
   /** Someone is talking to her right now (typing or waiting for a reply), so a 3D character stops her own routine and pays attention. */
   attentive?: boolean;
+  /** What a 3D character is saying right now (shown as a manga-style balloon), and how to talk back from the big viewer. */
+  speech?: Speech | null;
+  talk?: Talk;
 }
 
 /**
@@ -50,22 +55,22 @@ function VideoArt({ url, full, bg, name }: { url: string; full: boolean; bg: str
 }
 
 /** The small live 3D panel, with a button that opens the big viewer. */
-function VrmStage({ url, name, bg, attentive }: { url: string; name: string; bg: string; attentive?: boolean }) {
+function VrmStage({ url, name, bg, attentive, speech, talk }: { url: string; name: string; bg: string; attentive?: boolean; speech?: Speech | null; talk?: Talk }) {
   const [big, setBig] = useState(false);
   return (
     <div className="media" data-big={big ? "1" : "0"} style={{ background: bg }}>
-      <Suspense fallback={<span className="ph">…</span>}>{!big && <VrmViewer url={url} attentive={attentive} onExpand={() => setBig(true)} />}</Suspense>
+      <Suspense fallback={<span className="ph">…</span>}>{!big && <VrmViewer url={url} attentive={attentive} speech={speech} onExpand={() => setBig(true)} />}</Suspense>
       {big && <span className="ph" style={{ fontSize: "1rem" }}>Open in the big viewer</span>}
       {big && (
         <Modal title={`${name || "3D model"}`} onClose={() => setBig(false)} wide>
-          <div className="vrm-big"><Suspense fallback={<span className="ph">…</span>}><VrmViewer url={url} large attentive={attentive} /></Suspense></div>
+          <div className="vrm-big"><Suspense fallback={<span className="ph">…</span>}><VrmViewer url={url} large attentive={attentive} speech={speech} talk={talk} /></Suspense></div>
         </Modal>
       )}
     </div>
   );
 }
 
-export default function Art({ kind, url, name, mode = "thumb", attentive }: Props) {
+export default function Art({ kind, url, name, mode = "thumb", attentive, speech, talk }: Props) {
   const bg = `linear-gradient(135deg, hsl(${hue(name)} 45% 35%), hsl(${(hue(name) + 50) % 360} 50% 22%))`;
 
   if (!url || !kind) {
@@ -76,7 +81,7 @@ export default function Art({ kind, url, name, mode = "thumb", attentive }: Prop
     );
   }
   if (kind === "vrm") {
-    if (mode === "full") return <VrmStage url={url} name={name} bg={bg} attentive={attentive} />;
+    if (mode === "full") return <VrmStage url={url} name={name} bg={bg} attentive={attentive} speech={speech} talk={talk} />;
     return (
       <div className="media" style={{ background: bg }}>
         <span className="ph">{initials(name)}</span>
