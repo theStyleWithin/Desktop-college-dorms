@@ -159,7 +159,13 @@ pub struct Folder {
     pub cover: Option<String>,
     pub frame: Option<Frame>,
     pub created_at: i64,
+    /// The folder this one sits inside (None = the top level). Folders nest, a few levels deep at most.
+    #[serde(default)]
+    pub parent: Option<String>,
 }
+
+/// How many folders may sit inside one another.
+pub const MAX_FOLDER_DEPTH: usize = 12;
 
 /// A free-form note. No length limit beyond sanity (it is meant for long writing, like a card's creator notes).
 #[derive(Serialize, Deserialize, Clone)]
@@ -396,6 +402,7 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
             chat_id INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE, mech_id TEXT NOT NULL,
             enabled INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL DEFAULT '{}', PRIMARY KEY(chat_id, mech_id));",
     )?;
+    ensure_column(&conn, "folders", "parent", "TEXT")?;
     ensure_column(&conn, "dorms", "room_id", "INTEGER")?;
     ensure_column(&conn, "dorms", "music", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "dorms", "music_name", "TEXT NOT NULL DEFAULT ''")?;
@@ -633,38 +640,73 @@ pub fn delete_lorebook(c: &Connection, id: &str, owner: &Owner) -> R<()> {
 
 fn row_folder(r: &rusqlite::Row) -> R<Folder> {
     let fr: Option<String> = r.get(3)?;
-    Ok(Folder { id: r.get(0)?, name: r.get(1)?, cover: r.get(2)?, frame: fr.and_then(|j| serde_json::from_str(&j).ok()), created_at: r.get(4)? })
+    Ok(Folder { id: r.get(0)?, name: r.get(1)?, cover: r.get(2)?, frame: fr.and_then(|j| serde_json::from_str(&j).ok()), created_at: r.get(4)?, parent: r.get(5)? })
 }
 
 pub fn list_folders(c: &Connection, owner: &Owner) -> R<Vec<Folder>> {
-    let mut s = c.prepare("SELECT id,name,cover,frame,created_at FROM folders WHERE profile_id IS ?1 ORDER BY name COLLATE NOCASE")?;
+    let mut s = c.prepare("SELECT id,name,cover,frame,created_at,parent FROM folders WHERE profile_id IS ?1 ORDER BY name COLLATE NOCASE")?;
     let rows = s.query_map([owner], row_folder)?;
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
 pub fn get_folder(c: &Connection, id: &str, owner: &Owner) -> R<Option<Folder>> {
-    c.query_row("SELECT id,name,cover,frame,created_at FROM folders WHERE id=?1 AND profile_id IS ?2", params![id, owner], row_folder).optional()
+    c.query_row("SELECT id,name,cover,frame,created_at,parent FROM folders WHERE id=?1 AND profile_id IS ?2", params![id, owner], row_folder).optional()
 }
 
 pub fn save_folder(c: &Connection, f: &Folder, owner: &Owner) -> R<()> {
     let fr = f.frame.and_then(|x| serde_json::to_string(&x).ok());
     c.execute(
-        "INSERT INTO folders(id,profile_id,name,cover,frame,created_at) VALUES(?1,?2,?3,?4,?5,?6)
-         ON CONFLICT(id) DO UPDATE SET name=excluded.name, cover=excluded.cover, frame=excluded.frame WHERE profile_id IS ?2",
-        params![f.id, owner, f.name, f.cover, fr, f.created_at],
+        "INSERT INTO folders(id,profile_id,name,cover,frame,created_at,parent) VALUES(?1,?2,?3,?4,?5,?6,?7)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, cover=excluded.cover, frame=excluded.frame, parent=excluded.parent WHERE profile_id IS ?2",
+        params![f.id, owner, f.name, f.cover, fr, f.created_at, f.parent],
     )?;
     Ok(())
 }
 
-/// Delete a folder; its characters go back to the top level (never deleted with it).
-pub fn delete_folder(c: &Connection, id: &str, owner: &Owner) -> R<()> {
-    if get_folder(c, id, owner)?.is_none() {
-        return Ok(());
+/// The chain of folders from `id` up to the top: `[id, its parent, its grandparent, …]` (stops if the data loops).
+pub fn folder_chain(all: &[Folder], id: &str) -> Vec<String> {
+    let mut out = vec![];
+    let mut cur = Some(id.to_string());
+    while let Some(c) = cur {
+        if out.contains(&c) || out.len() > 64 { break; }
+        let next = all.iter().find(|f| f.id == c).and_then(|f| f.parent.clone());
+        out.push(c);
+        cur = next;
     }
+    out
+}
+
+/// How many levels deep the subtree under `id` goes (a folder with no subfolders is 1).
+pub fn folder_height(all: &[Folder], id: &str, guard: usize) -> usize {
+    if guard > 64 { return 1; }
+    1 + all.iter().filter(|f| f.parent.as_deref() == Some(id)).map(|f| folder_height(all, &f.id, guard + 1)).max().unwrap_or(0)
+}
+
+/// Can folder `id` be put inside `parent` (None = the top level)? Not into itself or something inside it, and not too deep.
+pub fn can_nest(all: &[Folder], id: &str, parent: Option<&str>) -> Result<(), &'static str> {
+    let Some(p) = parent else { return Ok(()) };
+    if p == id || folder_chain(all, p).iter().any(|a| a == id) {
+        return Err("A folder can't go inside itself or one of its own subfolders.");
+    }
+    if folder_chain(all, p).len() + folder_height(all, id, 0) > MAX_FOLDER_DEPTH {
+        return Err("Folders can only be nested a few levels deep.");
+    }
+    Ok(())
+}
+
+/// Delete a folder. Nothing inside is deleted: its characters and subfolders move up into the folder it sat in.
+pub fn delete_folder(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    let Some(gone) = get_folder(c, id, owner)? else { return Ok(()) };
     for mut ch in list_characters(c, owner)? {
         if ch.folder.as_deref() == Some(id) {
-            ch.folder = None;
+            ch.folder = gone.parent.clone();
             save_character(c, &ch, owner)?;
+        }
+    }
+    for mut f in list_folders(c, owner)? {
+        if f.parent.as_deref() == Some(id) {
+            f.parent = gone.parent.clone();
+            save_folder(c, &f, owner)?;
         }
     }
     c.execute("DELETE FROM folders WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
@@ -1120,7 +1162,7 @@ mod tests {
     fn folders_lorebooks_and_notes_are_private_and_cleaned_up() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let f = Folder { id: "f1".into(), name: "Crew".into(), cover: None, frame: None, created_at: 1 };
+        let f = Folder { id: "f1".into(), name: "Crew".into(), cover: None, frame: None, created_at: 1, parent: None };
         save_folder(&c, &f, &a).unwrap();
         assert!(list_folders(&c, &b).unwrap().is_empty() && get_folder(&c, "f1", &b).unwrap().is_none());
         // B can't take over A's folder by saving with the same id
@@ -1165,6 +1207,38 @@ mod tests {
         assert!(get_profile_avatar(&c, "b").is_none());
         wipe_owner(&c, &a).unwrap();
         assert!(list_personas(&c, &a).unwrap().is_empty() && get_profile_avatar(&c, "a").is_none(), "wiping a profile removes its personas and picture");
+    }
+
+    #[test]
+    fn folders_nest_without_loops_and_deleting_moves_things_up() {
+        let c = fresh();
+        let a = me("a");
+        let mk = |id: &str, parent: Option<&str>| Folder { id: id.into(), name: id.into(), cover: None, frame: None, created_at: 1, parent: parent.map(String::from) };
+        for f in [mk("canon", None), mk("series", Some("canon")), mk("sub", Some("series"))] { save_folder(&c, &f, &a).unwrap(); }
+        let all = list_folders(&c, &a).unwrap();
+        assert_eq!(folder_chain(&all, "sub"), vec!["sub", "series", "canon"]);
+        assert_eq!(folder_height(&all, "canon", 0), 3);
+        assert!(can_nest(&all, "series", None).is_ok());
+        assert!(can_nest(&all, "canon", Some("sub")).is_err(), "a folder can't go inside its own subfolder");
+        assert!(can_nest(&all, "canon", Some("canon")).is_err(), "or inside itself");
+        assert!(can_nest(&all, "sub", Some("canon")).is_ok());
+        // depth limit
+        let mut deep = vec![mk("d0", None)];
+        for i in 1..MAX_FOLDER_DEPTH { deep.push(mk(&format!("d{i}"), Some(&format!("d{}", i - 1)))); }
+        deep.push(mk("loose", None));
+        assert!(can_nest(&deep, "loose", Some(&format!("d{}", MAX_FOLDER_DEPTH - 1))).is_err(), "too deep");
+        assert!(can_nest(&deep, "loose", Some("d0")).is_ok());
+        // a looping file can't hang the helpers
+        let looped = vec![mk("x", Some("y")), mk("y", Some("x"))];
+        assert!(folder_chain(&looped, "x").len() <= 2 && folder_height(&looped, "x", 0) < 100);
+        // characters in a deleted folder, and its subfolders, move up one level (not out of everything)
+        let mut x = ch("x", "X"); x.folder = Some("series".into()); save_character(&c, &x, &a).unwrap();
+        delete_folder(&c, "series", &a).unwrap();
+        assert_eq!(get_character(&c, "x", &a).unwrap().unwrap().folder.as_deref(), Some("canon"));
+        assert_eq!(get_folder(&c, "sub", &a).unwrap().unwrap().parent.as_deref(), Some("canon"));
+        delete_folder(&c, "canon", &a).unwrap();
+        assert_eq!(get_character(&c, "x", &a).unwrap().unwrap().folder, None);
+        assert_eq!(get_folder(&c, "sub", &a).unwrap().unwrap().parent, None);
     }
 
     #[test]

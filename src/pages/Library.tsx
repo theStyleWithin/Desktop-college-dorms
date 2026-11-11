@@ -4,7 +4,7 @@ import { Modal, useToast } from "../components/ui";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
 import CharacterCard from "./CharacterCard";
-import { FolderBar, FolderTile, MoveTo, NewFolder, draggedIds, isCharDrag } from "../components/Folders";
+import { FolderBar, FolderTile, MoveTo, NewFolder, draggedFolder, draggedIds, insideOf, isCharDrag, isFolderDrag } from "../components/Folders";
 
 type Sort = "name" | "recent" | "created";
 
@@ -21,7 +21,8 @@ export default function Library() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState(false);
   const [moving, setMoving] = useState<string | null>(null);
-  const [upOver, setUpOver] = useState(false);
+  const [upOver, setUpOver] = useState<string | null>(null);   // which crumb a drag is over ("" = the top)
+  const [movingFolder, setMovingFolder] = useState<string | null>(null);
 
   const tags = useMemo(() => {
     const n = new Map<string, number>();
@@ -47,7 +48,17 @@ export default function Library() {
   const inFolder = (c: (typeof characters)[number]) => (c.folder && folderIds.has(c.folder) ? c.folder : null);
   // searching looks everywhere; otherwise you see the folder you are in (or the top level)
   const visible = filtering ? shown : shown.filter((c) => inFolder(c) === (open ? open.id : null));
-  const countIn = (id: string) => characters.filter((c) => c.folder === id).length;
+  // folders nest: `parentOf` is where a folder sits (a folder whose parent has gone is treated as top level)
+  const parentOf = (f: (typeof folders)[number]) => (f.parent && folderIds.has(f.parent) ? f.parent : null);
+  const childrenOf = (id: string | null) => folders.filter((f) => parentOf(f) === id);
+  /** characters anywhere inside a folder, at any depth */
+  const countIn = (id: string) => { const all = new Set([id, ...insideOf(folders, id)]); return characters.filter((c) => c.folder && all.has(c.folder)).length; };
+  // the path from the top to the open folder
+  const trail = useMemo(() => { const out: typeof folders = []; let cur = open; const seen = new Set<string>(); while (cur && !seen.has(cur.id)) { seen.add(cur.id); out.unshift(cur); const p = parentOf(cur); cur = p ? folders.find((f) => f.id === p) ?? null : null; } return out; }, [open, folders]);
+  const moveFolder = async (id: string, to: string | null) => {
+    if (id === to) return;
+    try { await api.moveFolder(id, to); await refresh(); } catch (e) { toast(errText(e), "err"); }
+  };
   const moveIds = async (ids: string[], to: string | null) => {
     const mine = ids.filter((i) => characters.some((c) => c.id === i));
     if (!mine.length) return;
@@ -118,18 +129,25 @@ export default function Library() {
 
       {open && !filtering && (
         <>
-          <div className="crumbs">
-            <button className={`crumb${upOver ? " over" : ""}`} onClick={() => setOpenId(null)}
-              onDragOver={(e) => { if (isCharDrag(e)) { e.preventDefault(); setUpOver(true); } }} onDragLeave={() => setUpOver(false)}
-              onDrop={(e) => { if (!isCharDrag(e)) return; e.preventDefault(); setUpOver(false); void moveIds(draggedIds(e), null); }}>‹ All characters</button>
-            <span aria-hidden>›</span><b>{open.name}</b>
+          <div className="crumbs" aria-label="Folder path">
+            {[null, ...trail.slice(0, -1)].map((c) => (
+              <span key={c?.id ?? "top"} className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                <button className={`crumb${upOver === (c?.id ?? "") ? " over" : ""}`} data-crumb={c?.name ?? "All characters"} onClick={() => setOpenId(c?.id ?? null)}
+                  onDragOver={(e) => { if (isCharDrag(e) || isFolderDrag(e)) { e.preventDefault(); setUpOver(c?.id ?? ""); } }} onDragLeave={() => setUpOver(null)}
+                  onDrop={(e) => { setUpOver(null); if (isFolderDrag(e)) { e.preventDefault(); void moveFolder(draggedFolder(e), c?.id ?? null); } else if (isCharDrag(e)) { e.preventDefault(); void moveIds(draggedIds(e), c?.id ?? null); } }}>
+                  {c ? c.name : "‹ All characters"}
+                </button>
+                <span aria-hidden>›</span>
+              </span>
+            ))}
+            <b>{open.name}</b>
           </div>
-          <FolderBar f={open} count={countIn(open.id)} onClose={() => setOpenId(null)} onChanged={refresh} />
+          <FolderBar f={open} count={countIn(open.id)} onClose={() => setOpenId(parentOf(open))} onChanged={refresh} onMove={() => setMovingFolder(open.id)} />
         </>
       )}
-      {!open && !filtering && folders.length > 0 && (
+      {!filtering && childrenOf(open ? open.id : null).length > 0 && (
         <div className="ftiles">
-          {folders.map((f) => <FolderTile key={f.id} f={f} count={countIn(f.id)} onOpen={() => setOpenId(f.id)} onDropIds={(ids) => void moveIds(ids, f.id)} />)}
+          {childrenOf(open ? open.id : null).map((f) => <FolderTile key={f.id} f={f} count={countIn(f.id)} sub={childrenOf(f.id).length} onOpen={() => setOpenId(f.id)} onDropIds={(ids) => void moveIds(ids, f.id)} onDropFolder={(id) => void moveFolder(id, f.id)} />)}
         </div>
       )}
       {drag && <div className="banner">Drop PNG or JSON character cards to import them</div>}
@@ -141,11 +159,12 @@ export default function Library() {
       ) : shown.length === 0 ? (
         <div className="empty">Nothing matches that search.</div>
       ) : visible.length === 0 ? (
-        <div className="empty">{open ? "This folder is empty. Drag characters onto its tile, or use ⋮ → Move to folder." : "Everything is filed in folders. Open one above."}</div>
+        childrenOf(open ? open.id : null).length > 0 ? null : <div className="empty">{open ? "This folder is empty. Drag characters onto its tile, or use ⋮ → Move to folder." : "Everything is filed in folders. Open one above."}</div>
       ) : (
         <div className="grid">{visible.map((c) => <CharacterCard key={c.id} c={c} onMove={() => setMoving(c.id)} />)}</div>
       )}
-      {newFolder && <NewFolder onClose={() => setNewFolder(false)} onCreated={async (f) => { setNewFolder(false); await refresh(); setOpenId(f.id); }} />}
+      {newFolder && <NewFolder parent={open?.id ?? null} parentName={open?.name} onClose={() => setNewFolder(false)} onCreated={async (f) => { setNewFolder(false); await refresh(); setOpenId(f.id); }} />}
+      {movingFolder && (() => { const mf = folders.find((f) => f.id === movingFolder); return mf ? <MoveTo title={`Move “${mf.name}” into…`} folders={folders} current={parentOf(mf)} exclude={new Set([mf.id, ...insideOf(folders, mf.id)])} onClose={() => setMovingFolder(null)} onPick={async (id) => { setMovingFolder(null); await moveFolder(mf.id, id); }} /> : null; })()}
       {moving && <MoveTo folders={folders} current={characters.find((c) => c.id === moving)?.folder ?? null} onClose={() => setMoving(null)} onPick={async (id) => { const m = moving; setMoving(null); await moveIds([m], id); }} />}
 
       {report && (

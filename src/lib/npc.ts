@@ -121,8 +121,8 @@ function emoteTexture(text: string, color: string, angry: boolean) {
 
 // ---------------------------------------------------------------- the NPC
 export type Reaction = "angry" | "laugh" | "sad" | "shock";
-export type PlanName = "wander" | "phone" | "phoneBed" | "coffee" | "sit" | "sleep" | "window" | "greet" | "home" | `react-${Reaction}`;
-export const PLAN_NAMES: PlanName[] = ["wander", "phone", "phoneBed", "coffee", "sit", "sleep", "window", "greet", "home", "react-angry", "react-laugh", "react-sad", "react-shock"];
+export type PlanName = "wander" | "phone" | "phoneBed" | "coffee" | "sit" | "sleep" | "window" | "stretch" | "greet" | "home" | `react-${Reaction}`;
+export const PLAN_NAMES: PlanName[] = ["wander", "phone", "phoneBed", "coffee", "sit", "sleep", "window", "stretch", "greet", "home", "react-angry", "react-laugh", "react-sad", "react-shock"];
 
 export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; scene: THREE.Scene; scale: number }) {
   const { vrm, idle, camera, scene } = opts;
@@ -382,6 +382,14 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
       yield* wait(0.8);
       yield* standUpFromBed();
     },
+    *stretch() {
+      // a big stretch with a yawn, arms over her head (she is wide open to being tickled)
+      label = "stretch"; gazeMode = "ahead";
+      yield* wait(0.7); arms("stretch"); yawnAmt = 1; moodGoal.mouth = 0.8; moodGoal.closed = 0.5;
+      yield* wait(4.2);
+      yawnAmt = 0; moodGoal.mouth = 0; moodGoal.closed = 0; arms("none"); gazeMode = "camera";
+      yield* wait(1);
+    },
     *greet() {
       label = "greet";
       yield* standUpFromBed();
@@ -409,7 +417,7 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
     const night = hour() >= 23 || hour() < 6, late = hour() >= 21 || hour() < 8;
     const table: [PlanName, number][] = [
       ["wander", 22], ["phone", 14], ["phoneBed", late ? 24 : 14], ["coffee", night ? 4 : 16],
-      ["sit", 10], ["window", 10], ["sleep", night ? 46 : late ? 10 : 4],
+      ["sit", 10], ["window", 10], ["stretch", 8], ["sleep", night ? 46 : late ? 10 : 4],
     ];
     const total = table.reduce((a, [, w]) => a + w, 0);
     let r = Math.random() * total;
@@ -625,6 +633,26 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
     setAttentive(v: boolean) {
       if (v === attentive) return; attentive = v;
       if (v) start("greet"); else { start("home"); gen = (function* () { yield* wait(5); yield* plans.home(); })(); }
+    },
+    /** Being carried in someone's hand: no planning or walking, standing posture (the carry module places her). */
+    carry(v: boolean) {
+      if (v) { sitTarget = 0; lieTarget = 0; sleeping = false; start("home"); paused = 1e9; }
+      else { paused = 0; start("home"); }
+    },
+    /** Put her somewhere (world units); used when she is set down. */
+    teleport(x: number, z: number) { me.x = x / s; me.z = z / s; path = []; },
+    get yaw() { return me.yaw; },
+    /** Arms up in a big stretch (and a yawn): the worst moment to be tickled. */
+    get stretching() { return W.stretch > 0.4; },
+    /** Drop whatever she is doing and stand there (a stretch ends at once). */
+    interrupt() { start("home"); },
+    /** She just said something short (an emote bubble above her head). */
+    say,
+    /** She was poked: stop for a moment, and wake her if she was asleep. Returns whether she was asleep. */
+    disturb(): boolean {
+      paused = Math.max(paused, 1.6);
+      if (W.lie > 0.5 && sleeping) { sleeping = false; moodGoal.closed = 0; start("home"); return true; }
+      return false;
     },
     /** While her head is being petted she stays where she is (and wakes up, if asleep). */
     setPetting(amount: number, dt: number) {

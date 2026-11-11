@@ -133,6 +133,7 @@ pub fn run() {
             extras::delete_lorebook,
             extras::list_folders,
             extras::create_folder,
+            extras::move_folder,
             extras::rename_folder,
             extras::delete_folder,
             extras::set_folder_cover,

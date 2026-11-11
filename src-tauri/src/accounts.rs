@@ -984,8 +984,12 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
         }
 
         let mut folder_map: HashMap<String, String> = HashMap::new();
+        // new ids first, so a folder can name its parent whichever comes first in the file
+        for f in &parsed.data.folders { folder_map.insert(f.id.clone(), uid()); }
         for (i, f) in parsed.data.folders.iter().enumerate() {
-            let mut nf = db::Folder { id: uid(), name: f.name.clone(), cover: None, frame: f.frame.and_then(|x| x.clean()), created_at: f.created_at };
+            // the parent has to exist in the file and must not lead back to this folder (a hand-edited file could loop)
+            let parent = f.parent.as_ref().filter(|p| folder_map.contains_key(*p) && !db::folder_chain(&parsed.data.folders, p).contains(&f.id)).and_then(|p| folder_map.get(p).cloned());
+            let mut nf = db::Folder { id: folder_map[&f.id].clone(), name: f.name.clone(), cover: None, frame: f.frame.and_then(|x| x.clean()), created_at: f.created_at, parent };
             if let Some(base) = f.cover.as_ref().and_then(|c| c.strip_prefix("media/")).filter(|b| safe_media_name(b)) {
                 if let Some(bytes) = parsed.media.get(base) {
                     let ext = std::path::Path::new(base).extension().and_then(|x| x.to_str()).unwrap_or("png").to_lowercase();
@@ -999,7 +1003,6 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
                 }
             }
             db::save_folder(&db, &nf, &o).map_err(e)?;
-            folder_map.insert(f.id.clone(), nf.id);
         }
 
         // personas and the profile picture (an image, a safe name, written under a fresh name)

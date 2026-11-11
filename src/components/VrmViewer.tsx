@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -7,6 +7,10 @@ import { api } from "../api";
 import { createIdle } from "../lib/idle";
 import { buildRoom } from "../lib/room";
 import { createHands } from "../lib/hands";
+import { createPoker, REGIONS, type Region } from "../lib/poke";
+import { createCarry } from "../lib/carry";
+import { FLOOR } from "../lib/room";
+import { activePad, bindingText, getBindings, padKind, type PadKind } from "../lib/gamepad";
 import { createNpc, type PlanName } from "../lib/npc";
 import SpeechBubble, { type Speech } from "./SpeechBubble";
 import TalkBar, { type Talk } from "./TalkBar";
@@ -69,7 +73,18 @@ export default function VrmViewer({ url, large, attentive, speech, talk, wardrob
   const handsRef = useRef<ReturnType<typeof createHands> | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const [handsOn, setHandsOn] = useState(false);
+  // what the hands do: open (pet), a pointing finger (poke and tickle), or a pinch (pick her up)
+  const [tool, setTool] = useState<"pet" | "point" | "pinch">("pet");
+  const toolRef = useRef(tool);
+  toolRef.current = tool;
+  const pointing = tool === "point", pinching = tool === "pinch";
   const [pad, setPad] = useState(false);
+  const [padK, setPadK] = useState<PadKind>(() => { const g = activePad(); return g ? padKind(g.id) : "generic"; });
+  const [bindVer, setBindVer] = useState(0);        // bumps when the person changes their controller bindings
+  useEffect(() => { const f = () => setBindVer((v) => v + 1); window.addEventListener("dorms-pad-bindings", f); return () => window.removeEventListener("dorms-pad-bindings", f); }, []);
+  const scaleRef = useRef(1);
+  const bind = useMemo(() => getBindings(), [bindVer]);
+  const bn = (l: number[]) => bindingText(padK, l);
   const physicsRef = useRef(physics);
   physicsRef.current = physics;
   const [state, setState] = useState<"loading" | "ready" | "error" | "blocked">("loading");
@@ -158,11 +173,29 @@ export default function VrmViewer({ url, large, attentive, speech, talk, wardrob
       let idle: ReturnType<typeof createIdle> | undefined;
       let hands: ReturnType<typeof createHands> | undefined;
       let npc: ReturnType<typeof createNpc> | undefined;
+      let poker: ReturnType<typeof createPoker> | undefined;
+      let carry: ReturnType<typeof createCarry> | undefined;
+      let testHold: THREE.Vector3 | null = null;
+      // her pose each frame: the NPC's, then the reaction to a poke, then being carried (which places her in the air)
+      const afterHook = (t: number, dt: number) => { npc?.apply(t, dt); poker?.apply(t, dt); carry?.apply(t, dt); };
+      const onPokeTest = (e: Event) => { const d = (e as CustomEvent<{ region: Region; side?: number }>).detail; if (poker && d && REGIONS.includes(d.region)) poker.react(d.region, d.side ?? 0); };
+      el.addEventListener("poke", onPokeTest);
+      const onTickleTest = (e: Event) => { const d = (e as CustomEvent<{ region: Region; seconds?: number; side?: number }>).detail; if (poker && d && REGIONS.includes(d.region)) poker.forceTickle(d.region, d.seconds ?? 3, d.side ?? 0); };
+      el.addEventListener("tickle", onTickleTest);
+      const onPickTest = (e: Event) => {
+        const d = ((e as CustomEvent).detail ?? {}) as { x?: number; y?: number; z?: number; calm?: boolean };
+        if (!carry) return;
+        testHold = new THREE.Vector3(d.x ?? npcPos.x, d.y ?? 1.9 * (idleRef.current ? scaleRef.current : 1), d.z ?? npcPos.z);
+        carry.grab(testHold.clone()); if (d.calm !== undefined) carry.setCalm(d.calm);
+      };
+      const onCarryMove = (e: Event) => { const d = (e as CustomEvent).detail as { x?: number; y?: number; z?: number }; if (testHold && d) testHold.set(d.x ?? testHold.x, d.y ?? testHold.y, d.z ?? testHold.z); };
+      const onDropTest = () => { testHold = null; carry?.drop(); };
+      el.addEventListener("pickup", onPickTest); el.addEventListener("carry-move", onCarryMove); el.addEventListener("drop", onDropTest);
       const onNpc = (e: Event) => { const n = (e as CustomEvent<PlanName>).detail; if (npc && n) npc.force(n); };
       el.addEventListener("npc", onNpc);
       const headPos = new THREE.Vector3();
       // plugging in a controller turns the hands on (in the big viewer, where there's room to play)
-      const onPad = () => { setPad(true); if (large) setHandsOn(true); };
+      const onPad = (e: Event) => { setPad(true); const g = (e as GamepadEvent).gamepad; if (g) setPadK(padKind(g.id)); if (large) setHandsOn(true); };
       const onPadGone = () => { if (!navigator.getGamepads?.().some((g) => g)) setPad(false); };
       window.addEventListener("gamepadconnected", onPad);
       window.addEventListener("gamepaddisconnected", onPadGone);
@@ -211,7 +244,32 @@ export default function VrmViewer({ url, large, attentive, speech, talk, wardrob
           npc.enabled = livelyRef.current;
           if (attentiveRef.current) npc.setAttentive(true);
           npcRef.current = npc;
-          hands = createHands({ scene, camera, dom: renderer.domElement, head: headPos, scale: H / 1.6 });
+          scaleRef.current = H / 1.6;
+          carry = createCarry({ vrm: v, idle, scale: H / 1.6, emote: npc.say, npc });
+          poker = createPoker({ vrm: v, idle: idle as never, scale: H / 1.6, scene, camera, emote: npc.say, disturb: npc.disturb, offGuard: () => npc?.stretching ?? false, interrupt: () => npc?.interrupt() });
+          hands = createHands({
+            scene, camera, dom: renderer.domElement, head: headPos, scale: H / 1.6,
+            pick: (o, d, max) => poker?.pick(o, d, max) ?? null,
+            onPoke: (o, d) => { if (!frozenRef.current) poker?.poke(o, d); },
+            onTickle: (o, d, _h, k) => { if (!frozenRef.current) poker?.tickle(o, d, k); },
+            onGrab: (o, d, tip) => {
+              if (frozenRef.current || !poker || !carry) return false;
+              const h = poker.pick(o, d, 1.1 * (H / 1.6));      // generous: depth is hard to judge with a controller
+              if (!h || h.region === "arm" || h.region === "hand") return false;      // she is picked up by the scruff: head, shoulders, back
+              carry.grab(tip); return true;
+            },
+            onCarry: (tip) => {
+              const sc = H / 1.6;
+              const a = tip.clone();
+              a.x = Math.min(Math.max(a.x, (FLOOR.x0 + 0.4) * sc), (FLOOR.x1 - 0.4) * sc);
+              a.z = Math.min(Math.max(a.z, (FLOOR.z0 + 0.4) * sc), (FLOOR.z1 - 0.4) * sc);
+              a.y = Math.min(Math.max(a.y, 0.05 * sc), 2.6 * sc);
+              carry?.move(a);
+            },
+            onDrop: () => carry?.drop(),
+            onTool: (t) => setTool(t),
+          });
+          hands.tool = toolRef.current;
           handsRef.current = hands;
           const fov = (camera.fov * Math.PI) / 180;
           const fit = (H * (large ? 1.55 : 1.18)) / 2 / Math.tan(fov / 2);
@@ -236,6 +294,7 @@ export default function VrmViewer({ url, large, attentive, speech, talk, wardrob
       const clock = new THREE.Clock();
       let simT = 0;
       const pw = new THREE.Vector3();
+      const pv = new THREE.Vector3();
       const bp = new THREE.Vector3();
       let confirmed = false;
       let framesWithModel = 0;
@@ -255,11 +314,18 @@ export default function VrmViewer({ url, large, attentive, speech, talk, wardrob
           if (hands) { hands.update(dtReal); el.dataset.petting = String(Math.round(hands.pet.amount * 100)); el.dataset.near = String(Math.round(hands.pet.near * 100)); }
           if (!isFrozen) {
           if (npc) npc.setPetting(hands?.pet.amount ?? 0, dt);
-          idle.update(t, dt, hands?.pet, npc ? npc.apply : undefined);
+          idle.update(t, dt, hands?.pet, afterHook);
+          if (carry) { el.dataset.carry = carry.mode; el.dataset.carryY = String(Math.round(carry.height * 100)); el.dataset.panic = String(Math.round(carry.panic * 100)); el.dataset.calm = carry.calm ? "1" : "0"; }
+          if (testHold && carry?.held) carry.move(testHold);
+          if (poker) { el.dataset.poke = poker.last; el.dataset.pokes = String(poker.count); el.dataset.tickle = String(Math.round(poker.tickling * 100)); el.dataset.tickles = String(poker.tickles); }
           if (npc) {
             npc.position(npcPos);
             // follow her around the room (smoothly); lights and shadows come with her, and the room dims while she sleeps
-            const k = 1 - Math.exp(-2.2 * dt);
+            let k = 1 - Math.exp(-2.2 * dt);
+            if (carry?.busy) {                // while she is carried the camera only follows once she nears the edge of the screen, so it doesn't fight your hand
+              pv.set(npcPos.x, carry.height + 0.8 * scaleRef.current, npcPos.z).project(camera);
+              k = Math.abs(pv.x) > 0.55 || Math.abs(pv.y) > 0.65 ? k * 0.9 : 0;
+            }
             follow.x += (npcPos.x - follow.x) * k; follow.z += (npcPos.z - follow.z) * k;
             const dx = follow.x - lastFollow.x, dz = follow.z - lastFollow.z;
             camera.position.x += dx; camera.position.z += dz; controls.target.x += dx; controls.target.z += dz;
@@ -312,6 +378,10 @@ export default function VrmViewer({ url, large, attentive, speech, talk, wardrob
         window.removeEventListener("gamepadconnected", onPad);
         window.removeEventListener("gamepaddisconnected", onPadGone);
         el.removeEventListener("npc", onNpc);
+        el.removeEventListener("poke", onPokeTest);
+        el.removeEventListener("tickle", onTickleTest);
+        poker?.dispose(); carry?.dispose();
+        el.removeEventListener("pickup", onPickTest); el.removeEventListener("carry-move", onCarryMove); el.removeEventListener("drop", onDropTest);
         npc?.dispose(); npcRef.current = null;
         hands?.dispose(); handsRef.current = null; controlsRef.current = null;
         controls.dispose();
@@ -320,7 +390,7 @@ export default function VrmViewer({ url, large, attentive, speech, talk, wardrob
         renderer.dispose();
         renderer.domElement.remove();
         idleRef.current = null;
-        delete el.dataset.npc; delete el.dataset.npcx; delete el.dataset.npcz; delete el.dataset.frozen; delete el.dataset.plan; delete el.dataset.petting; delete el.dataset.near; delete el.dataset.hands; delete el.dataset.ready; delete el.dataset.facing; delete el.dataset.pose; delete el.dataset.vrm;
+        delete el.dataset.npc; delete el.dataset.npcx; delete el.dataset.npcz; delete el.dataset.frozen; delete el.dataset.plan; delete el.dataset.petting; delete el.dataset.near; delete el.dataset.hands; delete el.dataset.poke; delete el.dataset.pokes; delete el.dataset.tickle; delete el.dataset.tickles; delete el.dataset.pointing; delete el.dataset.pinching; delete el.dataset.carry; delete el.dataset.carryY; delete el.dataset.panic; delete el.dataset.calm; delete el.dataset.ready; delete el.dataset.facing; delete el.dataset.pose; delete el.dataset.vrm;
       };
     }
   }, [url, attempt, large]);
@@ -337,6 +407,29 @@ export default function VrmViewer({ url, large, attentive, speech, talk, wardrob
     const el = host.current;
     if (el) { if (handsOn) el.dataset.hands = "1"; else delete el.dataset.hands; }
   }, [handsOn, state]);
+  useEffect(() => {
+    const h = handsRef.current;
+    if (h) h.tool = tool;
+    const el = host.current;
+    if (el) {
+      if (tool === "point") el.dataset.pointing = "1"; else delete el.dataset.pointing;
+      if (tool === "pinch") el.dataset.pinching = "1"; else delete el.dataset.pinching;
+    }
+  }, [tool, state]);
+  // P switches your hands between petting and poking (big viewer only; not while typing)
+  useEffect(() => {
+    if (!large) return;
+    const k = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const key = e.key.toLowerCase();
+      if ((key !== "p" && key !== "g") || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      e.preventDefault(); setHandsOn(true);
+      setTool((v) => { const want = key === "p" ? "point" : "pinch"; return v === want ? "pet" : want; });
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [large]);
   useEffect(() => { if (npcRef.current) npcRef.current.enabled = lively; try { localStorage.setItem("dorms.vrm.lively", lively ? "1" : "0"); } catch { /* storage unavailable */ } }, [lively]);
   useEffect(() => { npcRef.current?.setAttentive(!!attentive); }, [attentive]);
   // Space pauses and plays, like a video (not while typing, and only in the big viewer so a page scroll isn't hijacked)
@@ -375,6 +468,14 @@ export default function VrmViewer({ url, large, attentive, speech, talk, wardrob
             onClick={() => setLively((v) => !v)}>🎭</button>
           <button className={`iconbtn${handsOn ? " on" : ""}`} title="Your hands: pet her with a controller, or with the mouse or touch (click to turn on or off)" aria-label="Hands" aria-pressed={handsOn}
             onClick={() => setHandsOn((v) => !v)}>🖐</button>
+          {handsOn && (
+            <button className={`iconbtn${pointing ? " on" : ""}`} title={pointing ? "Poking: click a spot to poke her, hold to tickle. Click to go back to open hands (P)" : "Poke her: your hands become a pointing finger, and wherever you poke she reacts (P)"} aria-label="Poke" aria-pressed={pointing}
+              onClick={() => setTool((v) => (v === "point" ? "pet" : "point"))}>👆</button>
+          )}
+          {handsOn && (
+            <button className={`iconbtn${pinching ? " on" : ""}`} title={pinching ? "Pick up: press and hold on her to pinch her up, let go to put her down. Click to go back to open hands (G)" : "Pick her up: pinch her by the scruff, carry her about the room, and put her down somewhere else (G)"} aria-label="Pick up" aria-pressed={pinching}
+              onClick={() => setTool((v) => (v === "pinch" ? "pet" : "pinch"))}>🤏</button>
+          )}
           <button className="iconbtn" title={`Soft-body physics: ${physicsLabel} (click to change)`} aria-label={`Physics ${physicsLabel}`} data-physics={physics}
             onClick={() => setPhysicsMode(nextPhysics[physics])}>〰</button>
           <button className="iconbtn" title="Hop (shows the physics)" aria-label="Hop"
@@ -398,9 +499,17 @@ export default function VrmViewer({ url, large, attentive, speech, talk, wardrob
       {state === "ready" && large && !talk && (
         <div className="vrm-hint">
           {handsOn
-            ? pad
-              ? "Sticks move your hands · triggers reach in · bumpers pull back · A grips · stroke her head"
-              : "Move to reach · press and hold to touch · stroke her head or ears · 🖐 to turn off"
+            ? pinching
+              ? pad
+                ? `Sticks move your hand · hold ${bn(bind.right.slice(0, 1))} (right) or ${bn(bind.left.slice(0, 1))} (left) over her to pinch her up · let go to drop her · ${bn(bind.cycle)} changes gesture`
+                : "Press and hold on her to pinch her up · move to carry her · scroll to push her in or out · let go to drop her · G to put your hand back"
+            : pointing
+              ? pad
+                ? `Sticks move your hands · tap ${bn(bind.right.slice(0, 1))} (right) or ${bn(bind.left.slice(0, 1))} (left) to poke, hold to tickle · ${bn(bind.cycle)} changes gesture`
+                : "Aim at her and click to poke · hold the button to tickle · ears, cheeks, arms, shoulders and back are ticklish · P for open hands"
+              : pad
+                ? `Sticks move your hands · triggers reach in · bumpers pull back · ${bn(bind.right.slice(0, 1))} grips · ${bn(bind.cycle)} changes gesture · stroke her head`
+                : "Move to reach · press and hold to touch · stroke her head or ears · 👆 or P to poke · 🖐 to turn off"
             : "Drag to turn · scroll or pinch to zoom · double-click to reset · 🖐 for your hands"}
         </div>
       )}
