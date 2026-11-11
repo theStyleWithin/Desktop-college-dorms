@@ -1,11 +1,13 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  api, displayName, mediaUrl, onAutoStopped, onGen, tagline, type Character, type Chat, type ChatKind, type Message, type TurnMode,
+  api, displayName, mediaUrl, musicUrl, onAutoStopped, onGen, tagline, type Character, type Chat, type ChatKind, type Message, type TurnMode,
 } from "../api";
 import Art from "../components/Art";
 import MicButton from "../components/MicButton";
 import MechanicsPanel from "../components/MechanicsPanel";
 import PhoneView from "../components/PhoneView";
+import MusicPlayer from "../components/MusicPlayer";
+import MusicField from "../components/MusicField";
 import { hideDirectives, roomBackground, kindLabel } from "../lib/rooms";
 import { makeWardrobe } from "../components/WardrobePanel";
 import type { Speech } from "../components/SpeechBubble";
@@ -26,7 +28,7 @@ function renderText(text: string) {
 function Avatar({ c, name }: { c?: Character; name: string }) {
   return (
     <div className="avatar">
-      <Art kind={c?.media?.kind === "vrm" ? null : c?.media?.kind ?? null} url={c ? mediaUrl(c) : null} name={name} />
+      <Art kind={c?.media?.kind === "vrm" ? null : c?.media?.kind ?? null} url={c ? mediaUrl(c) : null} name={name} frame={c?.frame} />
     </div>
   );
 }
@@ -55,6 +57,9 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
   const members = useMemo(() => (chat?.character_ids ?? []).map((i) => byId.get(i)).filter(Boolean) as Character[], [chat, byId]);
   const room = useMemo(() => { const d = dorms.find((x) => x.id === chat?.dorm_id); return d?.room_id != null ? rooms.find((r) => r.id === d.room_id) ?? null : null; }, [chat, dorms, rooms]);
   const roomBg = roomBackground(room);
+  const dormOfChat = dorms.find((x) => x.id === chat?.dorm_id);
+  // the dorm's own music wins over its room's
+  const music = dormOfChat?.music_path ? { src: musicUrl(dormOfChat), name: dormOfChat.music_name || "Music" } : room?.music_path ? { src: musicUrl(room), name: room.music_name || "Music" } : null;
   const phone = chat?.style === "phone";
   const stageChar = (focus && byId.get(focus)) || members[0] || null;
 
@@ -220,6 +225,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                 <div className="tok">{members.map((m) => displayName(m)).join(", ") || "No characters"}{room ? <> · <button className="linklike" onClick={() => go({ page: "rooms", edit: room.id })} title={`${kindLabel(room.kind)} — edit this room`}>🛋️ {room.name}</button></> : null}</div>
               </div>
               <div className="grow" />
+              {music?.src && <MusicPlayer key={music.src} src={music.src} name={music.name} />}
               <button className="btn sm only-mobile" onClick={() => setOptsOpen((o) => !o)} aria-label="Chat options" aria-expanded={optsOpen}>⋯</button>
               <div className={`chatopts ${optsOpen ? "open" : ""}`}>
               {chat.kind !== "dm" && (
@@ -336,7 +342,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
       <aside className="side-panel">
         {stageChar ? (
           <>
-            <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "")} kind={stageChar.media?.kind ?? null} url={mediaUrl(stageChar)} name={displayName(stageChar)} mode="full" attentive={busy || listening || text.trim().length > 0}
+            <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "")} kind={stageChar.media?.kind ?? null} url={mediaUrl(stageChar)} name={displayName(stageChar)} frame={stageChar.frame} mode="full" attentive={busy || listening || text.trim().length > 0}
               wardrobe={makeWardrobe(stageChar, () => void refresh(), toast)}
               speech={speech && speech.characterId === stageChar.id ? { ...speech, text: hideDirectives(speech.text) } : null}
               talk={{ draft: text, setDraft: setText, send: (t) => void sendText(t), busy, onHeard: heard, onListening: setListening }} /></div>
@@ -411,10 +417,17 @@ function DormRoom({ dormId, onClose }: { dormId: number; onClose: () => void }) 
   const { dorms, refresh } = useStore();
   const d = dorms.find((x) => x.id === dormId);
   const [room, setRoom] = useState<number | null>(d?.room_id ?? null);
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
   return (
-    <Modal title={`Room for ${d?.name ?? "dorm"}`} onClose={onClose}>
+    <Modal title={`Room & music for ${d?.name ?? "dorm"}`} onClose={onClose}>
       <p className="sub">The room's description tells the characters where they are, and its backdrop shows behind every chat in this dorm.</p>
       <RoomSelect value={room} onChange={setRoom} />
+      <h4 style={{ margin: "18px 0 6px" }}>Background music</h4>
+      <MusicField name={d?.music_name ?? ""} busy={busy}
+        onPick={async (f) => { setBusy(true); try { await api.setDormMusic(dormId, f); await refresh(); } catch (e) { toast(errText(e), "err"); } finally { setBusy(false); } }}
+        onRemove={async () => { setBusy(true); try { await api.clearDormMusic(dormId); await refresh(); } catch (e) { toast(errText(e), "err"); } finally { setBusy(false); } }} />
+      <div className="hint">Plays on a loop in this dorm's chats. If you give the dorm its own music, it is used instead of the room's.</div>
       <div className="row" style={{ marginTop: 14 }}><button className="btn primary" onClick={async () => { await api.setDormRoom(dormId, room); await refresh(); onClose(); }}>Save</button></div>
     </Modal>
   );
@@ -443,15 +456,17 @@ function NewChat({ dormId, onClose, onCreated }: { dormId: number | null; onClos
   const [dorm, setDorm] = useState<number | null>(dormId);
   const [ids, setIds] = useState<string[]>([]);
   const [name, setName] = useState("");
+  const [opening, setOpening] = useState(0);
   const byId = new Map(characters.map((c) => [c.id, c]));
   const auto = ids.length ? ids.map((i) => displayName(byId.get(i)!)).join(", ") : "";
   const create = useCallback(async () => {
     if (!ids.length) return toast("Pick at least one character.", "err");
     try {
       const n = name.trim() || (kind === "channel" ? "general" : auto);
-      onCreated(await api.createChat(dorm, n, kind, ids));
+      onCreated(await api.createChat(dorm, n, kind, ids, kind === "dm" ? opening : undefined));
     } catch (e) { toast(errText(e), "err"); }
-  }, [ids, name, kind, dorm, auto, onCreated, toast]);
+  }, [ids, name, kind, dorm, auto, opening, onCreated, toast]);
+  const greetings = kind === "dm" && ids[0] ? [byId.get(ids[0])?.card.first_mes ?? "", ...(byId.get(ids[0])?.card.alternate_greetings ?? [])].filter((g) => g.trim()) : [];
   return (
     <Modal title="New chat" onClose={onClose}>
       <div className="row" style={{ marginBottom: 12 }}>
@@ -464,7 +479,15 @@ function NewChat({ dormId, onClose, onCreated }: { dormId: number | null; onClos
       <div className="hint" style={{ marginBottom: 10 }}>
         {kind === "dm" ? "Just you and one character." : kind === "group" ? "You and several characters. Greetings are posted for each." : "An empty room where characters can talk to you and each other."}
       </div>
-      <CharacterPicker value={ids} single={kind === "dm"} onChange={setIds} />
+      <CharacterPicker value={ids} single={kind === "dm"} onChange={(v) => { setIds(v); setOpening(0); }} />
+      {greetings.length > 1 && (
+        <label className="field-inline" style={{ display: "grid", gap: 4, marginTop: 12 }}>
+          <span className="hint">Opening message ({greetings.length} to choose from; the others stay one swipe away)</span>
+          <select value={opening} onChange={(e) => setOpening(Number(e.target.value))} aria-label="Opening message">
+            {greetings.map((g, i) => <option key={i} value={i}>{i + 1}. {g.replace(/\s+/g, " ").slice(0, 70)}{g.length > 70 ? "…" : ""}</option>)}
+          </select>
+        </label>
+      )}
       <div className="row" style={{ marginTop: 12 }}>
         <input type="text" style={{ flex: 1, minWidth: 160 }} placeholder={kind === "channel" ? "Channel name (general)" : auto || "Chat name"} value={name} onChange={(e) => setName(e.target.value)} />
         <select style={{ width: "auto" }} value={dorm ?? ""} onChange={(e) => setDorm(e.target.value ? Number(e.target.value) : null)} aria-label="Dorm">

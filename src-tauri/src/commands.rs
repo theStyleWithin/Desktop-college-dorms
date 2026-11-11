@@ -10,7 +10,7 @@ use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::{Emitter, State};
 use tokio::sync::Notify;
 
-use crate::db::{self, ApiProfile, Character, Chat, Dorm, Media, Message, Settings};
+use crate::db::{self, ApiProfile, Character, Chat, Media, Message, Settings};
 use crate::llm::{self, Auth, Endpoint, Extras, GenParams};
 use crate::{llama, secrets, AppState, Shared};
 
@@ -176,19 +176,38 @@ pub fn save_character(state: State<'_, Shared>, mut character: Character) -> R<C
     if !known {
         character.id = uid();
         character.created_at = now;
+        character.folder = None;
     }
     // media is owned by the backend; never trust the frontend copy
     if let Some(existing) = db::get_character(&db, &character.id, &o).map_err(e)? {
         character.media = existing.media;
         character.outfits = existing.outfits;
         character.outfit = existing.outfit;
+        character.folder = existing.folder; // filing is done by dragging, not by editing
         if character.created_at == 0 {
             character.created_at = existing.created_at;
         }
     }
+    character.frame = character.frame.and_then(|f| f.clean());
+    // only this person's own lorebooks can be attached (each once)
+    let mine: Vec<String> = db::list_lorebooks(&db, &o).map_err(e)?.into_iter().map(|b| b.id).collect();
+    let mut seen = std::collections::HashSet::new();
+    character.lorebooks.retain(|l| mine.contains(l) && seen.insert(l.clone()));
     character.updated_at = now;
     db::save_character(&db, &character, &o).map_err(e)?;
     Ok(out(&state, character))
+}
+
+/// Move/zoom the avatar picture (kept apart from the card text so adjusting it never touches unsaved edits).
+#[tauri::command]
+pub fn set_frame(state: State<'_, Shared>, id: String, frame: Option<db::Frame>) -> R<CharacterOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Character not found")?;
+    c.frame = frame.and_then(|f| f.clean());
+    c.updated_at = db::now();
+    db::save_character(&db, &c, &o).map_err(e)?;
+    Ok(out(&state, c))
 }
 
 #[tauri::command]
@@ -368,6 +387,9 @@ pub fn import_card(request: Request<'_>, state: State<'_, Shared>) -> R<ImportOu
         media: None,
         outfits: vec![],
         outfit: None,
+        frame: None,
+        folder: None,
+        lorebooks: vec![],
         favorite: false,
         created_at: now,
         updated_at: now,
@@ -416,13 +438,15 @@ pub fn export_card(state: State<'_, Shared>, id: String, format: String) -> R<Re
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn list_dorms(state: State<'_, Shared>) -> R<Vec<Dorm>> {
-    db::list_dorms(&state.db.lock().unwrap(), &owner(&state)?).map_err(e)
+pub fn list_dorms(state: State<'_, Shared>) -> R<Vec<crate::extras::DormOut>> {
+    let l = db::list_dorms(&state.db.lock().unwrap(), &owner(&state)?).map_err(e)?;
+    Ok(l.into_iter().map(|d| crate::extras::dorm_out(&state, d)).collect())
 }
 
 #[tauri::command]
-pub fn create_dorm(state: State<'_, Shared>, name: String, room_id: Option<i64>) -> R<Dorm> {
-    db::create_dorm(&state.db.lock().unwrap(), name.trim(), room_id, &owner(&state)?).map_err(e)
+pub fn create_dorm(state: State<'_, Shared>, name: String, room_id: Option<i64>) -> R<crate::extras::DormOut> {
+    let d = db::create_dorm(&state.db.lock().unwrap(), name.trim(), room_id, &owner(&state)?).map_err(e)?;
+    Ok(crate::extras::dorm_out(&state, d))
 }
 
 #[tauri::command]
@@ -432,7 +456,14 @@ pub fn rename_dorm(state: State<'_, Shared>, id: i64, name: String) -> R<()> {
 
 #[tauri::command]
 pub fn delete_dorm(state: State<'_, Shared>, id: i64) -> R<()> {
-    db::delete_dorm(&state.db.lock().unwrap(), id, &owner(&state)?).map_err(e)
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    if let Some(d) = db::get_dorm(&db, id, &o).map_err(e)? {
+        if !d.music.is_empty() {
+            let _ = std::fs::remove_file(state.data_dir.join(&d.music));
+        }
+    }
+    db::delete_dorm(&db, id, &o).map_err(e)
 }
 
 #[tauri::command]
@@ -447,6 +478,7 @@ pub fn create_chat(
     name: String,
     kind: String,
     character_ids: Vec<String>,
+    opening: Option<usize>,
 ) -> R<Chat> {
     let o = owner(&state)?;
     let db = state.db.lock().unwrap();
@@ -461,7 +493,7 @@ pub fn create_chat(
                 if !c.card.first_mes.trim().is_empty() {
                     greetings.push(c.card.first_mes.clone());
                 }
-                greetings.extend(c.card.alternate_greetings.iter().cloned());
+                greetings.extend(c.card.alternate_greetings.iter().filter(|g| !g.trim().is_empty()).cloned());
                 if kind != "dm" {
                     greetings.truncate(1);
                 }
@@ -469,7 +501,13 @@ pub fn create_chat(
                     continue;
                 }
                 let swipes: Vec<String> = greetings.iter().map(|g| substitute(g, &c.card.name, &user, "")).collect();
-                db::add_message(&db, chat.id, "character", Some(id), &swipes).map_err(e)?;
+                let msg = db::add_message(&db, chat.id, "character", Some(id), &swipes).map_err(e)?;
+                // a one-on-one chat can open with any of the greetings (the others stay one swipe away)
+                if let (Some(k), "dm") = (opening, kind.as_str()) {
+                    if k > 0 && k < swipes.len() {
+                        db::save_message_swipes(&db, msg.id, &swipes, k as i64).map_err(e)?;
+                    }
+                }
             }
         }
     }
@@ -942,9 +980,14 @@ async fn run_generation(
         default_scan_depth: 4,
         continue_last: continuing,
     };
+    // lorebooks attached to the speaker work together with the book inside her card
+    let speaker_card = {
+        let db = st.db.lock().unwrap();
+        crate::extras::card_with_lorebooks(&db, o, speaker_char)
+    };
     let prompt = build_prompt(&PromptInput {
         speaker_id: &speaker_id,
-        speaker: &speaker_char.card,
+        speaker: &speaker_card,
         others: &others,
         history: &items,
         settings: &ps,

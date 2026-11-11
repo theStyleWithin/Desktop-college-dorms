@@ -129,6 +129,18 @@ or a local Whisper server for offline use), and the resulting text is sent as th
 The API key lives in the keychain like the chat keys; internet servers must use https. The 3D character pays attention while the mic is open.
 Not built (yet): spoken replies (text to speech), and bundling a Whisper engine inside the app.
 
+## Rooms, mechanics, folders, notes (v0.4)
+
+- **Rooms** are rows (name, kind, description, owner, backdrop, music). A dorm may be set in one room; its description reaches the prompt
+  ("Setting: ..."). A backdrop is a built-in preset or an image the app saved itself; the web view can't name an arbitrary path.
+- **Mechanic packs** are `.bundle.json` files (variables, notes, reactions). Packs live in a library; each chat switches them on or off and keeps
+  its own state. The model writes hidden `[variable: set|add|subtract|push|remove value]` lines, applied with the pack's min/max and per-change limits and
+  stripped from the reply. Reactions (keywords, every N turns, crossing a threshold) run on the player's and the character's messages. Pack UI code is never executed.
+- **Phone mode** is a per-chat style (`chat` | `phone`): a texting view and a texting instruction in the prompt.
+- **Folders** are one level deep; filing is backend-owned (editing a card never moves it). **Framing** (x, y, zoom) is stored beside the picture and
+  applied with CSS, so the original image is untouched.
+- **Notes** and **lorebooks** are per profile. Backups carry all of it (rooms, music, packs and their per-chat state, notes, folders, lorebooks, framing).
+
 ## Status
 
 v0.3.0 adds a real 3D viewer for VRM / VRoid models (room, idle life, physics, hands, wardrobe) and voice input. v0.2.0 added local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.

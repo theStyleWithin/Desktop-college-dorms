@@ -76,7 +76,7 @@ export default function Home() {
             {recent.map(({ chat, c }) => (
               <button key={chat.id} className="item" onClick={() => go({ page: "chat", chatId: chat.id })} title={chat.name}>
                 <div className="avatar">
-                  <Art kind={c?.media?.kind === "vrm" ? null : c?.media?.kind ?? null} url={c ? mediaUrl(c) : null} name={c ? displayName(c) : chat.name} />
+                  <Art kind={c?.media?.kind === "vrm" ? null : c?.media?.kind ?? null} url={c ? mediaUrl(c) : null} name={c ? displayName(c) : chat.name} frame={c?.frame} />
                 </div>
                 <span>{chat.name}</span>
               </button>

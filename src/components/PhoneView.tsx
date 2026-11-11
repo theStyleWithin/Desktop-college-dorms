@@ -40,7 +40,7 @@ export default function PhoneView({ msgs, live, members, userName, busy, text, s
         <div className="phone-status"><span>{clock.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span><span aria-hidden>▂▄▆ 5G 🔋</span></div>
         <div className="phone-head">
           <button className="btn ghost sm" onClick={onExit} aria-label="Back to chat" title="Back to the normal chat">‹</button>
-          <div className="phone-ava">{contact ? <Art kind={contact.media?.kind === "vrm" ? null : contact.media?.kind ?? null} url={mediaUrl(contact)} name={title} /> : null}</div>
+          <div className="phone-ava">{contact ? <Art kind={contact.media?.kind === "vrm" ? null : contact.media?.kind ?? null} url={mediaUrl(contact)} name={title} frame={contact.frame} /> : null}</div>
           <div className="grow"><b>{title}</b><div className="hint">{busy ? "typing…" : "active now"}</div></div>
         </div>
         <div className="phone-msgs">

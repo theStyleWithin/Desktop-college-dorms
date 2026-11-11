@@ -3,11 +3,12 @@ import Art from "../components/Art";
 import { Kebab, useToast } from "../components/ui";
 import { errText, timeAgo, tokens } from "../lib/util";
 import { useStore } from "../store";
+import { DRAG_TYPE } from "../components/Folders";
 
 export const cardTokens = (c: Character) =>
   tokens(c.card.description) + tokens(c.card.personality) + tokens(c.card.scenario) + tokens(c.card.first_mes) + tokens(c.card.mes_example);
 
-export default function CharacterCard({ c }: { c: Character }) {
+export default function CharacterCard({ c, onMove }: { c: Character; onMove?: () => void }) {
   const { go, refresh } = useStore();
   const toast = useToast();
 
@@ -30,8 +31,9 @@ export default function CharacterCard({ c }: { c: Character }) {
   };
 
   return (
-    <div className="ccard" onClick={() => go({ page: "editor", id: c.id })}>
-      <Art kind={c.media?.kind ?? null} url={mediaUrl(c)} name={displayName(c)} />
+    <div className="ccard" data-char={displayName(c)} draggable onClick={() => go({ page: "editor", id: c.id })}
+      onDragStart={(e) => { e.dataTransfer.setData(DRAG_TYPE, JSON.stringify([c.id])); e.dataTransfer.effectAllowed = "move"; }}>
+      <Art kind={c.media?.kind ?? null} url={mediaUrl(c)} name={displayName(c)} frame={c.frame} />
       <button className="iconbtn fav" aria-label={c.favorite ? "Unfavorite" : "Favorite"}
         onClick={(e) => { e.stopPropagation(); api.setFavorite(c.id, !c.favorite).then(refresh); }}>
         {c.favorite ? "★" : "☆"}
@@ -39,6 +41,7 @@ export default function CharacterCard({ c }: { c: Character }) {
       <Kebab items={[
         { label: "Chat", onClick: startChat },
         { label: "Edit", onClick: () => go({ page: "editor", id: c.id }) },
+        ...(onMove ? [{ label: "Move to folder…", onClick: onMove }] : []),
         { label: "Export as PNG card", onClick: () => exp("png") },
         { label: "Export JSON (V2, most compatible)", onClick: () => exp("json_v2") },
         { label: "Export JSON (V3)", onClick: () => exp("json_v3") },

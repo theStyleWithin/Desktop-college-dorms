@@ -4,11 +4,12 @@ import { Modal, useToast } from "../components/ui";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
 import CharacterCard from "./CharacterCard";
+import { FolderBar, FolderTile, MoveTo, NewFolder, draggedIds, isCharDrag } from "../components/Folders";
 
 type Sort = "name" | "recent" | "created";
 
 export default function Library() {
-  const { characters, go, refresh } = useStore();
+  const { characters, folders, go, refresh } = useStore();
   const toast = useToast();
   const [q, setQ] = useState("");
   const [tag, setTag] = useState<string | null>(null);
@@ -17,6 +18,10 @@ export default function Library() {
   const [report, setReport] = useState<{ name: string; warnings: string[] }[] | null>(null);
   const file = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [newFolder, setNewFolder] = useState(false);
+  const [moving, setMoving] = useState<string | null>(null);
+  const [upOver, setUpOver] = useState(false);
 
   const tags = useMemo(() => {
     const n = new Map<string, number>();
@@ -35,6 +40,19 @@ export default function Library() {
       : b.created_at - a.created_at);
     return list;
   }, [characters, q, tag, favOnly, sort]);
+
+  const filtering = !!(q.trim() || tag || favOnly);
+  const folderIds = useMemo(() => new Set(folders.map((f) => f.id)), [folders]);
+  const open = openId ? folders.find((f) => f.id === openId) ?? null : null;
+  const inFolder = (c: (typeof characters)[number]) => (c.folder && folderIds.has(c.folder) ? c.folder : null);
+  // searching looks everywhere; otherwise you see the folder you are in (or the top level)
+  const visible = filtering ? shown : shown.filter((c) => inFolder(c) === (open ? open.id : null));
+  const countIn = (id: string) => characters.filter((c) => c.folder === id).length;
+  const moveIds = async (ids: string[], to: string | null) => {
+    const mine = ids.filter((i) => characters.some((c) => c.id === i));
+    if (!mine.length) return;
+    try { await api.moveCharacters(mine, to); await refresh(); } catch (e) { toast(errText(e), "err"); }
+  };
 
   const importFiles = async (files: FileList | File[] | null) => {
     if (!files) return;
@@ -66,16 +84,17 @@ export default function Library() {
 
   return (
     <div className="page"
-      onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+      onDragOver={(e) => { if (isCharDrag(e)) return; e.preventDefault(); setDrag(true); }}
       onDragLeave={() => setDrag(false)}
-      onDrop={(e) => { e.preventDefault(); setDrag(false); importFiles(e.dataTransfer.files); }}>
+      onDrop={(e) => { if (isCharDrag(e)) return; e.preventDefault(); setDrag(false); importFiles(e.dataTransfer.files); }}>
       <div className="page-head">
         <div>
           <h1>Characters</h1>
-          <div className="sub">{characters.length} in your library · everything stays on this device</div>
+          <div className="sub">{characters.length} in your library{folders.length ? ` · ${folders.length} folder${folders.length === 1 ? "" : "s"}` : ""} · everything stays on this device</div>
         </div>
         <div className="row">
           <button className="btn" onClick={() => file.current?.click()}>⇪ Import cards</button>
+          <button className="btn" onClick={() => setNewFolder(true)}>📁 New folder</button>
           <button className="btn primary" onClick={() => go({ page: "editor", id: null })}>＋ New character</button>
           <input ref={file} type="file" hidden multiple accept=".json,.png,application/json,image/png"
             onChange={(e) => { importFiles(e.target.files); e.target.value = ""; }} />
@@ -97,6 +116,22 @@ export default function Library() {
         </div>
       )}
 
+      {open && !filtering && (
+        <>
+          <div className="crumbs">
+            <button className={`crumb${upOver ? " over" : ""}`} onClick={() => setOpenId(null)}
+              onDragOver={(e) => { if (isCharDrag(e)) { e.preventDefault(); setUpOver(true); } }} onDragLeave={() => setUpOver(false)}
+              onDrop={(e) => { if (!isCharDrag(e)) return; e.preventDefault(); setUpOver(false); void moveIds(draggedIds(e), null); }}>‹ All characters</button>
+            <span aria-hidden>›</span><b>{open.name}</b>
+          </div>
+          <FolderBar f={open} count={countIn(open.id)} onClose={() => setOpenId(null)} onChanged={refresh} />
+        </>
+      )}
+      {!open && !filtering && folders.length > 0 && (
+        <div className="ftiles">
+          {folders.map((f) => <FolderTile key={f.id} f={f} count={countIn(f.id)} onOpen={() => setOpenId(f.id)} onDropIds={(ids) => void moveIds(ids, f.id)} />)}
+        </div>
+      )}
       {drag && <div className="banner">Drop PNG or JSON character cards to import them</div>}
       {characters.length === 0 ? (
         <div className="empty">
@@ -105,9 +140,13 @@ export default function Library() {
         </div>
       ) : shown.length === 0 ? (
         <div className="empty">Nothing matches that search.</div>
+      ) : visible.length === 0 ? (
+        <div className="empty">{open ? "This folder is empty. Drag characters onto its tile, or use ⋮ → Move to folder." : "Everything is filed in folders. Open one above."}</div>
       ) : (
-        <div className="grid">{shown.map((c) => <CharacterCard key={c.id} c={c} />)}</div>
+        <div className="grid">{visible.map((c) => <CharacterCard key={c.id} c={c} onMove={() => setMoving(c.id)} />)}</div>
       )}
+      {newFolder && <NewFolder onClose={() => setNewFolder(false)} onCreated={async (f) => { setNewFolder(false); await refresh(); setOpenId(f.id); }} />}
+      {moving && <MoveTo folders={folders} current={characters.find((c) => c.id === moving)?.folder ?? null} onClose={() => setMoving(null)} onPick={async (id) => { const m = moving; setMoving(null); await moveIds([m], id); }} />}
 
       {report && (
         <Modal title="Import notes" onClose={() => setReport(null)}>

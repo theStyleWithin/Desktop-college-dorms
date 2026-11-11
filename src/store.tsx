@@ -1,10 +1,12 @@
 import { createContext, useContext } from "react";
-import type { AppInfo, Character, Chat, Dorm, Room, SessionState, Settings } from "./api";
+import type { AppInfo, Character, Chat, Dorm, Folder, Room, SessionState, Settings } from "./api";
 
 export type Route =
   | { page: "home" }
   | { page: "library" }
   | { page: "rooms"; edit?: number | "new" }
+  | { page: "notes" }
+  | { page: "lorebooks" }
   | { page: "editor"; id: string | null }
   | { page: "chat"; chatId?: number }
   | { page: "settings"; tab?: string };
@@ -14,6 +16,7 @@ export interface Store {
   chats: Chat[];
   dorms: Dorm[];
   rooms: Room[];
+  folders: Folder[];
   settings: Settings;
   info: AppInfo | null;
   modelCount: number;

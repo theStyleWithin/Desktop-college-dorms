@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, displayName, type Room, type RoomKind } from "../api";
+import MusicField from "../components/MusicField";
 import { Modal, useToast } from "../components/ui";
 import { PRESETS, ROOM_KINDS, kindLabel, roomBackground } from "../lib/rooms";
 import { errText } from "../lib/util";
@@ -95,6 +96,7 @@ function RoomForm({ id }: { id: number | null }) {
   const [r, setR] = useState<Omit<Room, "id" | "created_at"> & Partial<Room>>(existing ?? blank());
   const [pick, setPick] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [music, setMusic] = useState<{ file?: File; remove?: boolean }>({});
   const [preview, setPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -113,6 +115,8 @@ function RoomForm({ id }: { id: number | null }) {
       const body = { name: r.name, kind: r.kind as RoomKind, description: r.description, owner_kind: r.owner_kind, character_id: r.owner_kind === "character" ? r.character_id : null, backdrop: pendingFile ? (existing?.backdrop.startsWith("file:") ? existing.backdrop : "") : r.backdrop };
       saved = existing ? await api.updateRoom({ ...existing, ...body }) : await api.createRoom(body);
       if (pendingFile) saved = await api.setRoomBackdrop(saved.id, pendingFile);
+      if (music.file) saved = await api.setRoomMusic(saved.id, music.file);
+      else if (music.remove && existing?.music) saved = await api.clearRoomMusic(saved.id);
       return saved;
     } catch (e) { toast(errText(e), "err"); return null; } finally { setBusy(false); }
   };
@@ -166,6 +170,12 @@ function RoomForm({ id }: { id: number | null }) {
             ))}
           </div>
         )}
+      </div>
+
+      <div className="field"><span>Background music</span>
+        <MusicField name={music.file ? music.file.name : music.remove ? "" : existing?.music_name ?? ""}
+          onPick={(f) => setMusic({ file: f })} onRemove={() => setMusic({ remove: true })} />
+        <div className="hint">Pick an MP3 (or another audio file) from your computer. It plays on a loop, quietly, whenever you are in a chat set in this room.</div>
       </div>
 
       <div className="row form-actions">

@@ -62,6 +62,25 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
 - **Virtual hands** for the 3D viewer: use a **game controller** (sticks move your hands, triggers reach in, bumpers pull back, A grips),
   or the mouse or touch (press and hold to reach in). Stroke her head or ears and she leans into your hand, half-closes her eyes
   and smiles; your controller rumbles gently.
+- **Rooms**: make a place (a living room, a rooftop, a character's bedroom) with a name, a description and a backdrop (your own
+  image or a built-in scene), set a dorm in it, and the characters know where they are while the chat shows the room behind it.
+  Make the room first and the dorm after ("Create & enter"), or add a room to a dorm you already have.
+- **Background music**: pick an MP3 (or another audio file) from your computer for a room or a dorm. It plays quietly on a loop while you
+  are in a chat there, with pause, mute and volume. A dorm's own music is used instead of its room's.
+- **Mechanics** (🧩 in a chat): optional story layers you switch on or off per chat. Import a `.bundle.json` pack (an affection and trust
+  tracker, a relationships panel, a status panel, a phone…): its notes join the prompt, its numbers move with keywords and with what the
+  character writes (hidden `[affection: add 3]` lines are removed before you read the reply), and you can watch or adjust them.
+  Nothing is forced on a chat. A pack's own custom screens are not run; the app shows its values in built-in panels instead.
+- **Phone mode** (📱 in a chat): the same conversation as a texting experience: a phone with message bubbles, and replies written and
+  shown as short texts.
+- **Character folders**: optional folders in the library. Drag characters onto a folder (or ⋮ → Move to folder), rename it, give it its own picture.
+  Deleting a folder never deletes its characters.
+- **Position your pictures**: choosing an avatar opens a window where you drag and zoom until the face is just right (with previews of the
+  card, round avatar and banner). The framing is saved, can be changed later (⤧ Position), and is used everywhere the picture appears.
+  Library cards are bigger too.
+- **Lorebooks**: a Lorebooks library (import SillyTavern world info or a card's book), attached to any number of characters, working
+  together with the book inside a card. **More initial messages** sit in the main editor, and you pick which one opens a new chat.
+- **Notes**: a page for writing with no length limit, like a card's creator notes but always a click away. Saves by itself; search and pin.
 - **Chub-style character editor**: tagline, in-chat name, tags, description, first message, scenario, example dialogs,
   live token counts, alternate greetings (as swipes), system prompt, post-history instructions, character's note with depth,
   and an embedded lorebook (keyword / regex triggers). Everything stays editable after creation.

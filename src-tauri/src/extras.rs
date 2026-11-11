@@ -27,11 +27,14 @@ pub struct RoomOut {
     room: Room,
     /// Absolute path of an uploaded backdrop (for the web view), when there is one.
     backdrop_path: Option<String>,
+    /// Absolute path of the room's background music, when it has some.
+    music_path: Option<String>,
 }
 
 fn room_out(st: &AppState, room: Room) -> RoomOut {
     let backdrop_path = room.backdrop.strip_prefix("file:").map(|f| st.data_dir.join(f).to_string_lossy().to_string());
-    RoomOut { room, backdrop_path }
+    let music_path = Some(room.music.as_str()).filter(|m| !m.is_empty()).map(|m| st.data_dir.join(m).to_string_lossy().to_string());
+    RoomOut { room, backdrop_path, music_path }
 }
 
 const KINDS: [&str; 13] = [
@@ -80,6 +83,8 @@ pub fn create_room(state: State<'_, Shared>, room: Room) -> R<RoomOut> {
     if r.backdrop.starts_with("file:") {
         r.backdrop.clear();
     }
+    r.music.clear();
+    r.music_name.clear();
     let r = db::create_room(&db, &r, &o).map_err(e)?;
     Ok(room_out(&state, r))
 }
@@ -93,6 +98,8 @@ pub fn update_room(state: State<'_, Shared>, room: Room) -> R<RoomOut> {
     if r.backdrop.starts_with("file:") && r.backdrop != old.backdrop {
         r.backdrop = old.backdrop.clone(); // the file can't be swapped from outside
     }
+    r.music = old.music.clone(); // music, too, only changes through its own commands
+    r.music_name = old.music_name.clone();
     if old.backdrop.starts_with("file:") && r.backdrop != old.backdrop {
         let _ = std::fs::remove_file(state.data_dir.join(old.backdrop.trim_start_matches("file:")));
     }
@@ -107,6 +114,9 @@ pub fn delete_room(state: State<'_, Shared>, id: i64) -> R<()> {
     if let Some(r) = db::get_room(&db, id, &o).map_err(e)? {
         if let Some(f) = r.backdrop.strip_prefix("file:") {
             let _ = std::fs::remove_file(state.data_dir.join(f));
+        }
+        if !r.music.is_empty() {
+            let _ = std::fs::remove_file(state.data_dir.join(&r.music));
         }
     }
     db::delete_room(&db, id, &o).map_err(e)
@@ -136,6 +146,95 @@ pub fn set_room_backdrop(request: Request<'_>, state: State<'_, Shared>) -> R<Ro
     r.backdrop = format!("file:{rel}");
     db::update_room(&db, &r, &o).map_err(e)?;
     Ok(room_out(&state, r))
+}
+
+const MUSIC_EXTS: [&str; 8] = ["mp3", "ogg", "oga", "opus", "wav", "m4a", "aac", "flac"];
+const MAX_MUSIC_BYTES: usize = 120 * 1024 * 1024;
+
+fn music_file(req: &Request<'_>, stem: &str) -> R<(Vec<u8>, String, String)> {
+    let name = header(req, "x-file-name");
+    let bytes = raw_body(req)?;
+    if bytes.len() > MAX_MUSIC_BYTES {
+        return Err("That audio file is too large (120 MB at most).".into());
+    }
+    let ext = std::path::Path::new(&name).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+    if !MUSIC_EXTS.contains(&ext.as_str()) {
+        return Err("Background music has to be an audio file (MP3, OGG, WAV, M4A, AAC or FLAC).".into());
+    }
+    let shown: String = std::path::Path::new(&name).file_name().and_then(|n| n.to_str()).unwrap_or("music").chars().filter(|c| !c.is_control()).take(120).collect();
+    Ok((bytes.to_vec(), format!("media/music-{stem}-{}.{ext}", db::now()), shown))
+}
+
+/// Body: raw audio bytes. Headers: `x-room-id`, `x-file-name` (percent-encoded).
+#[tauri::command]
+pub fn set_room_music(request: Request<'_>, state: State<'_, Shared>) -> R<RoomOut> {
+    let id: i64 = header(&request, "x-room-id").parse().map_err(|_| "Save the room first")?;
+    let (bytes, rel, shown) = music_file(&request, &format!("room{id}"))?;
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut r = db::get_room(&db, id, &o).map_err(e)?.ok_or("Save the room first")?;
+    std::fs::write(state.data_dir.join(&rel), bytes).map_err(e)?;
+    if !r.music.is_empty() {
+        let _ = std::fs::remove_file(state.data_dir.join(&r.music));
+    }
+    r.music = rel;
+    r.music_name = shown;
+    db::update_room(&db, &r, &o).map_err(e)?;
+    Ok(room_out(&state, r))
+}
+
+#[tauri::command]
+pub fn clear_room_music(state: State<'_, Shared>, id: i64) -> R<RoomOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut r = db::get_room(&db, id, &o).map_err(e)?.ok_or("Room not found")?;
+    if !r.music.is_empty() {
+        let _ = std::fs::remove_file(state.data_dir.join(&r.music));
+    }
+    r.music.clear();
+    r.music_name.clear();
+    db::update_room(&db, &r, &o).map_err(e)?;
+    Ok(room_out(&state, r))
+}
+
+#[derive(Serialize)]
+pub struct DormOut {
+    #[serde(flatten)]
+    dorm: db::Dorm,
+    music_path: Option<String>,
+}
+
+pub fn dorm_out(st: &AppState, dorm: db::Dorm) -> DormOut {
+    let music_path = Some(dorm.music.as_str()).filter(|m| !m.is_empty()).map(|m| st.data_dir.join(m).to_string_lossy().to_string());
+    DormOut { dorm, music_path }
+}
+
+/// Body: raw audio bytes. Headers: `x-dorm-id`, `x-file-name` (percent-encoded).
+#[tauri::command]
+pub fn set_dorm_music(request: Request<'_>, state: State<'_, Shared>) -> R<DormOut> {
+    let id: i64 = header(&request, "x-dorm-id").parse().map_err(|_| "Dorm not found")?;
+    let (bytes, rel, shown) = music_file(&request, &format!("dorm{id}"))?;
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let d = db::get_dorm(&db, id, &o).map_err(e)?.ok_or("Dorm not found")?;
+    std::fs::write(state.data_dir.join(&rel), bytes).map_err(e)?;
+    if !d.music.is_empty() {
+        let _ = std::fs::remove_file(state.data_dir.join(&d.music));
+    }
+    db::set_dorm_music(&db, id, &rel, &shown, &o).map_err(e)?;
+    Ok(dorm_out(&state, db::get_dorm(&db, id, &o).map_err(e)?.ok_or("Dorm not found")?))
+}
+
+#[tauri::command]
+pub fn clear_dorm_music(state: State<'_, Shared>, id: i64) -> R<DormOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let d = db::get_dorm(&db, id, &o).map_err(e)?.ok_or("Dorm not found")?;
+    if !d.music.is_empty() {
+        let _ = std::fs::remove_file(state.data_dir.join(&d.music));
+    }
+    db::set_dorm_music(&db, id, "", "", &o).map_err(e)?;
+    Ok(dorm_out(&state, db::get_dorm(&db, id, &o).map_err(e)?.ok_or("Dorm not found")?))
 }
 
 #[tauri::command]
@@ -366,4 +465,240 @@ pub fn after_reply(st: &AppState, db: &Connection, chat_id: i64, o: &db::Owner, 
     }
     emit(st, "dorms://mechanics", json!({ "chat_id": chat_id }));
     clean
+}
+
+// ---------------------------------------------------------------------------
+// Notes
+// ---------------------------------------------------------------------------
+
+/// Not a real limit on writing: only a guard against a runaway paste filling the disk.
+const MAX_NOTE_BYTES: usize = 25 * 1024 * 1024;
+
+#[tauri::command]
+pub fn list_notes(state: State<'_, Shared>) -> R<Vec<db::Note>> {
+    let o = owner(&state)?;
+    db::list_notes(&state.db.lock().unwrap(), &o).map_err(e)
+}
+
+/// Creates the note when `id` is empty. Returns it as saved.
+#[tauri::command]
+pub fn save_note(state: State<'_, Shared>, note: db::Note) -> R<db::Note> {
+    if note.body.len() > MAX_NOTE_BYTES || note.title.len() > 1000 {
+        return Err("That note is too large to save.".into());
+    }
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let now = db::now();
+    let existing = if note.id.is_empty() { None } else { db::list_notes(&db, &o).map_err(e)?.into_iter().find(|n| n.id == note.id) };
+    let saved = db::Note {
+        id: existing.as_ref().map(|n| n.id.clone()).unwrap_or_else(uid),
+        title: note.title.chars().filter(|c| !c.is_control() || *c == ' ').collect(),
+        body: note.body,
+        pinned: note.pinned,
+        created_at: existing.map(|n| n.created_at).unwrap_or(now),
+        updated_at: now,
+    };
+    db::save_note(&db, &saved, &o).map_err(e)?;
+    Ok(saved)
+}
+
+#[tauri::command]
+pub fn delete_note(state: State<'_, Shared>, id: String) -> R<()> {
+    let o = owner(&state)?;
+    db::delete_note(&state.db.lock().unwrap(), &id, &o).map_err(e)
+}
+
+// ---------------------------------------------------------------------------
+// Folders
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct FolderOut {
+    #[serde(flatten)]
+    folder: db::Folder,
+    cover_path: Option<String>,
+}
+
+fn folder_out(st: &AppState, f: db::Folder) -> FolderOut {
+    let cover_path = f.cover.as_ref().map(|c| st.data_dir.join(c).to_string_lossy().to_string());
+    FolderOut { folder: f, cover_path }
+}
+
+fn clean_folder_name(n: &str) -> R<String> {
+    let n: String = n.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(60).collect();
+    if n.is_empty() { Err("Give the folder a name.".into()) } else { Ok(n) }
+}
+
+#[tauri::command]
+pub fn list_folders(state: State<'_, Shared>) -> R<Vec<FolderOut>> {
+    let o = owner(&state)?;
+    let l = db::list_folders(&state.db.lock().unwrap(), &o).map_err(e)?;
+    Ok(l.into_iter().map(|f| folder_out(&state, f)).collect())
+}
+
+#[tauri::command]
+pub fn create_folder(state: State<'_, Shared>, name: String) -> R<FolderOut> {
+    let o = owner(&state)?;
+    let name = clean_folder_name(&name)?;
+    let db = state.db.lock().unwrap();
+    if db::list_folders(&db, &o).map_err(e)?.len() >= 500 {
+        return Err("That's a lot of folders. Delete some first.".into());
+    }
+    let f = db::Folder { id: uid(), name, cover: None, frame: None, created_at: db::now() };
+    db::save_folder(&db, &f, &o).map_err(e)?;
+    Ok(folder_out(&state, f))
+}
+
+#[tauri::command]
+pub fn rename_folder(state: State<'_, Shared>, id: String, name: String) -> R<FolderOut> {
+    let o = owner(&state)?;
+    let name = clean_folder_name(&name)?;
+    let db = state.db.lock().unwrap();
+    let mut f = db::get_folder(&db, &id, &o).map_err(e)?.ok_or("Folder not found")?;
+    f.name = name;
+    db::save_folder(&db, &f, &o).map_err(e)?;
+    Ok(folder_out(&state, f))
+}
+
+#[tauri::command]
+pub fn delete_folder(state: State<'_, Shared>, id: String) -> R<()> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    if let Some(f) = db::get_folder(&db, &id, &o).map_err(e)? {
+        if let Some(c) = &f.cover {
+            let _ = std::fs::remove_file(state.data_dir.join(c));
+        }
+    }
+    db::delete_folder(&db, &id, &o).map_err(e)
+}
+
+/// Body: raw image bytes. Headers: `x-folder-id`, `x-file-name` (percent-encoded).
+#[tauri::command]
+pub fn set_folder_cover(request: Request<'_>, state: State<'_, Shared>) -> R<FolderOut> {
+    let id = header(&request, "x-folder-id");
+    let name = header(&request, "x-file-name");
+    let bytes = raw_body(&request)?;
+    if bytes.len() > MAX_BACKDROP_BYTES {
+        return Err("That image is too large (40 MB at most).".into());
+    }
+    let ext = std::path::Path::new(&name).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+    if !["png", "jpg", "jpeg", "webp", "gif", "avif", "bmp"].contains(&ext.as_str()) {
+        return Err("A folder picture has to be an image (JPG, PNG, WebP or GIF).".into());
+    }
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut f = db::get_folder(&db, &id, &o).map_err(e)?.ok_or("Folder not found")?;
+    let safe: String = f.id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+    let rel = format!("media/folder-{safe}-{}.{ext}", db::now());
+    std::fs::write(state.data_dir.join(&rel), bytes).map_err(e)?;
+    if let Some(old) = &f.cover {
+        let _ = std::fs::remove_file(state.data_dir.join(old));
+    }
+    f.cover = Some(rel);
+    f.frame = None;
+    db::save_folder(&db, &f, &o).map_err(e)?;
+    Ok(folder_out(&state, f))
+}
+
+#[tauri::command]
+pub fn set_folder_frame(state: State<'_, Shared>, id: String, frame: Option<db::Frame>) -> R<FolderOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut f = db::get_folder(&db, &id, &o).map_err(e)?.ok_or("Folder not found")?;
+    f.frame = frame.and_then(|x| x.clean());
+    db::save_folder(&db, &f, &o).map_err(e)?;
+    Ok(folder_out(&state, f))
+}
+
+#[tauri::command]
+pub fn clear_folder_cover(state: State<'_, Shared>, id: String) -> R<FolderOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut f = db::get_folder(&db, &id, &o).map_err(e)?.ok_or("Folder not found")?;
+    if let Some(old) = f.cover.take() {
+        let _ = std::fs::remove_file(state.data_dir.join(old));
+    }
+    f.frame = None;
+    db::save_folder(&db, &f, &o).map_err(e)?;
+    Ok(folder_out(&state, f))
+}
+
+/// File characters into a folder (or back to the top level with `folder: null`).
+#[tauri::command]
+pub fn move_characters(state: State<'_, Shared>, ids: Vec<String>, folder: Option<String>) -> R<()> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    if let Some(f) = &folder {
+        db::get_folder(&db, f, &o).map_err(e)?.ok_or("That folder doesn't exist any more.")?;
+    }
+    for id in ids {
+        if let Some(mut c) = db::get_character(&db, &id, &o).map_err(e)? {
+            c.folder = folder.clone();
+            db::save_character(&db, &c, &o).map_err(e)?;
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Lorebooks
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn list_lorebooks(state: State<'_, Shared>) -> R<Vec<db::Lorebook>> {
+    let o = owner(&state)?;
+    db::list_lorebooks(&state.db.lock().unwrap(), &o).map_err(e)
+}
+
+/// Creates the book when `id` is empty. The book is read as leniently as a card's own book and stored in its clean form.
+#[tauri::command]
+pub fn save_lorebook(state: State<'_, Shared>, lorebook: db::Lorebook) -> R<db::Lorebook> {
+    let name: String = lorebook.name.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(100).collect();
+    if name.is_empty() {
+        return Err("Give the lorebook a name.".into());
+    }
+    let mut warnings = vec![];
+    let mut book = dorms_core::CharacterBook::from_value(&lorebook.book, &mut warnings);
+    book.name = name.clone();
+    if book.entries.len() > 5000 {
+        return Err("That lorebook has too many entries (5000 at most).".into());
+    }
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let now = db::now();
+    let existing = if lorebook.id.is_empty() { None } else { db::list_lorebooks(&db, &o).map_err(e)?.into_iter().find(|b| b.id == lorebook.id) };
+    let saved = db::Lorebook {
+        id: existing.as_ref().map(|b| b.id.clone()).unwrap_or_else(uid),
+        name,
+        book: serde_json::to_value(&book).map_err(e)?,
+        created_at: existing.map(|b| b.created_at).unwrap_or(now),
+        updated_at: now,
+    };
+    db::save_lorebook(&db, &saved, &o).map_err(e)?;
+    Ok(saved)
+}
+
+#[tauri::command]
+pub fn delete_lorebook(state: State<'_, Shared>, id: String) -> R<()> {
+    let o = owner(&state)?;
+    db::delete_lorebook(&state.db.lock().unwrap(), &id, &o).map_err(e)
+}
+
+/// The character's card with every attached lorebook's entries added to the book inside the card.
+pub fn card_with_lorebooks(db: &Connection, o: &db::Owner, c: &db::Character) -> dorms_core::CharacterData {
+    let mut card = c.card.clone();
+    if c.lorebooks.is_empty() {
+        return card;
+    }
+    let books = db::list_lorebooks(db, o).unwrap_or_default();
+    for id in &c.lorebooks {
+        let Some(b) = books.iter().find(|b| &b.id == id) else { continue };
+        let mut w = vec![];
+        let extra = dorms_core::CharacterBook::from_value(&b.book, &mut w);
+        match card.character_book.as_mut() {
+            Some(own) => own.entries.extend(extra.entries),
+            None => card.character_book = Some(extra),
+        }
+    }
+    card
 }

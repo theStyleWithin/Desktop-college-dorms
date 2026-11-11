@@ -56,6 +56,12 @@ export interface CardData {
   [k: string]: unknown;
 }
 
+/** How a picture is framed: the point of it to keep in view (0..1 across and down) and the zoom. */
+export interface Frame { x: number; y: number; zoom: number }
+export const DEFAULT_FRAME: Frame = { x: 0.5, y: 0.5, zoom: 1 };
+export interface Lorebook { id: string; name: string; book: CharacterBook; created_at: number; updated_at: number }
+export interface Folder { id: string; name: string; cover: string | null; frame: Frame | null; created_at: number; cover_path?: string | null }
+
 export interface Character {
   id: string;
   card: CardData;
@@ -66,6 +72,12 @@ export interface Character {
   outfits?: { id: string; name: string; file: string }[];
   outfit?: string | null;
   outfit_paths?: { id: string; name: string; path: string }[];
+  /** How the picture is framed so a face is never cut off. */
+  frame?: Frame | null;
+  /** The folder this character is filed in (null = top level). */
+  folder?: string | null;
+  /** Library lorebooks attached to this character (besides the book inside the card). */
+  lorebooks?: string[];
   favorite: boolean;
   created_at: number;
   updated_at: number;
@@ -74,7 +86,7 @@ export interface Character {
   trusted: boolean;
 }
 
-export interface Dorm { id: number; name: string; created_at: number; room_id?: number | null }
+export interface Dorm { id: number; name: string; created_at: number; room_id?: number | null; music?: string; music_name?: string; music_path?: string | null }
 
 export type RoomKind = "living_room" | "bedroom" | "kitchen" | "bathroom" | "dining_room" | "games_room" | "office" | "garage" | "garden" | "balcony" | "basement" | "rooftop" | "other";
 export interface Room {
@@ -84,7 +96,11 @@ export interface Room {
   backdrop: string; created_at: number;
   /** absolute path of an uploaded backdrop (use roomBackdrop() to turn it into something drawable) */
   backdrop_path?: string | null;
+  /** background music: the file's original name, and where it is (use musicUrl()) */
+  music?: string; music_name?: string; music_path?: string | null;
 }
+
+export interface Note { id: string; title: string; body: string; pinned: boolean; created_at: number; updated_at: number }
 
 export interface MechanicVar { id: string; name: string; kind: string; min: number | null; max: number | null; description: string }
 export interface MechanicPack {
@@ -244,6 +260,35 @@ export const api = {
   listDorms: () => invoke<Dorm[]>("list_dorms"),
   createDorm: (name: string, roomId: number | null = null) => invoke<Dorm>("create_dorm", { name, roomId }),
   setDormRoom: (id: number, roomId: number | null) => invoke<void>("set_dorm_room", { id, roomId }),
+  setFrame: (id: string, frame: Frame | null) => invoke<Character>("set_frame", { id, frame }),
+  // folders
+  listFolders: () => invoke<Folder[]>("list_folders"),
+  createFolder: (name: string) => invoke<Folder>("create_folder", { name }),
+  renameFolder: (id: string, name: string) => invoke<Folder>("rename_folder", { id, name }),
+  deleteFolder: (id: string) => invoke<void>("delete_folder", { id }),
+  async setFolderCover(id: string, file: File): Promise<Folder> {
+    return bin("set_folder_cover", new Uint8Array(await file.arrayBuffer()), { "x-folder-id": id, "x-file-name": enc(file.name) });
+  },
+  setFolderFrame: (id: string, frame: Frame | null) => invoke<Folder>("set_folder_frame", { id, frame }),
+  clearFolderCover: (id: string) => invoke<Folder>("clear_folder_cover", { id }),
+  moveCharacters: (ids: string[], folder: string | null) => invoke<void>("move_characters", { ids, folder }),
+  // lorebooks
+  listLorebooks: () => invoke<Lorebook[]>("list_lorebooks"),
+  saveLorebook: (b: { id?: string; name: string; book: CharacterBook }) => invoke<Lorebook>("save_lorebook", { lorebook: { id: "", created_at: 0, updated_at: 0, ...b } }),
+  deleteLorebook: (id: string) => invoke<void>("delete_lorebook", { id }),
+  // notes
+  listNotes: () => invoke<Note[]>("list_notes"),
+  saveNote: (note: Pick<Note, "title" | "body" | "pinned"> & { id?: string }) => invoke<Note>("save_note", { note: { id: "", created_at: 0, updated_at: 0, ...note } }),
+  deleteNote: (id: string) => invoke<void>("delete_note", { id }),
+  // background music
+  async setRoomMusic(id: number, file: File): Promise<Room> {
+    return bin("set_room_music", new Uint8Array(await file.arrayBuffer()), { "x-room-id": String(id), "x-file-name": enc(file.name) });
+  },
+  clearRoomMusic: (id: number) => invoke<Room>("clear_room_music", { id }),
+  async setDormMusic(id: number, file: File): Promise<Dorm> {
+    return bin("set_dorm_music", new Uint8Array(await file.arrayBuffer()), { "x-dorm-id": String(id), "x-file-name": enc(file.name) });
+  },
+  clearDormMusic: (id: number) => invoke<Dorm>("clear_dorm_music", { id }),
   // rooms
   listRooms: () => invoke<Room[]>("list_rooms"),
   createRoom: (room: Omit<Room, "id" | "created_at" | "backdrop_path">) => invoke<Room>("create_room", { room: { ...room, id: 0, created_at: 0 } }),
@@ -266,8 +311,9 @@ export const api = {
   renameDorm: (id: number, name: string) => invoke<void>("rename_dorm", { id, name }),
   deleteDorm: (id: number) => invoke<void>("delete_dorm", { id }),
   listChats: () => invoke<Chat[]>("list_chats"),
-  createChat: (dormId: number | null, name: string, kind: ChatKind, characterIds: string[]) =>
-    invoke<Chat>("create_chat", { dormId, name, kind, characterIds }),
+  /** `opening`: which of the character's greetings a one-on-one chat starts on (0 = the first message). */
+  createChat: (dormId: number | null, name: string, kind: ChatKind, characterIds: string[], opening?: number) =>
+    invoke<Chat>("create_chat", { dormId, name, kind, characterIds, opening: opening ?? null }),
   updateChat: (chat: Chat) => invoke<void>("update_chat", { chat }),
   deleteChat: (id: number) => invoke<void>("delete_chat", { id }),
   listMessages: (chatId: number) => invoke<Message[]>("list_messages", { chatId }),
@@ -334,6 +380,8 @@ export const onModelProgress = (cb: (e: ModelProgress) => void): Promise<Unliste
 export const onAutoStopped = (cb: (e: { chat_id: number; reason: string }) => void): Promise<UnlistenFn> =>
   listen("dorms://auto-stopped", (ev) => cb(ev.payload as { chat_id: number; reason: string }));
 
+export const folderCover = (f: { cover_path?: string | null }) => (f.cover_path ? convertFileSrc(f.cover_path) : null);
+export const musicUrl = (x: { music_path?: string | null }) => (x.music_path ? convertFileSrc(x.music_path) : null);
 export const roomBackdrop = (r: { backdrop_path?: string | null }) => (r.backdrop_path ? convertFileSrc(r.backdrop_path) : null);
 export const mediaUrl = (c: { media_path: string | null }) => (c.media_path ? convertFileSrc(c.media_path) : null);
 

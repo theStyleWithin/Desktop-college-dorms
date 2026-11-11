@@ -3,7 +3,7 @@ import ViewerWindow from "./ViewerWindow";
 import type { Speech } from "./SpeechBubble";
 import type { Talk } from "./TalkBar";
 import type { Wardrobe } from "./WardrobePanel";
-import type { MediaKind } from "../api";
+import type { Frame, MediaKind } from "../api";
 import { hue, initials } from "../lib/util";
 
 const VrmViewer = lazy(() => import("./VrmViewer"));
@@ -12,6 +12,8 @@ interface Props {
   kind: MediaKind | null;
   url: string | null;
   name: string;
+  /** Where the picture is framed (position + zoom) so a face stays in view whatever shape it is shown in. */
+  frame?: Frame | null;
   /** `thumb` keeps lists light (no WebGL, videos play on hover); `full` shows the live model. */
   mode?: "thumb" | "full";
   /** Someone is talking to her right now (typing or waiting for a reply), so a 3D character stops her own routine and pays attention. */
@@ -28,7 +30,14 @@ interface Props {
  * element fails with MEDIA_ERR_SRC_NOT_SUPPORTED), so videos are fetched into a
  * Blob and played from a `blob:` URL. In lists that only happens on hover.
  */
-function VideoArt({ url, full, bg, name }: { url: string; full: boolean; bg: string; name: string }) {
+/** CSS that keeps the chosen point of a picture in view and zooms in on it. */
+export function frameStyle(f?: Frame | null): React.CSSProperties | undefined {
+  if (!f) return undefined;
+  const o = `${(f.x * 100).toFixed(2)}% ${(f.y * 100).toFixed(2)}%`;
+  return { objectPosition: o, transformOrigin: o, transform: f.zoom > 1 ? `scale(${f.zoom})` : undefined };
+}
+
+function VideoArt({ url, full, bg, name, frame }: { url: string; full: boolean; bg: string; name: string; frame?: Frame | null }) {
   const [active, setActive] = useState(full);
   const [src, setSrc] = useState<string | null>(null);
 
@@ -51,7 +60,7 @@ function VideoArt({ url, full, bg, name }: { url: string; full: boolean; bg: str
   return (
     <div className="media" style={src ? undefined : { background: bg }}
       onMouseEnter={() => !full && setActive(true)} onMouseLeave={() => !full && setActive(false)}>
-      {src ? <video src={src} muted loop playsInline autoPlay /> : <span className="ph">{initials(name)}</span>}
+      {src ? <video src={src} muted loop playsInline autoPlay style={frameStyle(frame)} /> : <span className="ph">{initials(name)}</span>}
       <span className="badge">{src ? "VIDEO" : "▶ VIDEO"}</span>
     </div>
   );
@@ -73,7 +82,7 @@ function VrmStage({ url, name, bg, attentive, speech, talk, wardrobe }: { url: s
   );
 }
 
-export default function Art({ kind, url, name, mode = "thumb", attentive, speech, talk, wardrobe }: Props) {
+export default function Art({ kind, url, name, frame, mode = "thumb", attentive, speech, talk, wardrobe }: Props) {
   const bg = `linear-gradient(135deg, hsl(${hue(name)} 45% 35%), hsl(${(hue(name) + 50) % 360} 50% 22%))`;
 
   if (!url || !kind) {
@@ -92,10 +101,10 @@ export default function Art({ kind, url, name, mode = "thumb", attentive, speech
       </div>
     );
   }
-  if (kind === "video") return <VideoArt url={url} full={mode === "full"} bg={bg} name={name} />;
+  if (kind === "video") return <VideoArt url={url} full={mode === "full"} bg={bg} name={name} frame={frame} />;
   return (
     <div className="media">
-      <img src={url} alt={name} loading="lazy" draggable={false} />
+      <img src={url} alt={name} loading="lazy" draggable={false} style={frameStyle(frame)} />
       {kind === "gif" && <span className="badge">GIF</span>}
     </div>
   );
