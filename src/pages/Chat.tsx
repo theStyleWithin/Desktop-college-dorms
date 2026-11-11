@@ -301,7 +301,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
       <aside className="side-panel">
         {stageChar ? (
           <>
-            <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "")} kind={stageChar.media?.kind ?? null} url={mediaUrl(stageChar)} name={displayName(stageChar)} mode="full" /></div>
+            <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "")} kind={stageChar.media?.kind ?? null} url={mediaUrl(stageChar)} name={displayName(stageChar)} mode="full" attentive={busy || text.trim().length > 0} /></div>
             <div>
               <h3>{displayName(stageChar)}</h3>
               <div className="hint">{tagline(stageChar)}</div>

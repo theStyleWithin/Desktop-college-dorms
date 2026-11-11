@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from PIL import Image
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.options import ArgOptions
@@ -201,6 +202,55 @@ try:
             has_canvas = d.execute_script("return !!document.querySelector('.editor-media canvas')")
             msg = d.execute_script("const e=document.querySelector('.editor-media');return e?e.innerText:''")
             check("VRM model loads into the 3D viewer", has_canvas and "Loading" not in msg and "isn't" not in msg, msg)
+            # ---- the 3D viewer: pose, controls, behaviour --------------------------------
+            def box_state(sel=".editor-media .vrm-box", secs=60):
+                for _ in range(secs * 2):
+                    r = d.execute_script("const e=document.querySelector(arguments[0]);return e&&e.dataset.ready==='1'?{...e.dataset}:null", sel)
+                    if r: return r
+                    time.sleep(0.5)
+                return None
+            st = box_state()
+            check("the model is posed (faces the camera, arms down)", bool(st) and st.get("facing") == "front" and st.get("pose") == "relaxed", str(st))
+            check("the file picker doesn't filter by type (so .vrm files show up everywhere)", d.execute_script("return !document.querySelector('input[type=file]').hasAttribute('accept')"))
+            check("physics starts on Natural", d.execute_script("return !!document.querySelector('[aria-label=\"Physics Natural\"]')"))
+            d.execute_script("document.querySelector('[aria-label^=\"Physics\"]').click()"); time.sleep(0.4)
+            check("the physics button cycles (Natural -> Bouncy)", d.execute_script("return !!document.querySelector('[aria-label=\"Physics Bouncy\"]')"))
+            d.execute_script("document.querySelector('[aria-label^=\"Physics\"]').click();document.querySelector('[aria-label^=\"Physics\"]').click()"); time.sleep(0.4)
+            check("physics cycles back to Natural", d.execute_script("return !!document.querySelector('[aria-label=\"Physics Natural\"]')"))
+            # a genuine mouse click on the expand button (a click on a <label> ancestor once closed the modal at once)
+            btn = d.find_element(By.CSS_SELECTOR, "[aria-label='Open big viewer']")
+            d.execute_script("arguments[0].scrollIntoView({block:'center'})", btn); time.sleep(0.4)
+            ActionChains(d).move_to_element(btn).click().perform(); time.sleep(1.2)
+            check("the expand button opens the big viewer", d.execute_script("return !!document.querySelector('.vrm-big canvas')"))
+            big = box_state(".vrm-big .vrm-box")
+            check("the big viewer loads the model, posed", bool(big) and big.get("facing") == "front", str(big))
+            # behaviour: she lives in the room; forcing an activity shows up in the state the viewer exposes
+            for plan in ("phone", "coffee", "sit", "sleep", "react-angry", "wander", "greet"):
+                d.execute_script("document.querySelector('.vrm-big .vrm-box').dispatchEvent(new CustomEvent('npc',{detail:arguments[0]}))", plan); time.sleep(0.8)
+                got = d.execute_script("const e=document.querySelector('.vrm-big .vrm-box');return e&&e.dataset.plan")
+                check(f"she can do '{plan}'", got == plan, str(got))
+            d.execute_script("document.querySelector('.vrm-big [aria-label=Lively]').click()"); time.sleep(0.5)
+            check("'Lively' can be turned off (she goes back to standing in the middle)", d.execute_script("return document.querySelector('.vrm-big [aria-label=Lively]').getAttribute('aria-pressed')") == "false")
+            d.execute_script("document.querySelector('.vrm-big [aria-label=Lively]').click()"); time.sleep(0.3)
+            # pause / play, like a video: pausing freezes her in place, playing lets time move again
+            d.execute_script("document.querySelector('.vrm-big .vrm-box').dispatchEvent(new CustomEvent('npc',{detail:'wander'}))"); time.sleep(3)
+            d.execute_script("document.querySelector('.vrm-big [aria-label=Pause]').click()"); time.sleep(0.6)
+            pos = lambda: d.execute_script("const e=document.querySelector('.vrm-big .vrm-box');return [e.dataset.frozen,e.dataset.npcx,e.dataset.npcz,e.dataset.npc].join(',')")
+            p1 = pos(); time.sleep(2.5); p2 = pos()
+            check("Pause freezes her in place", p1.startswith("1,") and p1 == p2, f"{p1} vs {p2}")
+            check("the Pause button turns into Play", d.execute_script("return !!document.querySelector('.vrm-big [aria-label=Play]')") and "Paused" in d.execute_script("return document.querySelector('.vrm-big').innerText"))
+            d.execute_script("document.querySelector('.vrm-big [aria-label=Play]').click()"); time.sleep(3)
+            p3 = pos()
+            check("Play lets time move again", p3.startswith("undefined,") or p3.startswith(",") or not p3.startswith("1,"), p3)
+            check("Pause is back after Play", d.execute_script("return !!document.querySelector('.vrm-big [aria-label=Pause]')"))
+            d.execute_script("document.querySelector('.vrm-big [aria-label=Hands]').click()"); time.sleep(0.6)
+            check("the hands turn on", d.execute_script("return document.querySelector('.vrm-big .vrm-box').dataset.hands") == "1")
+            cv = d.find_element(By.CSS_SELECTOR, ".vrm-big canvas")
+            ActionChains(d).move_to_element_with_offset(cv, 0, -60).click_and_hold().move_by_offset(30, 0).move_by_offset(-30, 0).release().perform(); time.sleep(0.6)
+            check("moving the hands doesn't break the viewer", d.execute_script("return !!document.querySelector('.vrm-big canvas')") and d.execute_script("return document.querySelector('.vrm-big .vrm-box').dataset.petting!==undefined"))
+            d.execute_script("document.querySelector('.vrm-big [aria-label=Hands]').click()")
+            ActionChains(d).send_keys(Keys.ESCAPE).perform(); time.sleep(0.8)
+            check("Escape closes the big viewer", not d.execute_script("return !!document.querySelector('.vrm-big')"))
     if not SKIP3D:
         # crash guard: simulate "the previous 3D attempt never finished", then recover with Try again
         time.sleep(2)

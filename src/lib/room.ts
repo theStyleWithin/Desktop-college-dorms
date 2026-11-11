@@ -6,6 +6,19 @@ import * as THREE from "three";
  * lights, a rug, a lamp, a bed and a bookshelf. The front is left open so the camera can sit inside the room.
  */
 
+/** Where things are, in room units (metres at the 1.6 m character scale): used by the NPC behavior to walk, sit and sleep. */
+export const DESK = { x: -2.3, z: -4.05, top: 0.74 };
+export const BED = { x0: 2.35, x1: 4.45, z0: -4.3, z1: -2.9, top: 0.56 };
+/** Things she must walk around: [x0, z0, x1, z1] rectangles. */
+export const OBSTACLES: [number, number, number, number][] = [
+  [BED.x0 - 0.15, BED.z0 - 0.2, BED.x1 + 0.2, BED.z1 + 0.05],
+  [DESK.x - 1.15, DESK.z - 0.45, DESK.x + 1.15, DESK.z + 0.42],
+  [4.05, -0.7, 5.1, 0.3],       // bookshelf
+  [-4.65, -4.2, -3.55, -3.2],   // plant
+  [-4.7, -2.65, -3.95, -1.75],  // floor lamp
+];
+export const FLOOR = { x0: -4.5, x1: 4.5, z0: -4.1, z1: 2.9 };
+
 function canvasTex(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void, repeat?: [number, number]) {
   const c = document.createElement("canvas");
   c.width = w; c.height = h;
@@ -123,7 +136,13 @@ export function buildRoom(): Room {
   box(2.1, 0.22, 1.4, std("#e9e2f4", 0.95), 3.4, 0.45, -3.6);       // mattress
   box(2.2, 0.9, 0.1, std("#2a2347", 0.8), 3.4, 0.75, -4.4);          // headboard
   box(0.7, 0.14, 0.4, std("#ffd9a8", 0.95), 2.8, 0.62, -3.9);        // pillow
-  box(1.3, 0.12, 1.0, std("#ff9db3", 0.95), 3.7, 0.58, -3.4);        // blanket
+  box(1.3, 0.1, 0.55, std("#ff9db3", 0.95), 3.8, 0.57, -3.25);       // blanket (folded at the foot, so there is room to lie down)
+  // desk under the window
+  const wood = std("#8a5d3b", 0.65);
+  box(2.1, 0.06, 0.65, wood, DESK.x, DESK.top - 0.03, DESK.z);
+  for (const [dx, dz] of [[-0.95, -0.27], [0.95, -0.27], [-0.95, 0.27], [0.95, 0.27]]) box(0.06, DESK.top - 0.06, 0.06, wood, DESK.x + dx, (DESK.top - 0.06) / 2, DESK.z + dz);
+  box(0.42, 0.02, 0.3, std("#2b2b3a", 0.4), DESK.x - 0.55, DESK.top + 0.01, DESK.z + 0.02);   // laptop, closed
+  box(0.42, 0.02, 0.3, std("#3a3a52", 0.4), DESK.x - 0.55, DESK.top + 0.03, DESK.z + 0.02);
   const shelf = std("#5b3d2b", 0.7);
   box(0.12, 2.0, 0.45, shelf, 4.2, 1.0, -0.2); box(0.12, 2.0, 0.45, shelf, 4.9, 1.0, -0.2);
   for (let i = 0; i < 4; i++) {

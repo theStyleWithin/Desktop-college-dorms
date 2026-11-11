@@ -86,6 +86,9 @@ export function createHands(opts: {
   const mk = (rig: Rig, x: number): H => ({ rig, pos: new THREE.Vector3(x * s, 1.38 * s, 0.75 * s), vel: new THREE.Vector3(), grip: 0, touch: 0, prev: new THREE.Vector3() });
   const hl = mk(L, -0.34), hr = mk(R, 0.34);
   const lo = new THREE.Vector3(-1.3 * s, 0.15 * s, -0.25 * s), hi = new THREE.Vector3(1.3 * s, 2.1 * s, 1.7 * s);
+  /** the hands may roam a box around this point (the viewer keeps it on the character, who may be walking about) */
+  const center = new THREE.Vector3();
+  const clampNear = (v: THREE.Vector3) => { v.sub(center).clamp(lo, hi).add(center); };
 
   // ---- input ----
   let enabled = false;
@@ -117,7 +120,7 @@ export function createHands(opts: {
     right.crossVectors(fwd, up).normalize();
     const sp = 0.95 * s;
     h.pos.addScaledVector(right, dx * sp * dt).addScaledVector(up, dy * sp * dt).addScaledVector(fwd, push * sp * dt);
-    h.pos.clamp(lo, hi);
+    clampNear(h.pos);
     h.grip += (grip - h.grip) * Math.min(1, dt * 12);
   };
 
@@ -142,7 +145,7 @@ export function createHands(opts: {
       plane.setFromNormalAndCoplanarPoint(fwd.clone().negate(), tmp.copy(head).addScaledVector(fwd, -depth));
       ray.setFromCamera(new THREE.Vector2(ptr.x, ptr.y), camera);
       if (ray.ray.intersectPlane(plane, hit)) {
-        hit.clamp(lo, hi);
+        clampNear(hit);
         hr.pos.lerp(hit, Math.min(1, dt * 14));
       }
       hr.grip += ((ptr.down ? 0.25 : 0) - hr.grip) * Math.min(1, dt * 10);
@@ -191,6 +194,7 @@ export function createHands(opts: {
 
   return {
     pet,
+    center,
     update,
     get enabled() { return enabled; },
     set enabled(v: boolean) { enabled = v; if (!v) { ptr.active = false; ptr.down = false; } },

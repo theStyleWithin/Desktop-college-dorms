@@ -179,3 +179,5 @@ button.chip { cursor: pointer; } button.chip.on { background: var(--accent); col
   .msg .tools { opacity: 1; }
 }
 .iconbtn.on { background: var(--accent); color: var(--accent-ink); }
+.vrm-box[data-frozen="1"] canvas { filter: saturate(0.55) brightness(1.04) contrast(1.04); }
+.vrm-frozen { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 3; padding: 4px 12px; border-radius: 999px; background: #0008; color: #fff; font-size: 0.78rem; letter-spacing: 0.04em; pointer-events: none; }

@@ -37,7 +37,17 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
 
 ## Features
 
-- **Characters** with JPG / PNG / WebP / GIF / MP4 / WebM avatars and **VRM / VRoid 3D models** (live, with idle motion and blinking)
+- **Characters** with JPG / PNG / WebP / GIF / MP4 / WebM avatars and **VRM / VRoid 3D models** (VRM 0.x and 1.0)
+- **A real 3D viewer**: the character stands in a furnished dorm room (night window, rug, bed, desk, string lights) with soft shadows.
+  Drag to turn, scroll or pinch to zoom, double-click to reset, and open the **big viewer** for the whole room.
+  She breathes, blinks, sways and follows you with her eyes. **Soft-body physics** run from the model's own spring bones
+  (hair, skirt, sleeves, ears, chest): Natural / Bouncy / Off, plus a hop button to see them move.
+- **She has a life of her own** (no AI needed): when you aren't talking to her she wanders the room, scrolls her phone (and sometimes
+  gets annoyed, amused or upset at something she reads), drinks coffee at her desk, sits on the bed and goes to sleep, with the time of
+  day nudging what she does. The moment you start typing she stops and pays attention. Turn it off with the 🎭 button.
+- **Virtual hands** for the 3D viewer: use a **game controller** (sticks move your hands, triggers reach in, bumpers pull back, A grips),
+  or the mouse or touch (press and hold to reach in). Stroke her head or ears and she leans into your hand, half-closes her eyes
+  and smiles; your controller rumbles gently.
 - **Chub-style character editor**: tagline, in-chat name, tags, description, first message, scenario, example dialogs,
   live token counts, alternate greetings (as swipes), system prompt, post-history instructions, character's note with depth,
   and an embedded lorebook (keyword / regex triggers). Everything stays editable after creation.

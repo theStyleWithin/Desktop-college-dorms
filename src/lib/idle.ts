@@ -20,6 +20,7 @@ export function createIdle(vrm: VRM, camera: THREE.Camera) {
     lHand: bone("leftHand"), rHand: bone("rightHand"),
     lLeg: bone("leftUpperLeg"), rLeg: bone("rightUpperLeg"),
     lShin: bone("leftLowerLeg"), rShin: bone("rightLowerLeg"),
+    lFoot: bone("leftFoot"), rFoot: bone("rightFoot"),
   };
   const fingers = (side: "left" | "right") =>
     ["Index", "Middle", "Ring", "Little"].flatMap((f) =>
@@ -67,12 +68,22 @@ export function createIdle(vrm: VRM, camera: THREE.Camera) {
   const hop = (t: number) => { hopStart = t; };
   let nextDeepBreath = 6;
 
+  // expression levels other systems (the NPC behavior) can ask for; idle blends them with its own blinking
+  const mood = { happy: 0, angry: 0, sad: 0, surprised: 0, closed: 0, mouth: 0 };
+  const read = (n: Bone): [number, number, number] => {
+    if (!n) return [0, 0, 0];
+    eul.setFromQuaternion(n.quaternion, "XYZ");
+    return [eul.x * m, eul.y, eul.z * m];
+  };
+  const state = { hopY: 0, sceneY };
+
   return {
+    mood, read, set, m, state,
     setPhysics,
     hop,
     resetPeak,
     jiggle: () => Math.round(Math.max(0, ...bust.map((b) => b.peak)) * 1000),
-    update(t: number, dt: number, pet?: { amount: number; lx: number; ly: number; stroke: number; near?: number }) {
+    update(t: number, dt: number, pet?: { amount: number; lx: number; ly: number; stroke: number; near?: number }, after?: (t: number, dt: number) => void) {
       const pa = pet?.amount ?? 0, plx = pet?.lx ?? 0, ply = pet?.ly ?? 0, pst = pet?.stroke ?? 0;
       let breath = Math.sin(t * 1.55);                   // ~ 15 breaths a minute
       // now and then a deeper breath, which gently heaves the chest
@@ -86,6 +97,7 @@ export function createIdle(vrm: VRM, camera: THREE.Camera) {
         if (p >= 1) hopStart = -1;
         else { const q = p < 0.55 ? p / 0.55 : (p - 0.55) / 0.45; hopY = (p < 0.55 ? 0.075 : 0.035) * 4 * q * (1 - q); }
       }
+      state.hopY = hopY;
       vrm.scene.position.y = sceneY + hopY;
 
       if (B.hips) B.hips.position.set(hipsBase.x + m * sway * 0.012, hipsBase.y + breath * 0.0012, hipsBase.z);
@@ -112,11 +124,16 @@ export function createIdle(vrm: VRM, camera: THREE.Camera) {
       set(B.lLeg, 0, 0, -0.035 + sway * 0.006); set(B.rLeg, 0, 0, 0.035 + sway * 0.006);
       set(B.lShin, 0.01, 0, 0); set(B.rShin, 0.01, 0, 0);
 
+      after?.(t, dt);
       const em = vrm.expressionManager;
       if (em) {
         const ph = t - nextBlink;
-        em.setValue("blink", Math.max(ph > 0 && ph < 0.17 ? Math.sin((ph / 0.17) * Math.PI) : 0, pa * 0.7));
-        em.setValue("happy", pa * 0.85);
+        em.setValue("blink", Math.max(ph > 0 && ph < 0.17 ? Math.sin((ph / 0.17) * Math.PI) : 0, pa * 0.7, mood.closed));
+        em.setValue("happy", Math.max(pa * 0.85, mood.happy));
+        em.setValue("angry", mood.angry);
+        em.setValue("sad", mood.sad);
+        em.setValue("surprised", mood.surprised);
+        em.setValue("aa", mood.mouth);
         if (ph >= 0.17) nextBlink = t + 2.4 + Math.random() * 3.6;
       }
       vrm.update(dt);

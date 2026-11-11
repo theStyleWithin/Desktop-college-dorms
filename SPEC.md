@@ -104,6 +104,15 @@ Layout ideas:
 
 None at the moment.
 
+## 3D viewer
+
+The profile viewer for VRM / VRoid models is a furnished dorm room built from simple shapes in code (no image files shipped). The model
+is posed from its humanoid rig (VRM 0.x and 1.0 handled, since their axes differ), breathes, blinks and tracks the camera, and its own
+spring bones are simulated for hair, skirt, sleeves, ears and chest, with a Natural / Bouncy / Off setting. Virtual hands (gamepad,
+mouse or touch) let the user pet the character. When nobody is chatting, a small rule-based NPC layer (no AI) runs her day: path-finding
+around the furniture, a procedural walk cycle, activities with props (phone, coffee), sitting and sleeping on the bed. Imported models
+are only ever the user's own files; nothing is bundled.
+
 ## Status
 
 v0.2.0 adds local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.
