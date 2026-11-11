@@ -1,16 +1,21 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  api, displayName, mediaUrl, onAutoStopped, onGen, tagline, type Character, type Chat, type ChatKind, type Message, type TurnMode,
+  api, displayName, mediaUrl, musicUrl, onAutoStopped, onGen, tagline, type Character, type Chat, type ChatKind, type Message, type TurnMode,
 } from "../api";
 import Art from "../components/Art";
 import MicButton from "../components/MicButton";
+import MechanicsPanel from "../components/MechanicsPanel";
+import PhoneView from "../components/PhoneView";
+import MusicPlayer from "../components/MusicPlayer";
+import MusicField from "../components/MusicField";
+import { hideDirectives, roomBackground, kindLabel } from "../lib/rooms";
 import { makeWardrobe } from "../components/WardrobePanel";
 import type { Speech } from "../components/SpeechBubble";
 import { Modal, useToast } from "../components/ui";
 import { errText, timeAgo } from "../lib/util";
 import { useStore } from "../store";
 
-interface Live { rid: string; characterId: string; text: string; phase: "loading" | "start" | "streaming" }
+interface Live { rid: string; characterId: string; text: string; phase: "loading" | "start" | "streaming"; /** set when extending an existing message */ continueOf: number | null }
 
 const KIND_ICON: Record<ChatKind, string> = { dm: "👤", group: "👥", channel: "#" };
 
@@ -20,16 +25,17 @@ function renderText(text: string) {
   );
 }
 
-function Avatar({ c, name }: { c?: Character; name: string }) {
+function Avatar({ c, name, pic }: { c?: Character; name: string; pic?: { src: string | null; frame: import("../api").Frame | null } }) {
   return (
     <div className="avatar">
-      <Art kind={c?.media?.kind === "vrm" ? null : c?.media?.kind ?? null} url={c ? mediaUrl(c) : null} name={name} />
+      {pic ? <Art kind={pic.src ? "image" : null} url={pic.src} name={name} frame={pic.frame} />
+        : <Art kind={c?.media?.kind === "vrm" ? null : c?.media?.kind ?? null} url={c ? mediaUrl(c) : null} name={name} frame={c?.frame} />}
     </div>
   );
 }
 
 export default function ChatPage({ initialChatId }: { initialChatId?: number }) {
-  const { chats, dorms, characters, settings, go, refresh, modelCount } = useStore();
+  const { chats, dorms, rooms, characters, settings, go, refresh, modelCount, personas, me } = useStore();
   const toast = useToast();
   const [selected, setSelected] = useState<number | null>(initialChatId ?? chats[0]?.id ?? null);
   const [msgs, setMsgs] = useState<Message[]>([]);
@@ -40,7 +46,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
   const [replyAs, setReplyAs] = useState<string>("");
   const [focus, setFocus] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
-  const [modal, setModal] = useState<null | { type: "chat"; dormId: number | null } | { type: "dorm" } | { type: "who" }>(null);
+  const [modal, setModal] = useState<null | { type: "chat"; dormId: number | null } | { type: "dorm" } | { type: "who" } | { type: "mech" } | { type: "dormroom"; dormId: number }>(null);
   const [listOpen, setListOpen] = useState(false);
   const [optsOpen, setOptsOpen] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
@@ -50,6 +56,12 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
   const byId = useMemo(() => new Map(characters.map((c) => [c.id, c])), [characters]);
   const chat = chats.find((c) => c.id === selected) ?? null;
   const members = useMemo(() => (chat?.character_ids ?? []).map((i) => byId.get(i)).filter(Boolean) as Character[], [chat, byId]);
+  const room = useMemo(() => { const d = dorms.find((x) => x.id === chat?.dorm_id); return d?.room_id != null ? rooms.find((r) => r.id === d.room_id) ?? null : null; }, [chat, dorms, rooms]);
+  const roomBg = roomBackground(room);
+  const dormOfChat = dorms.find((x) => x.id === chat?.dorm_id);
+  // the dorm's own music wins over its room's
+  const music = dormOfChat?.music_path ? { src: musicUrl(dormOfChat), name: dormOfChat.music_name || "Music" } : room?.music_path ? { src: musicUrl(room), name: room.music_name || "Music" } : null;
+  const phone = chat?.style === "phone";
   const stageChar = (focus && byId.get(focus)) || members[0] || null;
 
   // load messages when switching chats
@@ -66,9 +78,9 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
     const subs = [
       onGen((e) => {
         if (e.chat_id !== selectedRef.current) { if (e.kind === "done") refresh(); return; }
-        if (e.kind === "loading" || e.kind === "start") { setLive({ rid: e.request_id, characterId: e.character_id, text: "", phase: e.kind }); setSpeech({ id: e.request_id, characterId: e.character_id, text: "", streaming: true }); }
+        if (e.kind === "loading" || e.kind === "start") { setLive({ rid: e.request_id, characterId: e.character_id, text: "", phase: e.kind, continueOf: e.continue_of ?? null }); setSpeech({ id: e.request_id, characterId: e.character_id, text: "", streaming: true }); }
         else if (e.kind === "token") {
-          setLive((l) => ({ rid: e.request_id, characterId: e.character_id, text: (l?.rid === e.request_id ? l.text : "") + e.text, phase: "streaming" }));
+          setLive((l) => ({ rid: e.request_id, characterId: e.character_id, text: (l?.rid === e.request_id ? l.text : "") + e.text, phase: "streaming", continueOf: e.continue_of ?? null }));
           setSpeech((sp) => ({ id: e.request_id, characterId: e.character_id, text: (sp?.id === e.request_id ? sp.text : "") + e.text, streaming: true }));
         }
         else if (e.kind === "done") {
@@ -166,7 +178,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
     </button>
   );
 
-  const nameOf = (m: Message) => (m.role === "user" ? settings.user_name : byId.get(m.character_id ?? "")?.card.name ?? "Unknown");
+  const nameOf = (m: Message) => (m.role === "user" ? me.name : byId.get(m.character_id ?? "")?.card.name ?? "Unknown");
 
   return (
     <div className="chatwrap">
@@ -181,6 +193,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
             <h4>
               <span>🏠 {d.name}</span>
               <span>
+                <button className="btn ghost sm" title="Set this dorm in a room" aria-label={`Room for ${d.name}`} onClick={() => setModal({ type: "dormroom", dormId: d.id })}>🛋️</button>
                 <button className="btn ghost sm" title="New channel in this dorm" onClick={() => setModal({ type: "chat", dormId: d.id })}>＋</button>
                 <button className="btn ghost sm" title="Delete dorm" onClick={async () => { if (window.confirm(`Delete the dorm "${d.name}" and its channels?`)) { await api.deleteDorm(d.id); await refresh(); } }}>🗑</button>
               </span>
@@ -194,7 +207,8 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
         {!(grouped.get(null) ?? []).length && <div className="hint" style={{ padding: "0 10px" }}>Nothing here yet</div>}
       </aside>
 
-      <section className="chatmain">
+      <section className={`chatmain${roomBg ? " has-room" : ""}`}>
+        {roomBg && <div className="room-bg" style={{ background: roomBg }} aria-hidden="true" data-room={room?.name} />}
         {!chat ? (
           <div className="page" style={{ margin: "auto", textAlign: "center" }}>
             <h2>Welcome to the dorms</h2>
@@ -209,9 +223,10 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               <button className="btn sm only-mobile" onClick={() => setListOpen(true)} aria-label="Chats">☰</button>
               <div>
                 <h3>{KIND_ICON[chat.kind]} {chat.name}</h3>
-                <div className="tok">{members.map((m) => displayName(m)).join(", ") || "No characters"}</div>
+                <div className="tok">{members.map((m) => displayName(m)).join(", ") || "No characters"}{room ? <> · <button className="linklike" onClick={() => go({ page: "rooms", edit: room.id })} title={`${kindLabel(room.kind)} — edit this room`}>🛋️ {room.name}</button></> : null}</div>
               </div>
               <div className="grow" />
+              {music?.src && <MusicPlayer key={music.src} src={music.src} name={music.name} />}
               <button className="btn sm only-mobile" onClick={() => setOptsOpen((o) => !o)} aria-label="Chat options" aria-expanded={optsOpen}>⋯</button>
               <div className={`chatopts ${optsOpen ? "open" : ""}`}>
               {chat.kind !== "dm" && (
@@ -235,21 +250,36 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                   </select>
                 </>
               )}
+              {personas.length > 0 && (
+                <select style={{ width: "auto" }} aria-label="Playing as" title="Who you are in this roleplay" value={settings.active_persona}
+                  onChange={(e) => { void api.setActivePersona(e.target.value || null).then(refresh).catch((er) => toast(errText(er), "err")); }}>
+                  <option value="">Playing as {settings.user_name}</option>
+                  {personas.map((p) => <option key={p.id} value={p.id}>Playing as {p.name}</option>)}
+                </select>
+              )}
+              <button className={`btn sm ${phone ? "primary" : ""}`} aria-pressed={phone} onClick={() => patchChat({ style: phone ? "chat" : "phone" })} title="Switch between the normal chat and a texting view">📱 Phone</button>
+              <button className="btn sm" onClick={() => setModal({ type: "mech" })} title="Optional story layers: affection, status, and more">🧩 Mechanics</button>
               <button className="btn sm" onClick={() => setModal({ type: "who" })}>👥 Who's here</button>
               <button className="btn sm" onClick={async () => { if (window.confirm("Clear every message in this chat?")) { await api.clearChat(chat.id); setMsgs([]); } }}>Clear</button>
               <button className="btn sm danger" onClick={deleteChat}>Delete</button>
               </div>
             </header>
 
+            {phone ? (
+              <PhoneView msgs={msgs} live={live} members={members} userName={me.name} busy={busy} text={text} setText={setText} send={send} stop={stop} nameOf={nameOf} onExit={() => patchChat({ style: "chat" })} />
+            ) : (<>
             <div className="msgs" ref={scroller}>
               {msgs.length === 0 && !live && <div className="empty">{chat.kind === "channel" ? "A quiet channel. Say something, or press Next to let a character start." : "No messages yet."}</div>}
               {msgs.filter((m) => m.role !== "system").map((m, idx, arr) => {
                 const c = m.character_id ? byId.get(m.character_id) : undefined;
                 const isLast = idx === arr.length - 1;
-                const body = m.swipes[m.swipe_index] ?? m.swipes[m.swipes.length - 1] ?? "";
+                const saved = m.swipes[m.swipe_index] ?? m.swipes[m.swipes.length - 1] ?? "";
+                // while a continuation streams, show it growing inside this message
+                const extending = live?.continueOf === m.id;
+                const body = extending ? saved + (saved && live.text && !/\s$/.test(saved) && !/^\s/.test(live.text) ? " " : "") + hideDirectives(live.text) : saved;
                 return (
                   <div className={`msg ${m.role}`} key={m.id}>
-                    <Avatar c={c} name={nameOf(m)} />
+                    <Avatar c={c} name={nameOf(m)} pic={m.role === "user" ? { src: me.avatar, frame: me.frame } : undefined} />
                     <div>
                       <div className="who">{nameOf(m)} <small>{timeAgo(m.created_at)}</small></div>
                       {editing?.id === m.id ? (
@@ -270,6 +300,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                             <button className="btn ghost sm" disabled={busy} onClick={() => swipe(m, 1)} title={m.swipe_index + 1 >= m.swipes.length ? "Generate another version" : "Next version"} aria-label="Next version">›</button>
                           )}
                           {m.role === "character" && isLast && <button className="btn ghost sm" disabled={busy} onClick={() => api.generate(chat.id, null, m.id)}>↻ Regenerate</button>}
+                          {m.role === "character" && isLast && <button className="btn ghost sm" disabled={busy} onClick={() => api.generate(chat.id, null, null, m.id)} title="Ask the character to go on and write more">⏩ Continue</button>}
                           <button className="btn ghost sm" onClick={() => setEditing({ id: m.id, text: body })}>✎ Edit</button>
                           <button className="btn ghost sm" onClick={async () => { await api.deleteMessage(m.id); setMsgs((x) => x.filter((y) => y.id !== m.id)); }}>🗑</button>
                         </div>
@@ -278,12 +309,12 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                   </div>
                 );
               })}
-              {live && (
+              {live && live.continueOf == null && (
                 <div className="msg character">
                   <Avatar c={byId.get(live.characterId)} name={byId.get(live.characterId)?.card.name ?? "?"} />
                   <div>
                     <div className="who">{byId.get(live.characterId)?.card.name ?? "…"}</div>
-                    {live.text ? <div className="txt">{renderText(live.text)}</div>
+                    {live.text ? <div className="txt">{renderText(hideDirectives(live.text))}</div>
                       : <div className="typing">{live.phase === "loading" ? "Waking up the model…" : "typing…"}</div>}
                   </div>
                 </div>
@@ -311,6 +342,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                 {busy ? <button className="btn danger" onClick={stop}>■ Stop</button> : <button className="btn primary" onClick={send} disabled={!text.trim() && chat.kind === "dm"}>Send</button>}
               </div>
             </div>
+            </>)}
           </>
         )}
       </section>
@@ -318,9 +350,9 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
       <aside className="side-panel">
         {stageChar ? (
           <>
-            <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "")} kind={stageChar.media?.kind ?? null} url={mediaUrl(stageChar)} name={displayName(stageChar)} mode="full" attentive={busy || listening || text.trim().length > 0}
+            <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "")} kind={stageChar.media?.kind ?? null} url={mediaUrl(stageChar)} name={displayName(stageChar)} frame={stageChar.frame} mode="full" attentive={busy || listening || text.trim().length > 0}
               wardrobe={makeWardrobe(stageChar, () => void refresh(), toast)}
-              speech={speech && speech.characterId === stageChar.id ? speech : null}
+              speech={speech && speech.characterId === stageChar.id ? { ...speech, text: hideDirectives(speech.text) } : null}
               talk={{ draft: text, setDraft: setText, send: (t) => void sendText(t), busy, onHeard: heard, onListening: setListening }} /></div>
             <div>
               <h3>{displayName(stageChar)}</h3>
@@ -341,6 +373,8 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
         ) : <div className="hint">Characters in this chat show up here.</div>}
       </aside>
 
+      {modal?.type === "mech" && chat && <MechanicsPanel chatId={chat.id} onClose={() => setModal(null)} />}
+      {modal?.type === "dormroom" && <DormRoom dormId={modal.dormId} onClose={() => setModal(null)} />}
       {modal?.type === "dorm" && <NewDorm onClose={() => setModal(null)} onDone={refresh} />}
       {modal?.type === "chat" && (
         <NewChat dormId={modal.dormId} onClose={() => setModal(null)}
@@ -374,15 +408,50 @@ function CharacterPicker({ value, onChange, single }: { value: string[]; onChang
   );
 }
 
+function RoomSelect({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
+  const { rooms, go } = useStore();
+  return (
+    <div className="row" style={{ marginTop: 10 }}>
+      <select value={value ?? ""} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)} aria-label="Room" style={{ flex: 1 }}>
+        <option value="">No room (no setting)</option>
+        {rooms.map((r) => <option key={r.id} value={r.id}>🛋️ {r.name}</option>)}
+      </select>
+      <button className="btn sm" onClick={() => go({ page: "rooms", edit: "new" })}>＋ New room</button>
+    </div>
+  );
+}
+
+function DormRoom({ dormId, onClose }: { dormId: number; onClose: () => void }) {
+  const { dorms, refresh } = useStore();
+  const d = dorms.find((x) => x.id === dormId);
+  const [room, setRoom] = useState<number | null>(d?.room_id ?? null);
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal title={`Room & music for ${d?.name ?? "dorm"}`} onClose={onClose}>
+      <p className="sub">The room's description tells the characters where they are, and its backdrop shows behind every chat in this dorm.</p>
+      <RoomSelect value={room} onChange={setRoom} />
+      <h4 style={{ margin: "18px 0 6px" }}>Background music</h4>
+      <MusicField name={d?.music_name ?? ""} busy={busy}
+        onPick={async (f) => { setBusy(true); try { await api.setDormMusic(dormId, f); await refresh(); } catch (e) { toast(errText(e), "err"); } finally { setBusy(false); } }}
+        onRemove={async () => { setBusy(true); try { await api.clearDormMusic(dormId); await refresh(); } catch (e) { toast(errText(e), "err"); } finally { setBusy(false); } }} />
+      <div className="hint">Plays on a loop in this dorm's chats. If you give the dorm its own music, it is used instead of the room's.</div>
+      <div className="row" style={{ marginTop: 14 }}><button className="btn primary" onClick={async () => { await api.setDormRoom(dormId, room); await refresh(); onClose(); }}>Save</button></div>
+    </Modal>
+  );
+}
+
 function NewDorm({ onClose, onDone }: { onClose: () => void; onDone: () => Promise<void> }) {
   const [name, setName] = useState("");
+  const [room, setRoom] = useState<number | null>(null);
   return (
     <Modal title="New dorm" onClose={onClose}>
       <p className="sub">A dorm is a space with its own channels, like a Discord server.</p>
       <input type="text" autoFocus placeholder="Maple Hall, 3rd floor…" value={name} onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && name.trim() && api.createDorm(name).then(onDone).then(onClose)} />
+        onKeyDown={(e) => e.key === "Enter" && name.trim() && api.createDorm(name, room).then(onDone).then(onClose)} />
+      <RoomSelect value={room} onChange={setRoom} />
       <div className="row" style={{ marginTop: 14 }}>
-        <button className="btn primary" disabled={!name.trim()} onClick={() => api.createDorm(name).then(onDone).then(onClose)}>Create dorm</button>
+        <button className="btn primary" disabled={!name.trim()} onClick={() => api.createDorm(name, room).then(onDone).then(onClose)}>Create dorm</button>
       </div>
     </Modal>
   );
@@ -395,15 +464,17 @@ function NewChat({ dormId, onClose, onCreated }: { dormId: number | null; onClos
   const [dorm, setDorm] = useState<number | null>(dormId);
   const [ids, setIds] = useState<string[]>([]);
   const [name, setName] = useState("");
+  const [opening, setOpening] = useState(0);
   const byId = new Map(characters.map((c) => [c.id, c]));
   const auto = ids.length ? ids.map((i) => displayName(byId.get(i)!)).join(", ") : "";
   const create = useCallback(async () => {
     if (!ids.length) return toast("Pick at least one character.", "err");
     try {
       const n = name.trim() || (kind === "channel" ? "general" : auto);
-      onCreated(await api.createChat(dorm, n, kind, ids));
+      onCreated(await api.createChat(dorm, n, kind, ids, kind === "dm" ? opening : undefined));
     } catch (e) { toast(errText(e), "err"); }
-  }, [ids, name, kind, dorm, auto, onCreated, toast]);
+  }, [ids, name, kind, dorm, auto, opening, onCreated, toast]);
+  const greetings = kind === "dm" && ids[0] ? [byId.get(ids[0])?.card.first_mes ?? "", ...(byId.get(ids[0])?.card.alternate_greetings ?? [])].filter((g) => g.trim()) : [];
   return (
     <Modal title="New chat" onClose={onClose}>
       <div className="row" style={{ marginBottom: 12 }}>
@@ -416,7 +487,15 @@ function NewChat({ dormId, onClose, onCreated }: { dormId: number | null; onClos
       <div className="hint" style={{ marginBottom: 10 }}>
         {kind === "dm" ? "Just you and one character." : kind === "group" ? "You and several characters. Greetings are posted for each." : "An empty room where characters can talk to you and each other."}
       </div>
-      <CharacterPicker value={ids} single={kind === "dm"} onChange={setIds} />
+      <CharacterPicker value={ids} single={kind === "dm"} onChange={(v) => { setIds(v); setOpening(0); }} />
+      {greetings.length > 1 && (
+        <label className="field-inline" style={{ display: "grid", gap: 4, marginTop: 12 }}>
+          <span className="hint">Opening message ({greetings.length} to choose from; the others stay one swipe away)</span>
+          <select value={opening} onChange={(e) => setOpening(Number(e.target.value))} aria-label="Opening message">
+            {greetings.map((g, i) => <option key={i} value={i}>{i + 1}. {g.replace(/\s+/g, " ").slice(0, 70)}{g.length > 70 ? "…" : ""}</option>)}
+          </select>
+        </label>
+      )}
       <div className="row" style={{ marginTop: 12 }}>
         <input type="text" style={{ flex: 1, minWidth: 160 }} placeholder={kind === "channel" ? "Channel name (general)" : auto || "Chat name"} value={name} onChange={(e) => setName(e.target.value)} />
         <select style={{ width: "auto" }} value={dorm ?? ""} onChange={(e) => setDorm(e.target.value ? Number(e.target.value) : null)} aria-label="Dorm">

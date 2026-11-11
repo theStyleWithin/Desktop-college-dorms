@@ -56,6 +56,12 @@ export interface CardData {
   [k: string]: unknown;
 }
 
+/** How a picture is framed: the point of it to keep in view (0..1 across and down) and the zoom. */
+export interface Frame { x: number; y: number; zoom: number }
+export const DEFAULT_FRAME: Frame = { x: 0.5, y: 0.5, zoom: 1 };
+export interface Lorebook { id: string; name: string; book: CharacterBook; created_at: number; updated_at: number }
+export interface Folder { id: string; name: string; cover: string | null; frame: Frame | null; created_at: number; cover_path?: string | null }
+
 export interface Character {
   id: string;
   card: CardData;
@@ -66,6 +72,12 @@ export interface Character {
   outfits?: { id: string; name: string; file: string }[];
   outfit?: string | null;
   outfit_paths?: { id: string; name: string; path: string }[];
+  /** How the picture is framed so a face is never cut off. */
+  frame?: Frame | null;
+  /** The folder this character is filed in (null = top level). */
+  folder?: string | null;
+  /** Library lorebooks attached to this character (besides the book inside the card). */
+  lorebooks?: string[];
   favorite: boolean;
   created_at: number;
   updated_at: number;
@@ -74,7 +86,30 @@ export interface Character {
   trusted: boolean;
 }
 
-export interface Dorm { id: number; name: string; created_at: number }
+export interface Dorm { id: number; name: string; created_at: number; room_id?: number | null; music?: string; music_name?: string; music_path?: string | null }
+
+export type RoomKind = "living_room" | "bedroom" | "kitchen" | "bathroom" | "dining_room" | "games_room" | "office" | "garage" | "garden" | "balcony" | "basement" | "rooftop" | "other";
+export interface Room {
+  id: number; name: string; kind: RoomKind; description: string;
+  owner_kind: "character" | "self"; character_id: string | null;
+  /** "" | "preset:<key>" | "file:<path>" */
+  backdrop: string; created_at: number;
+  /** absolute path of an uploaded backdrop (use roomBackdrop() to turn it into something drawable) */
+  backdrop_path?: string | null;
+  /** background music: the file's original name, and where it is (use musicUrl()) */
+  music?: string; music_name?: string; music_path?: string | null;
+}
+
+export interface Note { id: string; title: string; body: string; pinned: boolean; created_at: number; updated_at: number }
+
+export interface MechanicVar { id: string; name: string; kind: string; min: number | null; max: number | null; description: string }
+export interface MechanicPack {
+  id: string; name: string; description: string; tags: string[];
+  /** which built-in panel shows it */
+  app: "relations" | "status" | "phone" | "vars";
+  variables: MechanicVar[]; entries: number; reactions: number; has_ui: boolean;
+}
+export interface ChatMechanic { mech_id: string; enabled: boolean; state: Record<string, any> }
 export type ChatKind = "dm" | "group" | "channel";
 export type TurnMode = "round_robin" | "random" | "mention";
 export interface Chat {
@@ -89,6 +124,8 @@ export interface Chat {
   max_auto_turns: number;
   created_at: number;
   updated_at: number;
+  /** chat | phone (shown and written as texting) */
+  style?: "chat" | "phone";
 }
 export interface Message {
   id: number;
@@ -124,6 +161,8 @@ export interface Settings {
   profiles: ApiProfile[];
   user_name: string;
   user_description: string;
+  /** The persona being played (an id), or "" for the plain name and description. */
+  active_persona: string;
   context_tokens: number;
   max_tokens: number;
   temperature: number;
@@ -150,7 +189,8 @@ export interface EngineStatus { running: boolean; model: string; backend: string
 export interface AppInfo { version: string; data_dir: string; portable: boolean; platform: string; local_engine: boolean }
 export interface ImportResult { character: Character; warnings: string[]; spec: string }
 
-export interface ProfileInfo { id: string; handle: string; display_name: string; has_passcode: boolean; created_at: number; last_login: number }
+export interface ProfileInfo { id: string; handle: string; display_name: string; has_passcode: boolean; created_at: number; last_login: number; avatar?: string | null; avatar_frame?: Frame | null }
+export interface Persona { id: string; name: string; description: string; style: string; avatar: string | null; frame: Frame | null; created_at: number; avatar_path?: string | null }
 export interface SessionState {
   signed_in: boolean;
   guest: boolean;
@@ -168,9 +208,9 @@ export interface ImportPreview {
 }
 
 export type GenEvent =
-  | { kind: "loading" | "start"; request_id: string; chat_id: number; character_id: string }
-  | { kind: "token"; request_id: string; chat_id: number; character_id: string; text: string }
-  | { kind: "done"; request_id: string; chat_id: number; character_id: string; message: Message }
+  | { kind: "loading" | "start"; request_id: string; chat_id: number; character_id: string; continue_of?: number | null }
+  | { kind: "token"; request_id: string; chat_id: number; character_id: string; text: string; continue_of?: number | null }
+  | { kind: "done"; request_id: string; chat_id: number; character_id: string; message: Message; continue_of?: number | null }
   | { kind: "error"; request_id: string; chat_id: number; error: string };
 
 export interface ModelProgress { file: string; downloaded: number; total: number; done: boolean; error: string | null }
@@ -221,12 +261,78 @@ export const api = {
   },
   // dorms & chats
   listDorms: () => invoke<Dorm[]>("list_dorms"),
-  createDorm: (name: string) => invoke<Dorm>("create_dorm", { name }),
+  createDorm: (name: string, roomId: number | null = null) => invoke<Dorm>("create_dorm", { name, roomId }),
+  setDormRoom: (id: number, roomId: number | null) => invoke<void>("set_dorm_room", { id, roomId }),
+  setFrame: (id: string, frame: Frame | null) => invoke<Character>("set_frame", { id, frame }),
+  // folders
+  listFolders: () => invoke<Folder[]>("list_folders"),
+  createFolder: (name: string) => invoke<Folder>("create_folder", { name }),
+  renameFolder: (id: string, name: string) => invoke<Folder>("rename_folder", { id, name }),
+  deleteFolder: (id: string) => invoke<void>("delete_folder", { id }),
+  async setFolderCover(id: string, file: File): Promise<Folder> {
+    return bin("set_folder_cover", new Uint8Array(await file.arrayBuffer()), { "x-folder-id": id, "x-file-name": enc(file.name) });
+  },
+  setFolderFrame: (id: string, frame: Frame | null) => invoke<Folder>("set_folder_frame", { id, frame }),
+  clearFolderCover: (id: string) => invoke<Folder>("clear_folder_cover", { id }),
+  moveCharacters: (ids: string[], folder: string | null) => invoke<void>("move_characters", { ids, folder }),
+  // personas (who you are in chats) and the profile picture
+  listPersonas: () => invoke<Persona[]>("list_personas"),
+  savePersona: (p: { id?: string; name: string; description: string; style: string }) =>
+    invoke<Persona>("save_persona", { persona: { avatar: null, frame: null, created_at: 0, ...p, id: p.id ?? "" } }),
+  deletePersona: (id: string) => invoke<void>("delete_persona", { id }),
+  async setPersonaAvatar(id: string, file: File): Promise<Persona> {
+    return bin("set_persona_avatar", new Uint8Array(await file.arrayBuffer()), { "x-persona-id": id, "x-file-name": enc(file.name) });
+  },
+  setPersonaFrame: (id: string, frame: Frame | null) => invoke<Persona>("set_persona_frame", { id, frame }),
+  clearPersonaAvatar: (id: string) => invoke<Persona>("clear_persona_avatar", { id }),
+  setActivePersona: (id: string | null) => invoke<Settings>("set_active_persona", { id }),
+  async setProfileAvatar(file: File): Promise<void> {
+    await bin("set_profile_avatar", new Uint8Array(await file.arrayBuffer()), { "x-file-name": enc(file.name) });
+  },
+  setProfileAvatarFrame: (frame: Frame | null) => invoke<void>("set_profile_avatar_frame", { frame }),
+  clearProfileAvatar: () => invoke<void>("clear_profile_avatar"),
+  // lorebooks
+  listLorebooks: () => invoke<Lorebook[]>("list_lorebooks"),
+  saveLorebook: (b: { id?: string; name: string; book: CharacterBook }) => invoke<Lorebook>("save_lorebook", { lorebook: { created_at: 0, updated_at: 0, ...b, id: b.id ?? "" } }),
+  deleteLorebook: (id: string) => invoke<void>("delete_lorebook", { id }),
+  // notes
+  listNotes: () => invoke<Note[]>("list_notes"),
+  saveNote: (note: Pick<Note, "title" | "body" | "pinned"> & { id?: string }) => invoke<Note>("save_note", { note: { created_at: 0, updated_at: 0, ...note, id: note.id ?? "" } }),
+  deleteNote: (id: string) => invoke<void>("delete_note", { id }),
+  // background music
+  async setRoomMusic(id: number, file: File): Promise<Room> {
+    return bin("set_room_music", new Uint8Array(await file.arrayBuffer()), { "x-room-id": String(id), "x-file-name": enc(file.name) });
+  },
+  clearRoomMusic: (id: number) => invoke<Room>("clear_room_music", { id }),
+  async setDormMusic(id: number, file: File): Promise<Dorm> {
+    return bin("set_dorm_music", new Uint8Array(await file.arrayBuffer()), { "x-dorm-id": String(id), "x-file-name": enc(file.name) });
+  },
+  clearDormMusic: (id: number) => invoke<Dorm>("clear_dorm_music", { id }),
+  // rooms
+  listRooms: () => invoke<Room[]>("list_rooms"),
+  createRoom: (room: Omit<Room, "id" | "created_at" | "backdrop_path">) => invoke<Room>("create_room", { room: { ...room, id: 0, created_at: 0 } }),
+  updateRoom: (room: Room) => invoke<Room>("update_room", { room }),
+  deleteRoom: (id: number) => invoke<void>("delete_room", { id }),
+  async setRoomBackdrop(id: number, file: File): Promise<Room> {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return bin("set_room_backdrop", bytes, { "x-room-id": String(id), "x-file-name": enc(file.name) });
+  },
+  // mechanic packs
+  listMechanics: () => invoke<MechanicPack[]>("list_mechanics"),
+  async importMechanic(file: File): Promise<MechanicPack> {
+    return bin("import_mechanic", new Uint8Array(await file.arrayBuffer()), {});
+  },
+  deleteMechanic: (id: string) => invoke<void>("delete_mechanic", { id }),
+  chatMechanics: (chatId: number) => invoke<ChatMechanic[]>("chat_mechanics", { chatId }),
+  setChatMechanic: (chatId: number, mechId: string, enabled: boolean) => invoke<ChatMechanic[]>("set_chat_mechanic", { chatId, mechId, enabled }),
+  resetChatMechanic: (chatId: number, mechId: string) => invoke<ChatMechanic[]>("reset_chat_mechanic", { chatId, mechId }),
+  setChatVariable: (chatId: number, mechId: string, path: string, value: unknown) => invoke<ChatMechanic[]>("set_chat_variable", { chatId, mechId, path, value }),
   renameDorm: (id: number, name: string) => invoke<void>("rename_dorm", { id, name }),
   deleteDorm: (id: number) => invoke<void>("delete_dorm", { id }),
   listChats: () => invoke<Chat[]>("list_chats"),
-  createChat: (dormId: number | null, name: string, kind: ChatKind, characterIds: string[]) =>
-    invoke<Chat>("create_chat", { dormId, name, kind, characterIds }),
+  /** `opening`: which of the character's greetings a one-on-one chat starts on (0 = the first message). */
+  createChat: (dormId: number | null, name: string, kind: ChatKind, characterIds: string[], opening?: number) =>
+    invoke<Chat>("create_chat", { dormId, name, kind, characterIds, opening: opening ?? null }),
   updateChat: (chat: Chat) => invoke<void>("update_chat", { chat }),
   deleteChat: (id: number) => invoke<void>("delete_chat", { id }),
   listMessages: (chatId: number) => invoke<Message[]>("list_messages", { chatId }),
@@ -235,8 +341,9 @@ export const api = {
   deleteMessage: (id: number) => invoke<void>("delete_message", { id }),
   setSwipe: (id: number, index: number) => invoke<Message>("set_swipe", { id, index }),
   clearChat: (chatId: number) => invoke<void>("clear_chat", { chatId }),
-  generate: (chatId: number, characterId?: string | null, regenerateMessageId?: number | null) =>
-    invoke<string>("generate", { chatId, characterId: characterId ?? null, regenerateMessageId: regenerateMessageId ?? null }),
+  /** `continueMessageId` extends that (newest, character) message in place instead of starting a new reply. */
+  generate: (chatId: number, characterId?: string | null, regenerateMessageId?: number | null, continueMessageId?: number | null) =>
+    invoke<string>("generate", { chatId, characterId: characterId ?? null, regenerateMessageId: regenerateMessageId ?? null, continueMessageId: continueMessageId ?? null }),
   cancelGeneration: (requestId: string) => invoke<void>("cancel_generation", { requestId }),
   setAutoChat: (chatId: number, on: boolean) => invoke<void>("set_auto_chat", { chatId, on }),
   // profiles and sessions
@@ -285,11 +392,18 @@ export const api = {
 
 export const onGen = (cb: (e: GenEvent) => void): Promise<UnlistenFn> =>
   listen<GenEvent>("dorms://gen", (ev) => cb(ev.payload));
+export const onMechanics = (cb: (e: { chat_id: number }) => void): Promise<UnlistenFn> =>
+  listen("dorms://mechanics", (ev) => cb(ev.payload as { chat_id: number }));
 export const onModelProgress = (cb: (e: ModelProgress) => void): Promise<UnlistenFn> =>
   listen<ModelProgress>("dorms://model-progress", (ev) => cb(ev.payload));
 export const onAutoStopped = (cb: (e: { chat_id: number; reason: string }) => void): Promise<UnlistenFn> =>
   listen("dorms://auto-stopped", (ev) => cb(ev.payload as { chat_id: number; reason: string }));
 
+export const personaAvatar = (p: { avatar_path?: string | null }) => (p.avatar_path ? convertFileSrc(p.avatar_path) : null);
+export const profileAvatar = (p: { avatar?: string | null } | null | undefined) => (p?.avatar ? convertFileSrc(p.avatar) : null);
+export const folderCover = (f: { cover_path?: string | null }) => (f.cover_path ? convertFileSrc(f.cover_path) : null);
+export const musicUrl = (x: { music_path?: string | null }) => (x.music_path ? convertFileSrc(x.music_path) : null);
+export const roomBackdrop = (r: { backdrop_path?: string | null }) => (r.backdrop_path ? convertFileSrc(r.backdrop_path) : null);
 export const mediaUrl = (c: { media_path: string | null }) => (c.media_path ? convertFileSrc(c.media_path) : null);
 
 // ---- card helpers -------------------------------------------------------

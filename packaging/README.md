@@ -42,7 +42,7 @@ with a symlink in `/usr/bin` is what the PKGBUILDs do; the app resolves its own 
 npm ci
 node scripts/build-llama.mjs            # builds the bundled engines (set SKIP_VULKAN=1 to skip the GPU one)
 npx tauri build --no-bundle             # loose binary
-scripts/package-linux-tarball.sh 0.2.0  # tarball for AUR -bin / Flatpak
+scripts/package-linux-tarball.sh 0.2.1  # tarball for AUR -bin / Flatpak
 npx tauri build --bundles appimage,deb,rpm
 ```
 

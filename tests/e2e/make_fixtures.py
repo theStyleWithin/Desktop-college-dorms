@@ -56,4 +56,14 @@ json.dump({"spec": "chara_card_v2", "spec_version": "2.0", "data": {"name": "Inj
 art((20, 20, 20), "Plain").save("plain.png")
 frames = [art((200, 100 + i * 30, 80), "G%d" % i) for i in range(4)]
 frames[0].save("avatar.gif", save_all=True, append_images=frames[1:], duration=150, loop=0)
+# music: a valid, silent one-second MP3 (MPEG-1 Layer III, 128 kbps, 44.1 kHz: 417-byte frames) and a one-second WAV tone
+open("song.mp3", "wb").write((b"\xff\xfb\x90\x00" + b"\x00" * 413) * 40)
+import math, struct, wave
+with wave.open("tone.wav", "wb") as w:
+    w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000)
+    w.writeframes(b"".join(struct.pack("<h", int(2000 * math.sin(2 * math.pi * 440 * i / 8000))) for i in range(8000)))
+# a SillyTavern-style world info export (entries keyed by number)
+json.dump({"entries": {"0": {"uid": 0, "key": ["lantern", "lamp"], "keysecondary": [], "comment": "The lantern", "content": "The lantern never goes out.", "constant": False, "selective": False, "order": 100, "position": 0, "disable": False},
+                       "1": {"uid": 1, "key": [], "comment": "Always", "content": "It is always autumn here.", "constant": True, "order": 50, "position": 1, "disable": False},
+                       "2": {"uid": 2, "key": ["ghost"], "comment": "Off", "content": "Hidden.", "disable": True}}}, open("worldinfo_st.json", "w"))
 print("fixtures written to", out)

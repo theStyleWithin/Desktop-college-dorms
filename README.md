@@ -17,7 +17,7 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
 | | |
 |---|---|
 | ![Home](docs/screenshots/desktop-home.png)<br>**Home**: jump back into chats, your characters at a glance | ![Library](docs/screenshots/desktop-library.png)<br>**Library**: search, tags, favorites, import cards |
-| ![A channel](docs/screenshots/desktop-channel.png)<br>**Dorm channels**: characters talk to you and to each other | ![Direct chat](docs/screenshots/desktop-chat.png)<br>**Chat**: swipe, regenerate, edit; image, GIF, video or live 3D VRM beside it |
+| ![A channel](docs/screenshots/desktop-channel.png)<br>**Dorm channels**: characters talk to you and to each other | ![Direct chat](docs/screenshots/desktop-chat.png)<br>**Chat**: swipe, regenerate, continue, edit; image, GIF, video or live 3D VRM beside it |
 | ![Editor](docs/screenshots/desktop-editor.png)<br>**Character editor**: Chub-style, with live token counts | ![Models](docs/screenshots/desktop-models.png)<br>**Built-in models**: sized to your computer, resumable downloads |
 | ![Other API](docs/screenshots/desktop-other-api.png)<br>**Other API**: plug in any OpenAI- or Anthropic-style service | ![Light theme](docs/screenshots/desktop-light-theme.png)<br>**Themes**: dusk, midnight and a light "paper" theme |
 | ![Welcome](docs/screenshots/desktop-welcome.png)<br>**Profiles**: local accounts with an optional passcode, or hop in as a guest | ![Profile settings](docs/screenshots/desktop-profile.png)<br>**Profile settings**: passcode, backup, **Eject**, delete |
@@ -40,6 +40,7 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
 - **Characters** with JPG / PNG / WebP / GIF / MP4 / WebM avatars and **VRM / VRoid 3D models** (VRM 0.x and 1.0)
 - **A real 3D viewer**: the character stands in a furnished dorm room (night window, rug, bed, desk, string lights) with soft shadows.
   Drag to turn, scroll or pinch to zoom, double-click to reset, and open the **big viewer** for the whole room.
+  The big viewer is a real window: drag its title bar to move it, pull any edge or corner to resize it (it remembers its size), or use **theatre mode** (T) or **full screen** (F). Esc steps back one level.
   She breathes, blinks, sways and follows you with her eyes. **Soft-body physics** run from the model's own spring bones
   (hair, skirt, sleeves, ears, chest): Natural / Bouncy / Off, plus a hop button to see them move.
 - **She has a life of her own** (no AI needed): when you aren't talking to her she wanders the room, scrolls her phone (and sometimes
@@ -61,13 +62,32 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
 - **Virtual hands** for the 3D viewer: use a **game controller** (sticks move your hands, triggers reach in, bumpers pull back, A grips),
   or the mouse or touch (press and hold to reach in). Stroke her head or ears and she leans into your hand, half-closes her eyes
   and smiles; your controller rumbles gently.
+- **Rooms**: make a place (a living room, a rooftop, a character's bedroom) with a name, a description and a backdrop (your own
+  image or a built-in scene), set a dorm in it, and the characters know where they are while the chat shows the room behind it.
+  Make the room first and the dorm after ("Create & enter"), or add a room to a dorm you already have.
+- **Background music**: pick an MP3 (or another audio file) from your computer for a room or a dorm. It plays quietly on a loop while you
+  are in a chat there, with pause, mute and volume. A dorm's own music is used instead of its room's.
+- **Mechanics** (🧩 in a chat): optional story layers you switch on or off per chat. Import a `.bundle.json` pack (an affection and trust
+  tracker, a relationships panel, a status panel, a phone…): its notes join the prompt, its numbers move with keywords and with what the
+  character writes (hidden `[affection: add 3]` lines are removed before you read the reply), and you can watch or adjust them.
+  Nothing is forced on a chat. A pack's own custom screens are not run; the app shows its values in built-in panels instead.
+- **Phone mode** (📱 in a chat): the same conversation as a texting experience: a phone with message bubbles, and replies written and
+  shown as short texts.
+- **Character folders**: optional folders in the library. Drag characters onto a folder (or ⋮ → Move to folder), rename it, give it its own picture.
+  Deleting a folder never deletes its characters.
+- **Position your pictures**: choosing an avatar opens a window where you drag and zoom until the face is just right (with previews of the
+  card, round avatar and banner). The framing is saved, can be changed later (⤧ Position), and is used everywhere the picture appears.
+  Library cards are bigger too.
+- **Lorebooks**: a Lorebooks library (import SillyTavern world info or a card's book), attached to any number of characters, working
+  together with the book inside a card. **More initial messages** sit in the main editor, and you pick which one opens a new chat.
+- **Notes**: a page for writing with no length limit, like a card's creator notes but always a click away. Saves by itself; search and pin.
 - **Chub-style character editor**: tagline, in-chat name, tags, description, first message, scenario, example dialogs,
   live token counts, alternate greetings (as swipes), system prompt, post-history instructions, character's note with depth,
   and an embedded lorebook (keyword / regex triggers). Everything stays editable after creation.
 - **Character card import and export** (V1, V2 and V3; JSON and PNG). Import is deliberately forgiving: wrong types and missing
   fields never cause an error, unknown fields are kept and written back, so round trips lose nothing. Tested against cards written by
   independent tools (tEXt, zTXt and ccv3 chunks, non-Latin text, loose JSON, SillyTavern-style lorebooks).
-- **Chats**: one-on-one, group chats, and channels inside dorms. Swipe / regenerate / edit / delete messages.
+- **Chats**: one-on-one, group chats, and channels inside dorms. Swipe, regenerate, **continue** (ask the character to keep going and extend the same message), edit and delete messages.
   Turn order: take turns, random, or reply when named.
 - **Bots talking to each other**: optional per channel, off by default, with a pace and an automatic stop after N bot-only turns
   so an unattended channel can't drain your battery or API credit.

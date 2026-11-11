@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  api, blankCard, blankEntry, mediaUrl, type BookEntry, type CardData, type Character, type MediaKind,
+  api, blankCard, mediaUrl, type CardData, type Character, type Frame, type Lorebook, type MediaKind,
 } from "../api";
 import Art from "../components/Art";
+import FrameEditor from "../components/FrameEditor";
+import BookEditor from "../components/BookEditor";
 import { makeWardrobe } from "../components/WardrobePanel";
 import { TagInput, useToast } from "../components/ui";
 import { errText, tokens } from "../lib/util";
@@ -44,16 +46,21 @@ export default function Editor({ id }: { id: string | null }) {
   const [chatName, setChatName] = useState("");
   const [tagline, setTagline] = useState("");
   const [note, setNote] = useState({ prompt: "", depth: 4 });
-  const [pending, setPending] = useState<{ file: File; url: string; kind: MediaKind } | null>(null);
+  const [pending, setPending] = useState<{ file: File; url: string; kind: MediaKind; frame?: Frame | null } | null>(null);
+  // a picture being positioned: a freshly chosen file (`file`), or the saved one being re-framed
+  const [framing, setFraming] = useState<{ file?: File; url: string; kind: MediaKind; initial?: Frame | null } | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [trusted, setTrusted] = useState(true);
+  const [library, setLibrary] = useState<Lorebook[]>([]);
+  const [attached, setAttached] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const hydrate = (c: Character) => {
     const d = c.card.extensions?.dorms ?? {};
     const dn = String(d.display_name ?? "");
     setChar(c);
+    setAttached(c.lorebooks ?? []);
     setTrusted(c.trusted !== false);
     setCard(c.card);
     setName(dn || c.card.name);
@@ -67,6 +74,7 @@ export default function Editor({ id }: { id: string | null }) {
   useEffect(() => {
     if (id) api.getCharacter(id).then((c) => { if (c) hydrate(c); setLoaded(true); });
   }, [id]);
+  useEffect(() => { api.listLorebooks().then(setLibrary).catch(() => {}); }, []);
   useEffect(() => () => { if (pending) URL.revokeObjectURL(pending.url); }, [pending]);
 
   const set = <K extends keyof CardData>(k: K, v: CardData[K]) => { setCard((c) => ({ ...c, [k]: v })); setDirty(true); };
@@ -92,21 +100,39 @@ export default function Editor({ id }: { id: string | null }) {
     if (!f) return;
     const kind = kindOf(f);
     if (!kind) return toast("Use a JPG, PNG, WebP, GIF, MP4/WebM video, or a VRM model.", "err");
+    // pictures get a chance to be positioned first, so the face is never cut off
+    if (kind === "image" || kind === "gif") { setFraming({ file: f, url: URL.createObjectURL(f), kind }); return; }
+    await applyMedia(f, kind, null);
+  };
+
+  const applyMedia = async (f: File, kind: MediaKind, frame: Frame | null) => {
     if (char) {
-      try { hydrate(await api.setMedia(char.id, f)); toast("Media updated", "ok"); refresh(); } catch (e) { toast(errText(e), "err"); }
+      try {
+        let c = await api.setMedia(char.id, f);
+        c = await api.setFrame(c.id, frame);
+        hydrate(c); toast("Media updated", "ok"); refresh();
+      } catch (e) { toast(errText(e), "err"); }
     } else {
       if (pending) URL.revokeObjectURL(pending.url);
-      setPending({ file: f, url: URL.createObjectURL(f), kind });
+      setPending({ file: f, url: URL.createObjectURL(f), kind, frame });
       setDirty(true);
     }
+  };
+
+  /** Re-frame the picture that is already saved (or the one waiting to be saved with a new character). */
+  const reframe = async (f: Frame | null) => {
+    setFraming(null);
+    if (pending) { setPending({ ...pending, frame: f }); return; }
+    if (!char) return;
+    try { const c = await api.setFrame(char.id, f); setChar(c); refresh(); toast("Framing saved", "ok"); } catch (e) { toast(errText(e), "err"); }
   };
 
   const save = async (): Promise<Character | null> => {
     if (!name.trim() && !chatName.trim()) { toast("Give your character a name first.", "err"); return null; }
     setSaving(true);
     try {
-      let saved = await api.saveCharacter({ ...(char ?? {}), card: built, trusted });
-      if (pending) { saved = await api.setMedia(saved.id, pending.file); setPending(null); }
+      let saved = await api.saveCharacter({ ...(char ?? {}), card: built, trusted, lorebooks: attached });
+      if (pending) { saved = await api.setMedia(saved.id, pending.file); if (pending.frame) saved = await api.setFrame(saved.id, pending.frame); setPending(null); }
       hydrate(saved);
       await refresh();
       toast("Saved", "ok");
@@ -139,8 +165,6 @@ export default function Editor({ id }: { id: string | null }) {
   // ---- lorebook helpers
   const book = card.character_book;
   const setBook = (b: CardData["character_book"]) => set("character_book", b);
-  const setEntry = (i: number, patch: Partial<BookEntry>) =>
-    setBook({ ...book!, entries: book!.entries.map((e, j) => (j === i ? { ...e, ...patch } : e)) });
 
   if (!loaded) return <div className="page sub">Loading…</div>;
 
@@ -172,10 +196,13 @@ export default function Editor({ id }: { id: string | null }) {
           <div className="editor-media" title="Drop an image, GIF, video or .vrm model here"
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); pickMedia(e.dataTransfer.files?.[0]); }}>
-            <Art kind={previewKind} url={previewUrl} name={name || "?"} mode="full" wardrobe={pending ? undefined : makeWardrobe(char, (n) => { hydrate(n); refresh(); }, toast)} />
+            <Art kind={previewKind} url={previewUrl} name={name || "?"} frame={pending ? pending.frame : char?.frame} mode="full" wardrobe={pending ? undefined : makeWardrobe(char, (n) => { hydrate(n); refresh(); }, toast)} />
           </div>
           <div style={{ display: "grid", gap: 8 }}>
             <button type="button" className="btn" onClick={() => fileRef.current?.click()}>⇪ Upload</button>
+            {previewUrl && (previewKind === "image" || previewKind === "gif") && (
+              <button type="button" className="btn" onClick={() => setFraming({ url: previewUrl, kind: previewKind, initial: pending ? pending.frame : char?.frame })}>⤧ Position</button>
+            )}
             {(previewUrl) && (
               <button type="button" className="btn danger" onClick={async () => {
                 if (pending) { setPending(null); return; }
@@ -206,23 +233,44 @@ export default function Editor({ id }: { id: string | null }) {
       <Field label="Example dialogs" count={tk(card.mes_example)} hint="Example chat between you and the character. Very important for teaching how they speak. Separate examples with <START>.">
         <textarea style={{ minHeight: 140 }} value={card.mes_example} placeholder="Example dialogs" onChange={(e) => set("mes_example", e.target.value)} />
       </Field>
+      <Field label="More initial messages" plain hint="Other ways for the chat to begin. When you start a chat you choose which message opens it; the others stay one swipe (‹ ›) away on the first message.">
+        <div style={{ display: "grid", gap: 8 }}>
+          {card.alternate_greetings.map((g, i) => (
+            <div key={i} className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
+              <span className="tok" style={{ paddingTop: 10, width: 22 }}>{i + 2}.</span>
+              <textarea value={g} aria-label={`Initial message ${i + 2}`} style={{ minHeight: 90 }} placeholder={`Initial message ${i + 2}`} onChange={(e) => set("alternate_greetings", card.alternate_greetings.map((x, j) => (j === i ? e.target.value : x)))} />
+              <button type="button" className="btn danger sm" aria-label={`Remove initial message ${i + 2}`} onClick={() => set("alternate_greetings", card.alternate_greetings.filter((_, j) => j !== i))}>✕</button>
+            </div>
+          ))}
+          <button type="button" className="btn sm" style={{ justifySelf: "start" }} onClick={() => set("alternate_greetings", [...card.alternate_greetings, ""])}>＋ Add another initial message</button>
+        </div>
+      </Field>
+      <h2 className="sect">Lorebooks <span className="sub" style={{ fontSize: ".9rem", fontFamily: "var(--sans)" }}>(lore that appears when keywords come up)</span></h2>
+      <Field label="Shared lorebooks" plain hint="Books from your Lorebooks library. Attach the same world to as many characters as you like.">
+        <div style={{ display: "grid", gap: 6 }}>
+          {library.map((b) => (
+            <label key={b.id} className="row" style={{ gap: 8 }}>
+              <input type="checkbox" checked={attached.includes(b.id)} onChange={(e) => { setAttached(e.target.checked ? [...attached, b.id] : attached.filter((x) => x !== b.id)); setDirty(true); }} />
+              📚 {b.name} <span className="tok">{b.book?.entries?.length ?? 0} entries</span>
+            </label>
+          ))}
+          {!library.length && <div className="hint">No lorebooks in your library yet.</div>}
+          <button type="button" className="btn sm" style={{ justifySelf: "start" }} onClick={() => go({ page: "lorebooks" })}>Open Lorebooks</button>
+        </div>
+      </Field>
+      <Field label="This card's own book" plain hint="Lore that travels inside the character card itself (exports with the card). Keys can be /regex/i.">
+        {!book ? (
+          <button type="button" className="btn" onClick={() => setBook({ name: "", description: "", scan_depth: null, token_budget: null, recursive_scanning: null, extensions: {}, entries: [] })}>＋ Add a book to this card</button>
+        ) : (
+          <BookEditor book={book} setBook={setBook} onRemove={() => setBook(null)} />
+        )}
+      </Field>
       <p className="tok" style={{ textAlign: "center" }}>Total: {total} token(s). Permanent: {permanent} token(s). Your context window is {settings.context_tokens}.</p>
 
       <details className="card" style={{ marginTop: 24 }} open>
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>Advanced Definitions</summary>
         <Field label="Personality" count={tk(card.personality)} hint="Optional trait summary (part of the standard card spec).">
           <textarea value={card.personality} onChange={(e) => set("personality", e.target.value)} />
-        </Field>
-        <Field label="Alternate greetings" hint="Alternate beginning messages. You can flip between them as swipes on the first message.">
-          <div style={{ display: "grid", gap: 8 }}>
-            {card.alternate_greetings.map((g, i) => (
-              <div key={i} className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
-                <textarea value={g} style={{ minHeight: 70 }} onChange={(e) => set("alternate_greetings", card.alternate_greetings.map((x, j) => (j === i ? e.target.value : x)))} />
-                <button type="button" className="btn danger sm" onClick={() => set("alternate_greetings", card.alternate_greetings.filter((_, j) => j !== i))}>✕</button>
-              </div>
-            ))}
-            <button type="button" className="btn sm" style={{ justifySelf: "start" }} onClick={() => set("alternate_greetings", [...card.alternate_greetings, ""])}>＋ Add alternate greeting</button>
-          </div>
         </Field>
         {(card.system_prompt.trim() || card.post_history_instructions.trim()) && (
           <div className={trusted ? "hint" : "banner"} style={{ margin: "12px 0" }}>
@@ -250,47 +298,12 @@ export default function Editor({ id }: { id: string | null }) {
         <Field label="Creator"><input type="text" value={card.creator} onChange={(e) => set("creator", e.target.value)} /></Field>
         <Field label="Version"><input type="text" value={card.character_version} onChange={(e) => set("character_version", e.target.value)} /></Field>
 
-        <Field label="Character Book" hint="Keyword-triggered lore. When a key appears in recent messages, its content is added to the prompt. Keys can be /regex/i.">
-          {!book ? (
-            <button type="button" className="btn" onClick={() => setBook({ name: "", description: "", scan_depth: null, token_budget: null, recursive_scanning: null, extensions: {}, entries: [] })}>＋ Add embedded book</button>
-          ) : (
-            <div>
-              <div className="row">
-                <input type="text" style={{ maxWidth: 240 }} placeholder="Book name" value={book.name} onChange={(e) => setBook({ ...book, name: e.target.value })} />
-                <label className="row">Scan depth <input type="number" min={1} style={{ width: 80 }} value={book.scan_depth ?? ""} placeholder="4" onChange={(e) => setBook({ ...book, scan_depth: e.target.value ? Number(e.target.value) : null })} /></label>
-                <label className="row">Token budget <input type="number" min={0} style={{ width: 90 }} value={book.token_budget ?? ""} placeholder="∞" onChange={(e) => setBook({ ...book, token_budget: e.target.value ? Number(e.target.value) : null })} /></label>
-                <button type="button" className="btn danger sm" onClick={() => window.confirm("Remove the whole book?") && setBook(null)}>Remove book</button>
-              </div>
-              <div className="tok">{book.entries.length} entr{book.entries.length === 1 ? "y" : "ies"}, {book.entries.reduce((n, e) => n + tokens(e.content), 0)} token(s)</div>
-              {book.entries.map((e, i) => (
-                <div className="entry" key={i}>
-                  <div className="row">
-                    <input type="text" style={{ flex: 1, minWidth: 140 }} placeholder="Entry name" value={e.name || e.comment} onChange={(ev) => setEntry(i, { name: ev.target.value, comment: ev.target.value })} />
-                    <label className="row"><input type="checkbox" checked={e.enabled} onChange={(ev) => setEntry(i, { enabled: ev.target.checked })} />On</label>
-                    <label className="row"><input type="checkbox" checked={e.constant} onChange={(ev) => setEntry(i, { constant: ev.target.checked })} />Always</label>
-                    <label className="row"><input type="checkbox" checked={e.selective} onChange={(ev) => setEntry(i, { selective: ev.target.checked })} />Needs 2nd key</label>
-                    <button type="button" className="btn danger sm" onClick={() => setBook({ ...book, entries: book.entries.filter((_, j) => j !== i) })}>✕</button>
-                  </div>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <TagInput value={e.keys} onChange={(v) => setEntry(i, { keys: v })} placeholder="Trigger keys (Enter to add)" />
-                    {e.selective && <TagInput value={e.secondary_keys} onChange={(v) => setEntry(i, { secondary_keys: v })} placeholder="Secondary keys" />}
-                    <textarea style={{ minHeight: 80 }} placeholder="Content inserted when triggered" value={e.content} onChange={(ev) => setEntry(i, { content: ev.target.value })} />
-                    <div className="row">
-                      <label className="row">Order <input type="number" style={{ width: 90 }} value={e.insertion_order} onChange={(ev) => setEntry(i, { insertion_order: Number(ev.target.value) || 0 })} /></label>
-                      <select style={{ width: "auto" }} value={e.position} onChange={(ev) => setEntry(i, { position: ev.target.value })}>
-                        <option value="before_char">Before description</option><option value="after_char">After scenario</option>
-                      </select>
-                      <span className="tok">{tk(e.content)}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              <button type="button" className="btn sm" onClick={() => setBook({ ...book, entries: [...book.entries, { ...blankEntry(), id: book.entries.length }] })}>＋ Add entry</button>
-            </div>
-          )}
-        </Field>
       </details>
 
+      {framing && (
+        <FrameEditor src={framing.url} initial={framing.initial} onClose={() => { if (framing.file) URL.revokeObjectURL(framing.url); setFraming(null); }}
+          onSave={(fr) => { if (framing.file) { const f = framing.file, u = framing.url; setFraming(null); void applyMedia(f, framing.kind, fr).finally(() => URL.revokeObjectURL(u)); } else void reframe(fr); }} />
+      )}
       <div className="sticky-bar">
         <button className="btn primary" onClick={save} disabled={saving}>{saving ? "Saving…" : char ? "Save changes" : "Create Character"}</button>
         {char && <button className="btn danger" onClick={del}>Delete</button>}

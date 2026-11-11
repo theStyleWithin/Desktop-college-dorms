@@ -54,7 +54,7 @@ class Fake(BaseHTTPRequestHandler):
         seen["auth"] = self.headers.get("authorization"); seen["body"] = body
         seen["path"] = self.path; seen["headers"] = {k.lower(): v for k, v in self.headers.items()}
         self.send_response(200); self.send_header("content-type", "text/event-stream"); self.end_headers()
-        for piece in ["Hello ", "from ", "*the cloud*", "!"]:
+        for piece in seen.get("pieces") or ["Hello ", "from ", "*the cloud*", "!"]:
             self.wfile.write(("data: " + json.dumps({"choices": [{"delta": {"content": piece}}]}) + "\n\n").encode()); self.wfile.flush(); time.sleep(0.05)
         self.wfile.write(b"data: [DONE]\n\n")
 srv = HTTPServer(("127.0.0.1", 18999), Fake); threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -99,6 +99,21 @@ def invoke_bytes(cmd, args):
     r = d.execute_async_script("const done=arguments[arguments.length-1]; window.__TAURI_INTERNALS__.invoke(arguments[0], arguments[1]).then(v=>{const b=new Uint8Array(v);let s='';for(const x of b)s+=String.fromCharCode(x);done({ok:btoa(s)})}).catch(e=>done({err:String(e)}));", cmd, args)
     if "err" in r: raise RuntimeError(r["err"])
     return base64.b64decode(r["ok"])
+def invoke_file(cmd, path, headers):
+    b64 = base64.b64encode(open(path, "rb").read()).decode()
+    r = d.execute_async_script("const done=arguments[arguments.length-1];const b=Uint8Array.from(atob(arguments[0]),c=>c.charCodeAt(0));window.__TAURI_INTERNALS__.invoke(arguments[1], b, {headers:arguments[2]}).then(v=>done({ok:v})).catch(e=>done({err:String(e)}));", b64, cmd, headers)
+    if "err" in r: raise RuntimeError(r["err"])
+    return r["ok"]
+def inv_err_file(cmd, path, headers):
+    try: invoke_file(cmd, path, headers); return None
+    except RuntimeError as ex: return str(ex)
+def inv_err(cmd, args=None):
+    try: invoke(cmd, args); return None
+    except RuntimeError as ex: return str(ex)
+def click_text(sel, text):
+    return d.execute_script("const el=[...document.querySelectorAll(arguments[0])].find(b=>b.textContent.includes(arguments[1])&&!b.disabled);if(!el)return false;el.scrollIntoView({block:'center'});el.click();return true", sel, text)
+def set_value(sel, value):
+    d.execute_script("const el=document.querySelector(arguments[0]);const proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(el,arguments[1]);el.dispatchEvent(new Event('input',{bubbles:true}))", sel, value)
 def nav(label):
     d.find_element(By.XPATH, f"//nav//button[contains(., '{label}')]").click(); time.sleep(0.4)
 def upload(paths, scope=None):
@@ -194,9 +209,31 @@ try:
         inp = d.find_elements(By.CSS_SELECTOR, "input[type=file]")[0]
         d.execute_script("arguments[0].hidden=false;arguments[0].style.display='block';", inp)
         inp.send_keys(os.path.join(FIX, fname)); time.sleep(2.2)
+        if kind == "gif":
+            # a picture is positioned before it is saved, so the face is never cut off
+            check("choosing a picture opens the positioning window", d.execute_script("return !!document.querySelector('[data-testid=frame-main] img')"))
+            check("nothing is saved until you confirm", ((invoke("get_character", {"id": mira["id"]})["media"]) or {}).get("kind") != "gif")
+            check("the window shows how it looks as a card, a round avatar and a banner", d.execute_script("return document.querySelectorAll('.frame-prev img').length") == 3)
+            set_value("input[aria-label=Zoom]", "2.5"); time.sleep(0.3)
+            check("zooming scales the picture in every preview", d.execute_script("return [...document.querySelectorAll('[data-testid=frame-main] img, .frame-prev img')].every(i=>i.style.transform==='scale(2.5)')"))
+            box = d.find_element(By.CSS_SELECTOR, "[data-testid=frame-main]")
+            ActionChains(d).move_to_element(box).click_and_hold().move_by_offset(-50, -30).release().perform(); time.sleep(0.3)
+            pos = d.execute_script("return document.querySelector('[data-testid=frame-main] img').style.objectPosition")
+            check("dragging moves the picture inside the box", pos and pos != "50.00% 50.00%", str(pos))
+            click_text(".modal button", "Save"); time.sleep(2.2)
+            check("the framing window closes after saving", not d.execute_script("return !!document.querySelector('[data-testid=frame-main]')"))
         c = invoke("get_character", {"id": mira["id"]})
         check(f"{label} upload is stored as '{kind}'", c["media"] and c["media"]["kind"] == kind, str(c["media"]))
         if kind == "gif":
+            check("the chosen position and zoom are saved with the character", c.get("frame") and abs(c["frame"]["zoom"] - 2.5) < 0.01 and (abs(c["frame"]["x"] - 0.5) > 0.005 or abs(c["frame"]["y"] - 0.5) > 0.005), str(c.get("frame")))
+            check("the picture in the editor uses that framing", d.execute_script("const i=document.querySelector('.editor-media img');return !!i&&i.style.transform==='scale(2.5)'"))
+            check("a ⤧ Position button reopens the window with the saved framing", click_text("button", "Position") and d.execute_script("return document.querySelector('input[aria-label=Zoom]').value") == "2.5")
+            click_text(".modal button", "Reset"); click_text(".modal button", "Save"); time.sleep(1.2)
+            check("Reset puts the picture back to its default framing", invoke("get_character", {"id": mira["id"]}).get("frame") is None)
+            invoke("set_frame", {"id": mira["id"], "frame": {"x": 5, "y": -3, "zoom": 99}})
+            fr = invoke("get_character", {"id": mira["id"]})["frame"]
+            check("a framing is always kept within sane limits", fr == {"x": 1.0, "y": 0.0, "zoom": 5.0}, str(fr))
+            invoke("set_frame", {"id": mira["id"], "frame": None})
             check("GIF renders in the editor", d.execute_script("const i=document.querySelector('.editor-media img');return !!i&&i.complete&&i.naturalWidth>0"))
         if kind == "video":
             ok = False
@@ -257,6 +294,34 @@ try:
             ActionChains(d).move_to_element_with_offset(cv, 0, -60).click_and_hold().move_by_offset(30, 0).move_by_offset(-30, 0).release().perform(); time.sleep(0.6)
             check("moving the hands doesn't break the viewer", d.execute_script("return !!document.querySelector('.vrm-big canvas')") and d.execute_script("return document.querySelector('.vrm-big .vrm-box').dataset.petting!==undefined"))
             d.execute_script("document.querySelector('.vrm-big [aria-label=Hands]').click()")
+            # the big viewer is a real window: resize from the edges/corners, move by the title bar, theatre and full screen
+            rect = lambda sel: d.execute_script("const r=document.querySelector(arguments[0]).getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}", sel)
+            win = ".vw"
+            r0 = rect(win)
+            check("the viewer window has resize handles on all 4 sides and 4 corners", d.execute_script("return document.querySelectorAll('.vw-h').length") == 8)
+            ActionChains(d).move_to_element(d.find_element(By.CSS_SELECTOR, ".vw-h-se")).click_and_hold().move_by_offset(-120, -90).release().perform(); time.sleep(0.4)
+            r1 = rect(win)
+            check("pulling the bottom-right corner resizes it", r1["w"] < r0["w"] - 60 and r1["h"] < r0["h"] - 40, f"{r0} -> {r1}")
+            ActionChains(d).move_to_element(d.find_element(By.CSS_SELECTOR, ".vw-h-w")).click_and_hold().move_by_offset(-80, 0).release().perform(); time.sleep(0.4)
+            r2 = rect(win)
+            check("pulling the left edge widens it (and keeps the right edge put)", r2["w"] > r1["w"] + 40 and abs((r2["x"] + r2["w"]) - (r1["x"] + r1["w"])) < 3, f"{r1} -> {r2}")
+            ActionChains(d).move_to_element(d.find_element(By.CSS_SELECTOR, ".vw-bar h2")).click_and_hold().move_by_offset(0, 20).release().perform(); time.sleep(0.4)
+            r3 = rect(win)
+            check("dragging the title bar moves the window without resizing it", abs(r3["w"] - r2["w"]) < 2 and abs(r3["y"] - r2["y"]) > 8, f"{r2} -> {r3}")
+            check("the 3D view follows the window size", d.execute_script("const c=document.querySelector('.vrm-big canvas').getBoundingClientRect(),b=document.querySelector('.vrm-big').getBoundingClientRect();return Math.abs(c.width-b.width)<3 && Math.abs(c.height-b.height)<3"))
+            d.execute_script("document.querySelector('.vw [aria-label=\"Theatre mode\"]').click()"); time.sleep(0.6)
+            vw_, vh_ = d.execute_script("return [innerWidth,innerHeight]")
+            rt = rect(win)
+            check("theatre mode fills most of the screen", rt["w"] > vw_ * 0.9 and rt["h"] > vh_ * 0.88, f"{rt} in {vw_}x{vh_}")
+            check("no resize handles in theatre mode", d.execute_script("return document.querySelectorAll('.vw-h').length") == 0)
+            d.execute_script("document.querySelector('.vw [aria-label=\"Full screen\"]').click()"); time.sleep(0.8)
+            rf = rect(win)
+            check("full screen covers the whole app window", rf["w"] >= vw_ - 1 and rf["h"] >= vh_ - 1 and rf["x"] <= 1 and rf["y"] <= 1, f"{rf}")
+            check("the model still shows in full screen", d.execute_script("const e=document.querySelector('.vrm-big .vrm-box');return e&&e.dataset.ready==='1'"))
+            ActionChains(d).send_keys(Keys.ESCAPE).perform(); time.sleep(0.6)
+            check("Escape leaves full screen but keeps the window open", d.execute_script("return !!document.querySelector('.vw[data-mode=window]')"))
+            r4 = rect(win)
+            check("and the window is back where it was", abs(r4["w"] - r3["w"]) < 2 and abs(r4["h"] - r3["h"]) < 2, f"{r3} -> {r4}")
             ActionChains(d).send_keys(Keys.ESCAPE).perform(); time.sleep(0.8)
             check("Escape closes the big viewer", not d.execute_script("return !!document.querySelector('.vrm-big')"))
     if not SKIP3D:
@@ -317,6 +382,17 @@ try:
     # edit
     mid = last["id"]; invoke("edit_message", {"id": mid, "text": "edited reply"})
     check("message edit persists", invoke("list_messages", {"chatId": chat["id"]})[-1]["swipes"][-1] == "edited reply")
+    # the Continue button, with the real engine: it extends this very message instead of adding a new one
+    n_before = len(invoke("list_messages", {"chatId": chat["id"]}))
+    check("the Continue button sits next to Regenerate on the newest character message",
+          d.execute_script("const t=[...document.querySelectorAll('.msg.character .tools')].pop(); return !!t && t.textContent.includes('Regenerate') && t.textContent.includes('Continue')"))
+    d.execute_script("[...document.querySelectorAll('.msg.character .tools button')].reverse().find(b=>b.textContent.includes('Continue')).click()")
+    for _ in range(90):
+        time.sleep(1)
+        cur = invoke("list_messages", {"chatId": chat["id"]})[-1]
+        if len(cur["swipes"][cur["swipe_index"]]) > len("edited reply"): break
+    cur_all = invoke("list_messages", {"chatId": chat["id"]}); cur = cur_all[-1]; cur_text = cur["swipes"][cur["swipe_index"]]
+    check("Continue extends the same message in place with the real model", cur["id"] == mid and len(cur_all) == n_before and cur_text.startswith("edited reply") and len(cur_text) > len("edited reply"), cur_text[:120])
 
     # ---- group channel with bots chatting ---------------------------------------------
     hiro = by_name("田中 Hiro")
@@ -397,11 +473,373 @@ try:
         mm = invoke("list_messages", {"chatId": chat2["id"]})
         if mm[-1]["role"] == "character" and len(mm) >= 3: break
     check("cloud replies land in chats", mm[-1]["swipes"][0] == "Hello from *the cloud*!", str(mm[-1]))
+    # ---- Continue: exact request, in-place result, and the guards ----------------------------------------
+    msgs_c = invoke("list_messages", {"chatId": chat2["id"]}); last_c = msgs_c[-1]; before_c = last_c["swipes"][last_c["swipe_index"]]
+    invoke("generate", {"chatId": chat2["id"], "characterId": None, "regenerateMessageId": None, "continueMessageId": last_c["id"]})
+    for _ in range(30):
+        time.sleep(0.4)
+        after_all = invoke("list_messages", {"chatId": chat2["id"]})
+        if len(after_all[-1]["swipes"][after_all[-1]["swipe_index"]]) > len(before_c): break
+    after_all = invoke("list_messages", {"chatId": chat2["id"]}); after_c = after_all[-1]; after_text = after_c["swipes"][after_c["swipe_index"]]
+    check("continue extends the newest message in place (no new message, same id)", len(after_all) == len(msgs_c) and after_c["id"] == last_c["id"])
+    check("the added text follows the original with clean spacing", after_text == before_c + " Hello from *the cloud*!", repr(after_text))
+    check("continue doesn't add a version (swipe)", len(after_c["swipes"]) == len(last_c["swipes"]) and after_c["swipe_index"] == last_c["swipe_index"])
+    sent_c = seen["body"]["messages"]
+    check("the model is shown its own partial reply, untouched, as the character's words", sent_c[-2]["role"] == "assistant" and sent_c[-2]["content"] == before_c, str(sent_c[-2:]))
+    check("and is asked to go on without repeating itself", sent_c[-1]["role"] == "user" and "Continue" in sent_c[-1]["content"] and "do not repeat" in sent_c[-1]["content"])
+    check("the continue prompt still alternates roles and ends on a user turn", sent_c[0]["role"] == "system" and sent_c[-1]["role"] == "user" and all(a["role"] != b["role"] for a, b in zip(sent_c[1:], sent_c[2:])), str([m["role"] for m in sent_c]))
+    def unchanged_after(args, label):
+        snap = json.dumps(invoke("list_messages", {"chatId": chat2["id"]}))
+        invoke("generate", dict({"chatId": chat2["id"], "characterId": None, "regenerateMessageId": None, "continueMessageId": None}, **args)); time.sleep(1.5)
+        check(label, json.dumps(invoke("list_messages", {"chatId": chat2["id"]})) == snap)
+    unchanged_after({"continueMessageId": msgs_c[0]["id"]}, "an older message can't be continued (only the newest)")
+    invoke("add_user_message", {"chatId": chat2["id"], "text": "thanks"})
+    user_msg = invoke("list_messages", {"chatId": chat2["id"]})[-1]
+    unchanged_after({"continueMessageId": user_msg["id"]}, "a user's own message can't be continued")
+    unchanged_after({"continueMessageId": 999999}, "continuing a message that doesn't exist does nothing")
+    invoke("delete_message", {"id": user_msg["id"]})
     sent = seen["body"]["messages"]
     check("prompt for a cloud call is well-formed (system first, alternating, ends on user)",
           sent[0]["role"] == "system" and sent[-1]["role"] == "user" and all(a["role"] != b["role"] for a, b in zip(sent[1:], sent[2:])), str([m["role"] for m in sent]))
     check("lorebook/description/scenario reach the system prompt", "Edited scenario text" in sent[0]["content"] and "Sleepy RA" in sent[0]["content"])
     check("post-history/depth macros resolve with the user's name", "Sam" in json.dumps(sent))
+
+    # ---- rooms, mechanic packs and the texting style ------------------------------------------------------------------
+    def gen_and_wait(chat_id, pieces=None, n_before=None):
+        seen["pieces"] = pieces
+        n0 = len(invoke("list_messages", {"chatId": chat_id})) if n_before is None else n_before
+        invoke("generate", {"chatId": chat_id, "characterId": None, "regenerateMessageId": None, "continueMessageId": None})
+        for _ in range(40):
+            time.sleep(0.5)
+            if len(invoke("list_messages", {"chatId": chat_id})) > n0: break
+        seen["pieces"] = None
+        return invoke("list_messages", {"chatId": chat_id})
+    def sysprompt(): return seen["body"]["messages"][0]["content"]
+    room_in = {"name": "  Mira's loft  ", "kind": "bogus", "description": "A tiny loft with a crooked window and a very loud radiator.", "owner_kind": "character", "character_id": mira["id"], "backdrop": "file:media/../../etc/passwd"}
+    room = invoke("create_room", {"room": dict(room_in, id=0, created_at=0)})
+    check("a room is saved with a trimmed name, a safe kind and no smuggled backdrop path", room["name"] == "Mira's loft" and room["kind"] == "other" and room["backdrop"] == "", str(room))
+    check("an unnamed room is refused", "name" in (inv_err("create_room", {"room": dict(room_in, name="   ", id=0, created_at=0)}) or "").lower())
+    check("a character that doesn't exist can't own a room", invoke("create_room", {"room": dict(room_in, name="Ghost", character_id="nope", id=0, created_at=0)})["owner_kind"] == "self")
+    kit = invoke("update_room", {"room": dict(room, kind="living_room", backdrop="preset:lamplight")})
+    check("rooms can be edited and take a built-in backdrop", kit["kind"] == "living_room" and kit["backdrop"] == "preset:lamplight")
+    check("a room can't be given an arbitrary file as its backdrop", invoke("update_room", {"room": dict(kit, backdrop="file:media/room-1-1.png")})["backdrop"] == "preset:lamplight")
+    check("a backdrop has to be an image", "image" in (inv_err_file("set_room_backdrop", os.path.join(FIX, "loose.json"), {"x-room-id": str(room["id"]), "x-file-name": "loose.json"}) or "").lower())
+    kit = invoke_file("set_room_backdrop", os.path.join(FIX, "avatar.gif"), {"x-room-id": str(room["id"]), "x-file-name": "avatar.gif"})
+    check("an uploaded backdrop is stored in the app's media folder", kit["backdrop"].startswith("file:media/room-") and os.path.exists(kit["backdrop_path"]), str(kit))
+    dorm_r = invoke("create_dorm", {"name": "Loft dorm", "roomId": room["id"]})
+    check("a dorm can be set in a room", dorm_r["room_id"] == room["id"] and [x for x in invoke("list_dorms") if x["id"] == dorm_r["id"]][0]["room_id"] == room["id"])
+    check("a dorm set in a room that doesn't exist just has none", invoke("create_dorm", {"name": "x", "roomId": 99999})["room_id"] is None)
+    chat_r = invoke("create_chat", {"dormId": dorm_r["id"], "name": "loft chat", "kind": "dm", "characterIds": [mira["id"]]})
+    invoke("add_user_message", {"chatId": chat_r["id"], "text": "hello there"}); gen_and_wait(chat_r["id"])
+    check("the room's name, kind and description reach the system prompt", "Setting: Mira's loft" in sysprompt() and "a living room" in sysprompt() and "crooked window" in sysprompt() and "own place" in sysprompt(), sysprompt()[-400:])
+    check("a chat outside any room gets no setting", "Setting:" not in (lambda: (gen_and_wait(chat2["id"]), sysprompt())[1])())
+
+    pack_json = json.dumps({"name": "Heartbeat", "description": "Two numbers.", "entries": [
+        {"id": "e1", "name": "Stages", "content": "HEARTBEAT-LORE: read affection like this.", "alwaysSend": True},
+        {"id": "e2", "name": "Secret", "content": "LOCKET-LORE: the locket was her mother's.", "keywords": ["locket"]}],
+        "variables": [{"id": "aff", "name": "Affection", "type": "number", "min": 0, "max": 100, "deltaUp": 15, "deltaDown": 15, "precise": True, "defaultValue": 20, "behaviorRules": "How she feels about the player."},
+                      {"id": "log", "name": "Log", "type": "json", "defaultValue": []}],
+        "reactions": [{"id": "warm", "when": {"eventType": "message:user", "match": {"content": {"value": "thank you,thanks", "operator": "contains"}}}, "then": [{"path": "aff", "type": "set", "value": 3, "operation": "add"}]}],
+        "rootComponent": {"id": "x", "files": {"index.tsx": "export default () => null"}, "entryFile": "index.tsx"}})
+    pack_path = os.path.join(WORK, "heartbeat.bundle.json"); open(pack_path, "w").write(pack_json)
+    check("a file that isn't a mechanic pack is refused", "mechanic pack" in (inv_err_file("import_mechanic", os.path.join(FIX, "loose.json"), {}) or ""))
+    pk = invoke_file("import_mechanic", pack_path, {})
+    check("a mechanic pack imports (name, variables, notes, reactions counted; its own screens flagged as not run)", pk["name"] == "Heartbeat" and len(pk["variables"]) == 2 and pk["entries"] == 2 and pk["reactions"] == 1 and pk["has_ui"] is True and pk["app"] == "vars", str(pk))
+    check("importing the same pack again replaces it instead of duplicating", invoke_file("import_mechanic", pack_path, {})["id"] == pk["id"] and len(invoke("list_mechanics")) == 1)
+    check("a pack is OFF in a chat until it's switched on", invoke("chat_mechanics", {"chatId": chat_r["id"]}) == [])
+    gen_and_wait(chat_r["id"])
+    check("an unused pack adds nothing to the prompt", "HEARTBEAT-LORE" not in sysprompt() and "[aff:" not in sysprompt())
+    cms = invoke("set_chat_mechanic", {"chatId": chat_r["id"], "mechId": pk["id"], "enabled": True})
+    check("switching a pack on gives it its starting values in that chat", cms[0]["enabled"] and cms[0]["state"]["aff"] == 20, str(cms))
+    gen_and_wait(chat_r["id"])
+    sp = sysprompt()
+    check("a switched-on pack puts its notes, current values, rules and the directive format in the prompt", "HEARTBEAT-LORE" in sp and "Affection [aff] (range 0–100): 20" in sp and "How she feels about the player." in sp and "[variable: operation value]" in sp)
+    check("keyword notes stay out until their keyword comes up", "LOCKET-LORE" not in sp)
+    invoke("add_user_message", {"chatId": chat_r["id"], "text": "do you still have the locket?"}); gen_and_wait(chat_r["id"])
+    check("...and come in when it does", "LOCKET-LORE" in sysprompt())
+    invoke("add_user_message", {"chatId": chat_r["id"], "text": "Thank you for listening"})
+    check("a keyword reaction runs when the player writes (+3 affection)", invoke("chat_mechanics", {"chatId": chat_r["id"]})[0]["state"]["aff"] == 23)
+    msgs_r = gen_and_wait(chat_r["id"], ["She smiles softly. ", "[aff: add 40]", "\n\n", "[log: push {text: \"told her about the locket\"}] ", "Stay a while."])
+    last = msgs_r[-1]["swipes"][msgs_r[-1]["swipe_index"]]
+    check("hidden [variable: op value] lines never reach the reader", "[aff" not in last and "[log" not in last and last.startswith("She smiles softly.") and last.endswith("Stay a while."), repr(last))
+    st_r = invoke("chat_mechanics", {"chatId": chat_r["id"]})[0]["state"]
+    check("the model's directives were applied (a single change is capped at the pack's +15 step)", st_r["aff"] == 38, str(st_r["aff"]))
+    check("json variables take pushes (relaxed JSON from the model is understood)", st_r["log"] == [{"text": "told her about the locket"}], str(st_r["log"]))
+    invoke("set_chat_variable", {"chatId": chat_r["id"], "mechId": pk["id"], "path": "aff", "value": 250})
+    check("the player can set a number by hand (clamped to the range)", invoke("chat_mechanics", {"chatId": chat_r["id"]})[0]["state"]["aff"] == 100)
+    check("starting a pack over restores its defaults", invoke("reset_chat_mechanic", {"chatId": chat_r["id"], "mechId": pk["id"]})[0]["state"]["aff"] == 20)
+    cms = invoke("set_chat_mechanic", {"chatId": chat_r["id"], "mechId": pk["id"], "enabled": False})
+    gen_and_wait(chat_r["id"])
+    check("switching it off removes it from the prompt but keeps its progress", not cms[0]["enabled"] and "HEARTBEAT-LORE" not in sysprompt() and cms[0]["state"]["aff"] == 20)
+    gen_and_wait(chat_r["id"], ["Fine. [aff: add 5]"])
+    check("an off pack ignores directives (and the text is left alone)", invoke("chat_mechanics", {"chatId": chat_r["id"]})[0]["state"]["aff"] == 20)
+    invoke("set_chat_mechanic", {"chatId": chat_r["id"], "mechId": pk["id"], "enabled": True})
+    chats_now = {c["id"]: c for c in invoke("list_chats")}
+    check("a brand-new chat has no packs on", invoke("chat_mechanics", {"chatId": chat2["id"]}) == [])
+    ph = dict(chats_now[chat_r["id"]], style="phone"); invoke("update_chat", {"chat": ph})
+    gen_and_wait(chat_r["id"])
+    check("the phone style asks for texting-style replies", "texting each other" in sysprompt() and "No *actions*" in sysprompt())
+    check("the style is kept on the chat", {c["id"]: c for c in invoke("list_chats")}[chat_r["id"]]["style"] == "phone")
+
+    # -- background music for rooms and dorms
+    check("music has to be an audio file", "audio" in (inv_err_file("set_room_music", os.path.join(FIX, "avatar.gif"), {"x-room-id": str(room["id"]), "x-file-name": "avatar.gif"}) or "").lower())
+    rm_music = invoke_file("set_room_music", os.path.join(FIX, "song.mp3"), {"x-room-id": str(room["id"]), "x-file-name": "song.mp3"})
+    check("a room takes an MP3 from the filesystem (stored in the app's media folder, original name kept)", rm_music["music"].startswith("media/music-room") and rm_music["music_name"] == "song.mp3" and os.path.exists(rm_music["music_path"]), str(rm_music))
+    upd = invoke("update_room", {"room": dict(rm_music, music="media/evil.mp3", music_name="x", name="Mira's loft")})
+    check("editing the room never swaps its music file from outside", upd["music"] == rm_music["music"] and upd["music_name"] == "song.mp3")
+    old_music = rm_music["music_path"]
+    rm_music = invoke_file("set_room_music", os.path.join(FIX, "tone.wav"), {"x-room-id": str(room["id"]), "x-file-name": "tone.wav"})
+    check("choosing other music replaces the old file", rm_music["music_name"] == "tone.wav" and not os.path.exists(old_music) and os.path.exists(rm_music["music_path"]))
+    dm_music = invoke_file("set_dorm_music", os.path.join(FIX, "song.mp3"), {"x-dorm-id": str(dorm_r["id"]), "x-file-name": "my song.mp3"})
+    check("a dorm can have its own music", dm_music["music_name"] == "my song.mp3" and os.path.exists(dm_music["music_path"]) and [x for x in invoke("list_dorms") if x["id"] == dorm_r["id"]][0]["music_name"] == "my song.mp3", str(dm_music))
+    check("dorm music has to be audio too", "audio" in (inv_err_file("set_dorm_music", os.path.join(FIX, "loose.json"), {"x-dorm-id": str(dorm_r["id"]), "x-file-name": "x.json"}) or "").lower())
+    check("another dorm's music can't be set by guessing ids", "not found" in (inv_err_file("set_dorm_music", os.path.join(FIX, "song.mp3"), {"x-dorm-id": "99999", "x-file-name": "a.mp3"}) or "").lower())
+    dm_file = dm_music["music_path"]
+    cl = invoke("clear_dorm_music", {"id": dorm_r["id"]})
+    check("music can be removed from a dorm (file deleted)", cl["music"] == "" and not os.path.exists(dm_file))
+    cl = invoke("clear_room_music", {"id": room["id"]})
+    check("...and from a room", cl["music"] == "" and cl["music_name"] == "" and not os.path.exists(rm_music["music_path"]))
+    tmp_room = invoke("create_room", {"room": dict(room_in, name="Temp", id=0, created_at=0)})
+    tmp_room = invoke_file("set_room_music", os.path.join(FIX, "song.mp3"), {"x-room-id": str(tmp_room["id"]), "x-file-name": "t.mp3"})
+    invoke("delete_room", {"id": tmp_room["id"]})
+    check("deleting a room deletes its music file", not os.path.exists(tmp_room["music_path"]))
+    tmp_dorm = invoke("create_dorm", {"name": "TempDorm", "roomId": None})
+    tmp_dorm = invoke_file("set_dorm_music", os.path.join(FIX, "song.mp3"), {"x-dorm-id": str(tmp_dorm["id"]), "x-file-name": "t.mp3"})
+    invoke("delete_dorm", {"id": tmp_dorm["id"]})
+    check("deleting a dorm deletes its music file", not os.path.exists(tmp_dorm["music_path"]))
+
+    # ---- personas: who you are in a chat, sent to the AI first ----------------------------------------------------------
+    check("the guest space has no profile picture (named profiles do)", "guest" in (inv_err_file("set_profile_avatar", os.path.join(FIX, "avatar.gif"), {"x-file-name": "avatar.gif"}) or "").lower())
+    check("a persona needs a name", "name" in (inv_err("save_persona", {"persona": {"id": "", "name": "  ", "description": "", "style": "", "avatar": None, "frame": None, "created_at": 0}}) or "").lower())
+    kai = invoke("save_persona", {"persona": {"id": "", "name": "  Kai ", "description": "A second-year art student who talks too fast when nervous.", "style": "Slow-burn friendship. Keep descriptions short. Remember my sister is called Mei.", "avatar": "media/../../etc/passwd", "frame": None, "created_at": 0}})
+    check("a persona is saved (name trimmed, picture can't be smuggled in through the text fields)", kai["name"] == "Kai" and kai["avatar"] is None and kai["id"], str(kai))
+    check("a persona's picture has to be an image", "image" in (inv_err_file("set_persona_avatar", os.path.join(FIX, "loose.json"), {"x-persona-id": kai["id"], "x-file-name": "loose.json"}) or "").lower())
+    kai = invoke_file("set_persona_avatar", os.path.join(FIX, "avatar.gif"), {"x-persona-id": kai["id"], "x-file-name": "avatar.gif"})
+    check("a persona takes a picture (an animated GIF is fine)", kai["avatar"].startswith("media/avatar-") and kai["avatar"].endswith(".gif") and os.path.exists(kai["avatar_path"]), str(kai))
+    kai = invoke("set_persona_frame", {"id": kai["id"], "frame": {"x": 0.3, "y": 0.7, "zoom": 2}})
+    check("its framing is stored", kai["frame"] == {"x": 0.3, "y": 0.7, "zoom": 2.0})
+    kai2 = invoke("save_persona", {"persona": dict(kai, description="edited")})
+    check("editing a persona keeps its picture and framing", kai2["avatar"] == kai["avatar"] and kai2["frame"] == kai["frame"] and kai2["description"] == "edited")
+    invoke("save_persona", {"persona": dict(kai, description="A second-year art student who talks too fast when nervous.")})
+    check("an unknown persona can't be made active", "doesn't exist" in (inv_err("set_active_persona", {"id": "nope"}) or ""))
+    invoke("add_user_message", {"chatId": chat2["id"], "text": "plain hello"}); gen_and_wait(chat2["id"])
+    plain_sys = sysprompt()
+    check("with no persona, the plain name from Settings is used", "About Sam:" in plain_sys or "Sam" in plain_sys, plain_sys[-300:])
+    st_p = invoke("set_active_persona", {"id": kai["id"]})
+    check("a persona can be made active", st_p["active_persona"] == kai["id"] and invoke("get_settings")["active_persona"] == kai["id"])
+    invoke("add_user_message", {"chatId": chat2["id"], "text": "hello as kai"}); gen_and_wait(chat2["id"])
+    sp = sysprompt()
+    check("the active persona's name and description are told to the AI first", "About Kai:" in sp and "talks too fast when nervous" in sp, sp[-500:])
+    check("...together with how they want to roleplay and what to remember", "How Kai wants to roleplay, and what to remember:" in sp and "my sister is called Mei" in sp)
+    check("the plain 'about you' text is replaced, not duplicated", "About Sam:" not in sp)
+    invoke("delete_persona", {"id": kai["id"]})
+    check("deleting the active persona goes back to the plain name and removes its picture", invoke("get_settings")["active_persona"] == "" and invoke("list_personas") == [] and not os.path.exists(kai["avatar_path"]))
+    sv = invoke("get_settings"); sv["active_persona"] = "not-mine"; sv = invoke("save_settings", {"settings": sv})
+    check("saving settings can't point at a persona that isn't yours", sv["active_persona"] == "")
+
+    # ---- folders, lorebooks and opening messages ------------------------------------------------------------------
+    fo = invoke("create_folder", {"name": "   Favourites  "})
+    check("a folder is created with a trimmed name", fo["name"] == "Favourites" and fo["cover"] is None and fo["id"])
+    check("an unnamed folder is refused", "name" in (inv_err("create_folder", {"name": "  "}) or "").lower())
+    invoke("move_characters", {"ids": [mira["id"]], "folder": fo["id"]})
+    check("a character can be filed into a folder", invoke("get_character", {"id": mira["id"]})["folder"] == fo["id"])
+    again = invoke("save_character", {"character": dict(invoke("get_character", {"id": mira["id"]}), folder=None)})
+    check("editing a card never moves it out of its folder (filing is done by dragging)", again["folder"] == fo["id"])
+    check("a folder that doesn't exist can't be filed into", "doesn't exist" in (inv_err("move_characters", {"ids": [mira["id"]], "folder": "nope"}) or ""))
+    fo = invoke("rename_folder", {"id": fo["id"], "name": "Besties"})
+    check("a folder can be renamed", fo["name"] == "Besties" and [f["name"] for f in invoke("list_folders")] == ["Besties"])
+    check("a folder picture has to be an image", "image" in (inv_err_file("set_folder_cover", os.path.join(FIX, "loose.json"), {"x-folder-id": fo["id"], "x-file-name": "loose.json"}) or "").lower())
+    fo = invoke_file("set_folder_cover", os.path.join(FIX, "avatar.gif"), {"x-folder-id": fo["id"], "x-file-name": "avatar.gif"})
+    check("a folder can have its own picture, kept in the media folder", fo["cover"].startswith("media/folder-") and os.path.exists(fo["cover_path"]), str(fo))
+    fo = invoke("set_folder_frame", {"id": fo["id"], "frame": {"x": 0.2, "y": 0.9, "zoom": 2}})
+    check("the picture's framing is stored", fo["frame"] == {"x": 0.2, "y": 0.9, "zoom": 2.0}, str(fo["frame"]))
+    cover_file = fo["cover_path"]
+    invoke("delete_folder", {"id": fo["id"]})
+    mira_now = invoke("get_character", {"id": mira["id"]})
+    check("deleting a folder keeps its characters (back at the top level) and removes its picture", mira_now is not None and mira_now["folder"] is None and not os.path.exists(cover_file) and invoke("list_folders") == [])
+
+    card0 = {"name": "Pip", "description": "A tiny test character.", "personality": "", "scenario": "", "first_mes": "Hi!", "mes_example": "", "creator_notes": "", "system_prompt": "", "post_history_instructions": "", "alternate_greetings": [], "character_book": None, "tags": ["t"], "creator": "", "character_version": "", "nickname": "", "group_only_greetings": [], "extensions": {}}
+    greeter = invoke("save_character", {"character": {"id": "", "card": dict(card0, name="Greeter", first_mes="Hi, first!", alternate_greetings=["Second hello", "  ", "Third hello"])}})
+    c_open = invoke("create_chat", {"dormId": None, "name": "open1", "kind": "dm", "characterIds": [greeter["id"]], "opening": 2})
+    m0 = invoke("list_messages", {"chatId": c_open["id"]})[0]
+    check("a chat can start on any of the greetings (empty ones are skipped)", m0["swipes"] == ["Hi, first!", "Second hello", "Third hello"] and m0["swipe_index"] == 2, str(m0))
+    c_open2 = invoke("create_chat", {"dormId": None, "name": "open2", "kind": "dm", "characterIds": [greeter["id"]]})
+    check("by default it starts on the first message", invoke("list_messages", {"chatId": c_open2["id"]})[0]["swipe_index"] == 0)
+    c_open3 = invoke("create_chat", {"dormId": None, "name": "open3", "kind": "dm", "characterIds": [greeter["id"]], "opening": 99})
+    check("an opening that doesn't exist falls back to the first", invoke("list_messages", {"chatId": c_open3["id"]})[0]["swipe_index"] == 0)
+
+    lore_book = {"name": "ignored", "entries": [
+        {"keys": ["moonlit"], "content": "MOONLIT-LORE: the old fountain glows at night.", "enabled": True, "insertion_order": 5},
+        {"keys": [], "content": "ALWAYS-LORE: the campus has two clocks.", "enabled": True, "constant": True, "insertion_order": 6}]}
+    lb = invoke("save_lorebook", {"lorebook": {"id": "", "name": "  Campus lore ", "book": lore_book, "created_at": 0, "updated_at": 0}})
+    check("a lorebook is saved to the library under its own name", lb["name"] == "Campus lore" and len(lb["book"]["entries"]) == 2 and lb["id"], str(lb)[:200])
+    check("an unnamed lorebook is refused", "name" in (inv_err("save_lorebook", {"lorebook": {"id": "", "name": " ", "book": lore_book, "created_at": 0, "updated_at": 0}}) or "").lower())
+    gm = invoke("get_character", {"id": mira["id"]})
+    invoke("save_character", {"character": dict(gm, lorebooks=[lb["id"], lb["id"], "not-mine"])})
+    check("a lorebook attaches to a character (once; unknown ones are dropped)", invoke("get_character", {"id": mira["id"]})["lorebooks"] == [lb["id"]])
+    invoke("add_user_message", {"chatId": chat2["id"], "text": "no keyword here"}); gen_and_wait(chat2["id"])
+    check("an attached lorebook's always-on entry reaches the prompt", "ALWAYS-LORE" in sysprompt() and "MOONLIT-LORE" not in sysprompt())
+    invoke("add_user_message", {"chatId": chat2["id"], "text": "the moonlit fountain is pretty"}); gen_and_wait(chat2["id"])
+    check("...and keyword entries join when their keyword comes up", "MOONLIT-LORE" in sysprompt())
+    invoke("delete_lorebook", {"id": lb["id"]})
+    check("deleting a lorebook takes it off the characters", invoke("get_character", {"id": mira["id"]})["lorebooks"] == [] and invoke("list_lorebooks") == [])
+    invoke("add_user_message", {"chatId": chat2["id"], "text": "the moonlit fountain again"}); gen_and_wait(chat2["id"])
+    check("and its lore is gone from the prompt", "ALWAYS-LORE" not in sysprompt() and "MOONLIT-LORE" not in sysprompt())
+    invoke("delete_character", {"id": greeter["id"]})
+
+    # -- the screens: make a room, enter it, text on the phone, switch a pack on and off
+    def click_text(sel, text, root="document"):
+        return d.execute_script("const el=[...document.querySelectorAll(arguments[0])].find(b=>b.textContent.includes(arguments[1])&&!b.disabled);if(!el)return false;el.scrollIntoView({block:'center'});el.click();return true", sel, text)
+    def set_value(sel, value):
+        d.execute_script("const el=document.querySelector(arguments[0]);const proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(el,arguments[1]);el.dispatchEvent(new Event('input',{bubbles:true}))", sel, value)
+    reload_ui(); nav("Rooms"); time.sleep(0.6)
+    check("the Rooms page lists the rooms made so far", text_present("Mira's loft") and text_present("Make a room"))
+    check("Make a room opens the creation form", click_text("button", "Make a room") and text_present("Who is this room for?"))
+    set_value("input[placeholder='e.g. My loft']", "Rooftop hangout")
+    click_text("button.chip", "Rooftop"); click_text("button.chip", "A character's place")
+    set_value("textarea", "A rooftop with string lights, two beanbags and a view of the whole campus.")
+    check("choosing a backdrop shows the shelf of scenes", click_text("button", "Choose a backdrop") and d.execute_script("return document.querySelectorAll('.preset').length") >= 6)
+    d.execute_script("document.querySelector('.preset').click()"); time.sleep(0.3)
+    check("a picked backdrop previews in the form", d.execute_script("return getComputedStyle(document.querySelector('.room-preview')).backgroundImage.includes('gradient')"))
+    shot("room-form")
+    check("Create & enter makes the room and drops you into a chat set in it", click_text("button", "Create & enter") and text_present("Rooftop hangout") and wait(15).until(lambda x: x.execute_script("return !!document.querySelector('.chatmain .room-bg')")))
+    rr = [r for r in invoke("list_rooms") if r["name"] == "Rooftop hangout"]
+    check("the room, a dorm in it and a first chat now exist", len(rr) == 1 and any(dd["room_id"] == rr[0]["id"] for dd in invoke("list_dorms")) and rr[0]["owner_kind"] == "character" and rr[0]["character_id"])
+    check("the chat header shows which room it is in", d.execute_script("return !!document.querySelector('.chathead .linklike')") and "Rooftop hangout" in d.execute_script("return document.querySelector('.chathead .linklike').textContent"))
+    d.execute_script("document.querySelector('.chatopts')?.classList.add('open')")
+    check("the phone view starts off", not d.execute_script("return !!document.querySelector('[data-testid=phone]')"))
+    click_text(".chathead button", "Phone"); time.sleep(0.8)
+    check("📱 Phone turns the chat into a texting view", d.execute_script("return !!document.querySelector('[data-testid=phone]')") and d.execute_script("return !!document.querySelector('.phone-head')"))
+    shot("phone")
+    seen["pieces"] = ["omg hi!!\n\n", "*waves* ", "you came 😊"]
+    box = d.find_element(By.CSS_SELECTOR, "input[aria-label='Text message']"); box.send_keys("hey it's me"); box.send_keys(Keys.ENTER)
+    check("a text you send appears as your own bubble", wait(10).until(lambda x: x.execute_script("return [...document.querySelectorAll('.bub.me')].some(b=>b.textContent.includes('hey it'))")))
+    check("her reply arrives as separate text bubbles (blank line = new text, *actions* dropped)", wait(20).until(lambda x: x.execute_script("const t=[...document.querySelectorAll('.bub.them')].map(b=>b.textContent.trim());return t.includes('omg hi!!')&&t.some(v=>v.includes('you came'))")) and not d.execute_script("return [...document.querySelectorAll('.bub')].some(b=>b.textContent.includes('*waves*'))"))
+    seen["pieces"] = None
+    click_text(".phone-head button", "‹"); time.sleep(0.6)
+    check("the back arrow returns to the normal chat", not d.execute_script("return !!document.querySelector('[data-testid=phone]')") and d.execute_script("return !!document.querySelector('.msgs')"))
+    click_text(".chathead button", "Mechanics"); time.sleep(0.7)
+    check("🧩 Mechanics lists the packs with switches (off by default)", text_present("Heartbeat") and d.execute_script("const s=document.querySelector('[role=switch][aria-label=\"Heartbeat on\"]');return !!s&&!s.checked"))
+    d.execute_script("document.querySelector('[role=switch][aria-label=\"Heartbeat on\"]').click()"); time.sleep(0.8)
+    rc = [c for c in invoke("list_chats") if c["name"] == "Rooftop hangout"][0]
+    check("flipping a switch turns the pack on for this chat only", invoke("chat_mechanics", {"chatId": rc["id"]})[0]["enabled"] is True and invoke("chat_mechanics", {"chatId": chat2["id"]}) == [])
+    check("a switched-on pack shows what it tracks, with a slider to adjust", text_present("Affection") and d.execute_script("return !!document.querySelector('input[type=range][aria-label=\"Set Affection\"]')"))
+    shot("mechanics")
+    d.execute_script("document.querySelector('[role=switch][aria-label=\"Heartbeat on\"]').click()"); time.sleep(0.6)
+    check("and the same switch turns it off again", invoke("chat_mechanics", {"chatId": rc["id"]})[0]["enabled"] is False)
+    check("Escape closes the Mechanics window", (ActionChains(d).send_keys(Keys.ESCAPE).perform() or True) and not time.sleep(0.5) and not d.execute_script("return !!document.querySelector('[role=dialog][aria-label=Mechanics]')"))
+    # -- notes: unlimited writing, a click away
+    big = "The quick brown fox. " * 20000   # 420,000 characters
+    n1 = invoke("save_note", {"note": {"id": "", "title": "Long plans", "body": big, "pinned": False, "created_at": 0, "updated_at": 0}})
+    check("a note can be hundreds of thousands of characters long", len(invoke("list_notes")[0]["body"]) == len(big) and n1["id"], str(len(big)))
+    n2 = invoke("save_note", {"note": {"id": "", "title": "Pinned one", "body": "short", "pinned": True, "created_at": 0, "updated_at": 0}})
+    check("pinned notes come first", [n["title"] for n in invoke("list_notes")][:2] == ["Pinned one", "Long plans"])
+    n1b = invoke("save_note", {"note": {"id": n1["id"], "title": "Long plans v2", "body": "edited", "pinned": False, "created_at": 0, "updated_at": 0}})
+    check("saving with an id edits that note (same id, same creation time)", n1b["id"] == n1["id"] and n1b["created_at"] == n1["created_at"] and len(invoke("list_notes")) == 2 and [n for n in invoke("list_notes") if n["id"] == n1["id"]][0]["body"] == "edited")
+    reload_ui(); nav("Notes"); time.sleep(0.8)
+    check("the Notes page lists notes and opens the newest-pinned one", text_present("Pinned one") and text_present("Long plans v2"))
+    shot("notes")
+    click_text("button", "New note"); time.sleep(0.6)
+    set_value("input[aria-label='Note title']", "Ideas for Mira")
+    set_value("textarea[aria-label='Note text']", "She keeps a locket.\nShe hates mornings.")
+    time.sleep(1.8)
+    got = [n for n in invoke("list_notes") if n["title"] == "Ideas for Mira"]
+    check("typing saves by itself", len(got) == 1 and got[0]["body"] == "She keeps a locket.\nShe hates mornings.", str(got))
+    check("the page shows the count and that it's saved", text_present("Saved") and text_present("characters"))
+    set_value("input[aria-label='Search notes']", "locket"); time.sleep(0.4)
+    check("search finds a note by what's inside it", d.execute_script("return [...document.querySelectorAll('.note-item')].length") == 1)
+    set_value("input[aria-label='Search notes']", "")
+    d.execute_script("window.confirm=()=>true"); click_text("button[aria-label='Delete note']", ""); time.sleep(0.6)
+    check("a note can be deleted", all(n["title"] != "Ideas for Mira" for n in invoke("list_notes")))
+    for n in invoke("list_notes"): invoke("delete_note", {"id": n["id"]})
+
+    # -- character folders: make one, drag a character in, give it a picture and a name, delete it
+    reload_ui(); nav("Characters"); time.sleep(0.8)
+    n_chars = len(invoke("list_characters"))
+    check("Characters has a New folder button", click_text("button", "New folder") and wait(5).until(lambda x: x.execute_script("return !!document.querySelector('.modal input[aria-label=\\'Folder name\\']')")))
+    set_value("input[aria-label='Folder name']", "Study group"); click_text(".modal button", "Create folder"); time.sleep(1.0)
+    fid = [f for f in invoke("list_folders") if f["name"] == "Study group"][0]["id"]
+    check("a new folder opens, empty", d.execute_script("return !!document.querySelector('.fbar')") and text_present("This folder is empty"))
+    click_text("button.crumb", "All characters"); time.sleep(0.6)
+    check("back at the top, the folder is a tile", d.execute_script("return !!document.querySelector('.ftile[data-folder=\"Study group\"]')"))
+    res = d.execute_script("""
+      try {
+        const card = document.querySelector('.ccard'); const tile = document.querySelector('.ftile[data-folder="Study group"]');
+        const dt = new DataTransfer();
+        card.dispatchEvent(new DragEvent('dragstart', {bubbles: true, dataTransfer: dt}));
+        tile.dispatchEvent(new DragEvent('dragover', {bubbles: true, cancelable: true, dataTransfer: dt}));
+        tile.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer: dt}));
+        return 'ok';
+      } catch (e) { return String(e); }""")
+    time.sleep(1.0)
+    moved = [c for c in invoke("list_characters") if c.get("folder") == fid]
+    check("dragging a character onto a folder files it there", res == "ok" and len(moved) == 1, str(res))
+    check("the filed character leaves the top level and the tile counts it", d.execute_script("return document.querySelectorAll('.grid .ccard').length") == n_chars - 1 and "1 character" in d.execute_script("return document.querySelector('.ftile[data-folder=\"Study group\"]').innerText"))
+    d.execute_script("document.querySelector('.ftile[data-folder=\"Study group\"]').click()"); time.sleep(0.7)
+    check("opening the folder shows what's in it", d.execute_script("return document.querySelectorAll('.grid .ccard').length") == 1)
+    shot("folder")
+    inp = d.find_element(By.CSS_SELECTOR, "input[aria-label='Folder picture']"); d.execute_script("arguments[0].hidden=false;arguments[0].style.display='block';", inp)
+    inp.send_keys(os.path.join(FIX, "avatar.gif")); time.sleep(1.2)
+    check("choosing a folder picture opens the positioning window", d.execute_script("return !!document.querySelector('[data-testid=frame-main]')"))
+    shot("frame-editor")
+    set_value("input[aria-label=Zoom]", "1.8"); click_text(".modal button", "Save"); time.sleep(1.5)
+    fz = [f for f in invoke("list_folders") if f["id"] == fid][0]
+    check("the folder picture and its framing are saved", fz["cover"] and os.path.exists(fz["cover_path"]) and fz["frame"] and abs(fz["frame"]["zoom"] - 1.8) < 0.01, str(fz))
+    click_text(".fbar button", "Rename"); time.sleep(0.3)
+    d.find_element(By.CSS_SELECTOR, ".fbar input[aria-label='Folder name']").send_keys(Keys.CONTROL, "a"); d.find_element(By.CSS_SELECTOR, ".fbar input[aria-label='Folder name']").send_keys("Night owls" + Keys.ENTER); time.sleep(0.8)
+    check("a folder can be renamed", [f["name"] for f in invoke("list_folders")] == ["Night owls"])
+    d.execute_script("window.confirm=()=>true"); click_text(".fbar button", "Delete folder"); time.sleep(1.0)
+    check("deleting the folder keeps the character and returns it to the top level", invoke("list_folders") == [] and len([c for c in invoke("list_characters") if not c.get("folder")]) == n_chars and d.execute_script("return document.querySelectorAll('.grid .ccard').length") == n_chars)
+    check("the cards are the bigger size", d.execute_script("return document.querySelector('.ccard').getBoundingClientRect().height") >= 300)
+
+    # -- lorebooks: import a SillyTavern world info file, attach it, delete it
+    nav("Lorebooks"); time.sleep(0.6)
+    inp = d.find_element(By.CSS_SELECTOR, "input[aria-label='Import lorebooks']"); inp.send_keys(os.path.join(FIX, "worldinfo_st.json")); time.sleep(1.5)
+    libs = invoke("list_lorebooks")
+    check("a world info file imports as a library lorebook", len(libs) == 1 and libs[0]["name"] == "worldinfo_st" and len(libs[0]["book"]["entries"]) == 3, str(libs)[:300])
+    ents = {e["name"]: e for e in libs[0]["book"]["entries"]}
+    check("its keys, 'always on' and disabled flags and position are understood", ents["The lantern"]["keys"] == ["lantern", "lamp"] and ents["Always"]["constant"] is True and ents["Always"]["position"] == "after_char" and ents["Off"]["enabled"] is False, str(ents)[:300])
+    check("the Lorebooks page lists it with its entries", text_present("worldinfo_st") and text_present("3 entries"))
+    nav("Characters"); time.sleep(0.5); d.execute_script("document.querySelector('.ccard').click()"); time.sleep(1.0)
+    check("the character editor offers the library lorebook to attach", text_present("Shared lorebooks") and d.execute_script("return [...document.querySelectorAll('label')].some(l=>l.textContent.includes('worldinfo_st'))"))
+    check("more initial messages sit in the main section, not hidden under Advanced", d.execute_script("const h=[...document.querySelectorAll('.f > span:first-child')].find(x=>x.textContent.includes('More initial messages'));return !!h && !h.closest('details')"))
+    for l in invoke("list_lorebooks"): invoke("delete_lorebook", {"id": l["id"]})
+
+    # -- personas on screen
+    nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Personas"); time.sleep(0.6)
+    check("Settings has a Personas tab with the default persona", text_present("Personas") and d.execute_script("return !!document.querySelector('.persona-card[data-persona=default] .chip.on')"))
+    shot("personas")
+    click_text("button", "New persona"); time.sleep(0.5)
+    set_value("input[aria-label='Persona name']", "Kai"); set_value("textarea[aria-label='Persona description']", "An art student."); set_value("textarea[aria-label='Roleplay preferences']", "Remember Mei is my sister.")
+    inp = d.find_element(By.CSS_SELECTOR, "input[aria-label='Persona picture']"); inp.send_keys(os.path.join(FIX, "avatar.gif")); time.sleep(1.0)
+    check("choosing a persona picture opens the positioning window", d.execute_script("return !!document.querySelector('[data-testid=frame-main]')"))
+    set_value("input[aria-label=Zoom]", "1.6"); d.execute_script("const m=document.querySelector('[data-testid=frame-main]').closest('.modal');[...m.querySelectorAll('button')].find(b=>b.textContent.trim()==='Save').click()"); time.sleep(0.8)
+    click_text(".modal button", "Save persona"); time.sleep(1.5)
+    pe = invoke("list_personas")
+    check("a persona made on screen is saved with its picture and framing", len(pe) == 1 and pe[0]["name"] == "Kai" and pe[0]["avatar"] and pe[0]["frame"] and abs(pe[0]["frame"]["zoom"] - 1.6) < 0.01 and pe[0]["style"] == "Remember Mei is my sister.", str(pe))
+    click_text(".persona-card[data-persona=Kai] button", "Use this persona"); time.sleep(0.8)
+    check("'Use this persona' makes it active", invoke("get_settings")["active_persona"] == pe[0]["id"] and d.execute_script("return !!document.querySelector('.persona-card[data-persona=Kai] .chip.on')"))
+    nav("Dorms"); time.sleep(0.8); click_text("button.it", "Rooftop hangout"); time.sleep(1.5)
+    check("a chat has a quick 'Playing as' switch", d.execute_script("const s=document.querySelector('select[aria-label=\"Playing as\"]');return !!s && s.value===arguments[0]", pe[0]["id"]))
+    d.execute_script("const m=[...document.querySelectorAll('.msg.user .avatar img')];window.__ua=m.length")
+    invoke("add_user_message", {"chatId": rc["id"], "text": "hi from kai"}); reload_ui(); nav("Dorms"); time.sleep(0.8); click_text("button.it", "Rooftop hangout"); time.sleep(1.5)
+    check("your messages show the persona's name and picture", d.execute_script("const u=document.querySelector('.msg.user');return !!u && u.querySelector('.who').textContent.includes('Kai') && !!u.querySelector('.avatar img')"))
+    invoke("set_active_persona", {"id": None}); invoke("delete_persona", {"id": pe[0]["id"]})
+
+    # -- background music in the chat
+    rr2 = [r for r in invoke("list_rooms") if r["name"] == "Rooftop hangout"]
+    if rr2:
+        invoke_file("set_room_music", os.path.join(FIX, "tone.wav"), {"x-room-id": str(rr2[0]["id"]), "x-file-name": "tone.wav"})
+        reload_ui(); nav("Dorms"); time.sleep(1.0)
+        click_text("button.it", "Rooftop hangout"); time.sleep(2.0)
+        check("a chat in a room with music shows the music player", d.execute_script("return !!document.querySelector('[data-testid=music]')") and "tone.wav" in d.execute_script("return document.querySelector('.music-name').textContent"))
+        check("the music loops", wait(10).until(lambda x: x.execute_script("const a=document.querySelector('[data-testid=music] audio');return !!a&&a.loop===true&&a.src.startsWith('blob:')")))
+        check("it has volume, mute and pause controls", d.execute_script("return !!document.querySelector('[aria-label=\"Music volume\"]') && !!document.querySelector('[aria-label=\"Mute music\"]') && !!document.querySelector('[aria-label=\"Pause music\"],[aria-label=\"Play music\"]')"))
+        dd = [x for x in invoke("list_dorms") if x["room_id"] == rr2[0]["id"]][0]
+        invoke_file("set_dorm_music", os.path.join(FIX, "song.mp3"), {"x-dorm-id": str(dd["id"]), "x-file-name": "dorm theme.mp3"})
+        reload_ui(); nav("Dorms"); time.sleep(1.0); click_text("button.it", "Rooftop hangout"); time.sleep(2.0)
+        check("the dorm's own music takes over from the room's", "dorm theme.mp3" in d.execute_script("return document.querySelector('.music-name').textContent"))
+        invoke("clear_dorm_music", {"id": dd["id"]}); invoke("clear_room_music", {"id": rr2[0]["id"]})
     if not SKIP3D:
         # ---- talking from inside the 3D scene: the see-through message bar and the manga-style speech balloon ----------------
         reload_ui(); nav("Dorms")
@@ -748,6 +1186,63 @@ try:
     check("removing the outfit being worn goes back to the original and deletes its file", wc["outfit"] is None and len(wc["outfits"]) == 1 and wc["media_path"] != "" and len(os.listdir(media_dir)) == n_media_now - 3 + 2)
     invoke("delete_character", {"id": wid})
     check("deleting the character deletes its outfit files", len(os.listdir(media_dir)) == n_media_now - 3)
+    # rooms, packs and texting style travel in a backup, and go with an ejected profile
+    check("another profile can't see your personas", invoke("list_personas") == [])
+    invoke_file("set_profile_avatar", os.path.join(FIX, "avatar.gif"), {"x-file-name": "me.gif"})
+    invoke("set_profile_avatar_frame", {"frame": {"x": 0.4, "y": 0.6, "zoom": 1.5}})
+    ps = invoke("session_state")["profile"]
+    check("a profile can have a picture (animated GIF) with its framing", ps["avatar"] and os.path.exists(ps["avatar"]) and ps["avatar_frame"] == {"x": 0.4, "y": 0.6, "zoom": 1.5}, str(ps))
+    check("a profile picture has to be an image", "image" in (inv_err_file("set_profile_avatar", os.path.join(FIX, "loose.json"), {"x-file-name": "x.json"}) or "").lower() or "png" in (inv_err_file("set_profile_avatar", os.path.join(FIX, "loose.json"), {"x-file-name": "x.json"}) or "").lower())
+    pk_p = invoke("save_persona", {"persona": {"id": "", "name": "Backed-up Bea", "description": "d", "style": "s", "avatar": None, "frame": None, "created_at": 0}})
+    invoke_file("set_persona_avatar", os.path.join(FIX, "avatar.gif"), {"x-persona-id": pk_p["id"], "x-file-name": "bea.gif"})
+    invoke("set_persona_frame", {"id": pk_p["id"], "frame": {"x": 0.1, "y": 0.2, "zoom": 3}})
+    invoke("set_active_persona", {"id": pk_p["id"]})
+    rm = invoke("create_room", {"room": {"id": 0, "created_at": 0, "name": "Backed-up den", "kind": "basement", "description": "Low ceiling, big couch.", "owner_kind": "self", "character_id": None, "backdrop": ""}})
+    rm = invoke_file("set_room_backdrop", os.path.join(FIX, "avatar.gif"), {"x-room-id": str(rm["id"]), "x-file-name": "avatar.gif"})
+    pk2 = invoke_file("import_mechanic", pack_path, {})
+    invoke("save_note", {"note": {"id": "", "title": "Backed-up note", "body": "keep me", "pinned": True, "created_at": 0, "updated_at": 0}})
+    rm = invoke_file("set_room_music", os.path.join(FIX, "song.mp3"), {"x-room-id": str(rm["id"]), "x-file-name": "room song.mp3"})
+    filed = invoke("save_character", {"character": {"id": "", "card": dict(card0, name="Filed"), "frame": {"x": 0.3, "y": 0.2, "zoom": 1.7}}})
+    fcrew = invoke("create_folder", {"name": "Crew"})
+    fcrew = invoke_file("set_folder_cover", os.path.join(FIX, "avatar.gif"), {"x-folder-id": fcrew["id"], "x-file-name": "avatar.gif"})
+    fcrew = invoke("set_folder_frame", {"id": fcrew["id"], "frame": {"x": 0.6, "y": 0.4, "zoom": 2.2}})
+    invoke("move_characters", {"ids": [filed["id"]], "folder": fcrew["id"]})
+    lbk = invoke("save_lorebook", {"lorebook": {"id": "", "name": "Packed lore", "book": {"entries": [{"keys": ["k"], "content": "packed lore text", "enabled": True}]}, "created_at": 0, "updated_at": 0}})
+    invoke("save_character", {"character": dict(filed, lorebooks=[lbk["id"]])})
+    dm = invoke("create_dorm", {"name": "Packed dorm", "roomId": rm["id"]})
+    invoke_file("set_dorm_music", os.path.join(FIX, "tone.wav"), {"x-dorm-id": str(dm["id"]), "x-file-name": "dorm tune.wav"})
+    pc = invoke("create_chat", {"dormId": dm["id"], "name": "packed chat", "kind": "channel", "characterIds": []})
+    invoke("set_chat_mechanic", {"chatId": pc["id"], "mechId": pk2["id"], "enabled": True})
+    invoke("set_chat_variable", {"chatId": pc["id"], "mechId": pk2["id"], "path": "aff", "value": 77})
+    invoke("update_chat", {"chat": dict(invoke("list_chats")[0], style="phone")})
+    info = invoke("prepare_export")
+    check("the backup counts every picture and music file (backdrop, 2 music files, folder cover, persona picture, profile picture)", info["media"] == 6, str(info))
+    rpath = os.path.join(WORK, "rooms.dorms"); invoke("save_export", {"token": info["token"], "path": rpath})
+    n_media_now = len(os.listdir(media_dir))
+    invoke("eject_profile", {"token": info["token"]})
+    check("eject removes those files too", len(os.listdir(media_dir)) == n_media_now - 6)
+    invoke_file("import_profile", rpath, {"x-mode": "import", "x-handle": "Stylist2", "x-passcode": ""})
+    r2 = invoke("list_rooms")
+    check("the restored profile has its room, with the backdrop file", len(r2) == 1 and r2[0]["name"] == "Backed-up den" and r2[0]["backdrop"].startswith("file:media/room-") and os.path.exists(r2[0]["backdrop_path"]), str(r2))
+    d2 = invoke("list_dorms")
+    ps2 = invoke("session_state")["profile"]
+    check("the profile picture came back with its framing", ps2["avatar"] and os.path.exists(ps2["avatar"]) and ps2["avatar_frame"] == {"x": 0.4, "y": 0.6, "zoom": 1.5}, str(ps2))
+    pe2 = invoke("list_personas")
+    check("the persona came back with its picture and framing", len(pe2) == 1 and pe2[0]["name"] == "Backed-up Bea" and os.path.exists(pe2[0]["avatar_path"]) and pe2[0]["frame"] == {"x": 0.1, "y": 0.2, "zoom": 3.0}, str(pe2))
+    check("and it is still the active one (its new id)", invoke("get_settings")["active_persona"] == pe2[0]["id"])
+    check("the room's music came back with its name", r2[0]["music_name"] == "room song.mp3" and os.path.exists(r2[0]["music_path"]), str(r2[0]))
+    check("so did the dorm's own music", invoke("list_dorms")[0]["music_name"] == "dorm tune.wav" and os.path.exists(invoke("list_dorms")[0]["music_path"]))
+    fl = invoke("list_folders"); fch = [c for c in invoke("list_characters") if c["card"]["name"] == "Filed"][0]
+    check("the folder came back with its picture and framing", len(fl) == 1 and fl[0]["name"] == "Crew" and os.path.exists(fl[0]["cover_path"]) and fl[0]["frame"] == {"x": 0.6, "y": 0.4, "zoom": 2.2}, str(fl))
+    check("the character is still filed in it (new id mapped), with its own framing", fch["folder"] == fl[0]["id"] and fch["frame"] == {"x": 0.3, "y": 0.2, "zoom": 1.7}, str(fch.get("folder")))
+    lbs = invoke("list_lorebooks")
+    check("the lorebook came back, still attached to the character", len(lbs) == 1 and lbs[0]["name"] == "Packed lore" and fch["lorebooks"] == [lbs[0]["id"]])
+    check("the dorm is still set in that room", len(d2) == 1 and d2[0]["room_id"] == r2[0]["id"], str(d2))
+    c2 = invoke("list_chats")[0]
+    check("notes come back with a backup", [(n["title"], n["body"], n["pinned"]) for n in invoke("list_notes")] == [("Backed-up note", "keep me", True)])
+    check("the chat kept its texting style", c2["style"] == "phone")
+    cm2 = invoke("chat_mechanics", {"chatId": c2["id"]})
+    check("the pack came back in the library, switched on in that chat with its progress (affection 77)", len(invoke("list_mechanics")) == 1 and len(cm2) == 1 and cm2[0]["enabled"] and cm2[0]["state"]["aff"] == 77, str(cm2))
     invoke("sign_out")
 
     # -- delete needs the name typed

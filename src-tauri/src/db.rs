@@ -29,6 +29,24 @@ pub struct Outfit {
     pub file: String,
 }
 
+/// How an avatar picture is framed wherever it is shown: the point of the picture to keep in view (0..1 across and
+/// down) and how far to zoom in on it.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct Frame {
+    pub x: f64,
+    pub y: f64,
+    pub zoom: f64,
+}
+
+impl Frame {
+    pub fn clean(self) -> Option<Frame> {
+        let ok = |v: f64| if v.is_finite() { v } else { 0.5 };
+        let f = Frame { x: ok(self.x).clamp(0.0, 1.0), y: ok(self.y).clamp(0.0, 1.0), zoom: if self.zoom.is_finite() { self.zoom.clamp(1.0, 5.0) } else { 1.0 } };
+        // the default framing is stored as "no framing"
+        if (f.x - 0.5).abs() < 1e-6 && (f.y - 0.5).abs() < 1e-6 && (f.zoom - 1.0).abs() < 1e-6 { None } else { Some(f) }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Character {
     #[serde(default)]
@@ -42,6 +60,15 @@ pub struct Character {
     /// The outfit being worn (an `outfits` id); `None` means the original model.
     #[serde(default)]
     pub outfit: Option<String>,
+    /// How the picture is framed (position and zoom), so a face is never cut off.
+    #[serde(default)]
+    pub frame: Option<Frame>,
+    /// The folder this character is filed in (an id from `folders`); `None` is the top level.
+    #[serde(default)]
+    pub folder: Option<String>,
+    /// Shared lorebooks (ids from `lorebooks`) attached to this character, besides the book inside the card.
+    #[serde(default)]
+    pub lorebooks: Vec<String>,
     #[serde(default)]
     pub favorite: bool,
     #[serde(default)]
@@ -65,6 +92,102 @@ pub struct Dorm {
     pub id: i64,
     pub name: String,
     pub created_at: i64,
+    /// The room this dorm is set in (its description and backdrop belong to every chat in the dorm).
+    #[serde(default)]
+    pub room_id: Option<i64>,
+    /// Background music for this dorm (path inside the data folder), played on a loop in its chats. Overrides the room's.
+    #[serde(default)]
+    pub music: String,
+    #[serde(default)]
+    pub music_name: String,
+}
+
+/// A place: where a dorm happens. Made once, used by any number of dorms.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Room {
+    pub id: i64,
+    pub name: String,
+    /// living_room | bedroom | kitchen | … | other
+    pub kind: String,
+    pub description: String,
+    /// character | self
+    pub owner_kind: String,
+    pub character_id: Option<String>,
+    /// "" | "preset:<key>" | "file:<name inside the data folder>"
+    pub backdrop: String,
+    pub created_at: i64,
+    /// Background music (path inside the data folder) and the file's original name.
+    #[serde(default)]
+    pub music: String,
+    #[serde(default)]
+    pub music_name: String,
+}
+
+/// Someone the player can be: a name, who they are, and how they like to roleplay. The active one is described to the AI
+/// before the chat begins (it replaces the plain name and "about you" text).
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Persona {
+    pub id: String,
+    pub name: String,
+    /// Who this persona is (appearance, background, personality).
+    pub description: String,
+    /// How the player wants to roleplay and what the AI should remember.
+    pub style: String,
+    /// Picture (path inside the data folder) and its framing.
+    pub avatar: Option<String>,
+    pub frame: Option<Frame>,
+    pub created_at: i64,
+}
+
+/// A lorebook in the library: keyword-triggered lore that can be attached to any number of characters.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Lorebook {
+    pub id: String,
+    pub name: String,
+    /// The book itself, in the character-card book shape.
+    pub book: serde_json::Value,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// A library folder: characters can be filed into it. It has a name and, if wanted, a picture of its own.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Folder {
+    pub id: String,
+    pub name: String,
+    /// Path relative to the data dir, or None.
+    pub cover: Option<String>,
+    pub frame: Option<Frame>,
+    pub created_at: i64,
+}
+
+/// A free-form note. No length limit beyond sanity (it is meant for long writing, like a card's creator notes).
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Note {
+    pub id: String,
+    pub title: String,
+    pub body: String,
+    pub pinned: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// A mechanic pack in the library (the imported .bundle.json, verbatim).
+#[derive(Serialize, Deserialize, Clone)]
+pub struct MechanicRow {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub json: String,
+    pub created_at: i64,
+}
+
+/// A pack's place in one chat: switched on or off, and the story state it keeps there.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ChatMechanic {
+    pub mech_id: String,
+    pub enabled: bool,
+    pub state: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -82,6 +205,13 @@ pub struct Chat {
     pub max_auto_turns: i64,
     pub created_at: i64,
     pub updated_at: i64,
+    /// chat | phone (the same conversation, shown and written as texting)
+    #[serde(default = "default_style")]
+    pub style: String,
+}
+
+fn default_style() -> String {
+    "chat".into()
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -179,6 +309,8 @@ pub struct Settings {
     pub stt_language: String,
     /// Send the message as soon as it has been transcribed.
     pub stt_auto_send: bool,
+    /// The persona being played (an id from `personas`); empty means the plain name and description above.
+    pub active_persona: String,
 }
 
 impl Default for Settings {
@@ -204,6 +336,7 @@ impl Default for Settings {
             stt_model: "whisper-1".into(),
             stt_language: String::new(),
             stt_auto_send: true,
+            active_persona: String::new(),
         }
     }
 }
@@ -240,8 +373,38 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
          CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS profiles(
             id TEXT PRIMARY KEY, handle TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL,
-            passcode_hash TEXT, created_at INTEGER NOT NULL, last_login INTEGER NOT NULL DEFAULT 0);",
+            passcode_hash TEXT, created_at INTEGER NOT NULL, last_login INTEGER NOT NULL DEFAULT 0);
+         CREATE TABLE IF NOT EXISTS rooms(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id TEXT, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'other',
+            description TEXT NOT NULL DEFAULT '', owner_kind TEXT NOT NULL DEFAULT 'self', character_id TEXT,
+            backdrop TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS personas(
+            id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', style TEXT NOT NULL DEFAULT '',
+            avatar TEXT, frame TEXT, created_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS profile_avatars(profile_id TEXT PRIMARY KEY, file TEXT NOT NULL, frame TEXT);
+         CREATE TABLE IF NOT EXISTS lorebooks(
+            id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS folders(
+            id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, cover TEXT, frame TEXT, created_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS notes(
+            id TEXT PRIMARY KEY, profile_id TEXT, title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '',
+            pinned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS mechanics(
+            id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+            json TEXT NOT NULL, created_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS chat_mechanics(
+            chat_id INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE, mech_id TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL DEFAULT '{}', PRIMARY KEY(chat_id, mech_id));",
     )?;
+    ensure_column(&conn, "dorms", "room_id", "INTEGER")?;
+    ensure_column(&conn, "dorms", "music", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "dorms", "music_name", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "rooms", "music", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "rooms", "music_name", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "chats", "style", "TEXT NOT NULL DEFAULT 'chat'")?;
+    for t in ["rooms", "mechanics", "notes", "folders", "lorebooks", "personas"] {
+        conn.execute_batch(&format!("CREATE INDEX IF NOT EXISTS idx_{t}_profile ON {t}(profile_id);"))?;
+    }
     // Local profiles: everything a person owns carries their profile id. NULL is the guest space, which is
     // also where everything made before profiles existed lives, so upgrading loses nothing.
     for t in ["characters", "dorms", "chats"] {
@@ -303,16 +466,284 @@ pub fn delete_character(c: &Connection, id: &str, owner: &Owner) -> R<()> {
 // ----- dorms -----
 
 pub fn list_dorms(c: &Connection, owner: &Owner) -> R<Vec<Dorm>> {
-    let mut s = c.prepare("SELECT id,name,created_at FROM dorms WHERE profile_id IS ?1 ORDER BY id")?;
-    let rows = s.query_map([owner], |r| Ok(Dorm { id: r.get(0)?, name: r.get(1)?, created_at: r.get(2)? }))?;
+    let mut s = c.prepare("SELECT id,name,created_at,room_id,music,music_name FROM dorms WHERE profile_id IS ?1 ORDER BY id")?;
+    let rows = s.query_map([owner], |r| Ok(Dorm { id: r.get(0)?, name: r.get(1)?, created_at: r.get(2)?, room_id: r.get(3)?, music: r.get(4)?, music_name: r.get(5)? }))?;
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
-pub fn create_dorm(c: &Connection, name: &str, owner: &Owner) -> R<Dorm> {
+pub fn create_dorm(c: &Connection, name: &str, room_id: Option<i64>, owner: &Owner) -> R<Dorm> {
     let t = now();
-    c.execute("INSERT INTO dorms(name,created_at,profile_id) VALUES(?1,?2,?3)", params![name, t, owner])?;
-    Ok(Dorm { id: c.last_insert_rowid(), name: name.into(), created_at: t })
+    // a dorm may only be set in a room of the same profile
+    let room_id = match room_id {
+        Some(r) if get_room(c, r, owner)?.is_some() => Some(r),
+        _ => None,
+    };
+    c.execute("INSERT INTO dorms(name,created_at,profile_id,room_id) VALUES(?1,?2,?3,?4)", params![name, t, owner, room_id])?;
+    Ok(Dorm { id: c.last_insert_rowid(), name: name.into(), created_at: t, room_id, music: String::new(), music_name: String::new() })
 }
+
+pub fn set_dorm_music(c: &Connection, id: i64, music: &str, name: &str, owner: &Owner) -> R<()> {
+    c.execute("UPDATE dorms SET music=?2, music_name=?3 WHERE id=?1 AND profile_id IS ?4", params![id, music, name, owner])?;
+    Ok(())
+}
+
+pub fn set_dorm_room(c: &Connection, id: i64, room_id: Option<i64>, owner: &Owner) -> R<()> {
+    let room_id = match room_id {
+        Some(r) if get_room(c, r, owner)?.is_some() => Some(r),
+        _ => None,
+    };
+    c.execute("UPDATE dorms SET room_id=?2 WHERE id=?1 AND profile_id IS ?3", params![id, room_id, owner])?;
+    Ok(())
+}
+
+pub fn get_dorm(c: &Connection, id: i64, owner: &Owner) -> R<Option<Dorm>> {
+    c.query_row("SELECT id,name,created_at,room_id,music,music_name FROM dorms WHERE id=?1 AND profile_id IS ?2", params![id, owner], |r| {
+        Ok(Dorm { id: r.get(0)?, name: r.get(1)?, created_at: r.get(2)?, room_id: r.get(3)?, music: r.get(4)?, music_name: r.get(5)? })
+    })
+    .optional()
+}
+
+// ----- rooms -----
+
+fn row_room(r: &rusqlite::Row) -> R<Room> {
+    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)? })
+}
+const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name";
+
+pub fn list_rooms(c: &Connection, owner: &Owner) -> R<Vec<Room>> {
+    let mut s = c.prepare(&format!("SELECT {ROOM_COLS} FROM rooms WHERE profile_id IS ?1 ORDER BY id DESC"))?;
+    let rows = s.query_map([owner], row_room)?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_room(c: &Connection, id: i64, owner: &Owner) -> R<Option<Room>> {
+    c.query_row(&format!("SELECT {ROOM_COLS} FROM rooms WHERE id=?1 AND profile_id IS ?2"), params![id, owner], row_room).optional()
+}
+
+pub fn create_room(c: &Connection, r: &Room, owner: &Owner) -> R<Room> {
+    c.execute(
+        "INSERT INTO rooms(profile_id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+        params![owner, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, now(), r.music, r.music_name],
+    )?;
+    Ok(get_room(c, c.last_insert_rowid(), owner)?.expect("just inserted"))
+}
+
+pub fn update_room(c: &Connection, r: &Room, owner: &Owner) -> R<()> {
+    c.execute(
+        "UPDATE rooms SET name=?2,kind=?3,description=?4,owner_kind=?5,character_id=?6,backdrop=?7,music=?9,music_name=?10 WHERE id=?1 AND profile_id IS ?8",
+        params![r.id, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, owner, r.music, r.music_name],
+    )?;
+    Ok(())
+}
+
+pub fn delete_room(c: &Connection, id: i64, owner: &Owner) -> R<()> {
+    c.execute("UPDATE dorms SET room_id=NULL WHERE room_id=?1 AND profile_id IS ?2", params![id, owner])?;
+    c.execute("DELETE FROM rooms WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
+// ----- personas and profile pictures -----
+
+fn row_persona(r: &rusqlite::Row) -> R<Persona> {
+    let fr: Option<String> = r.get(5)?;
+    Ok(Persona { id: r.get(0)?, name: r.get(1)?, description: r.get(2)?, style: r.get(3)?, avatar: r.get(4)?, frame: fr.and_then(|j| serde_json::from_str(&j).ok()), created_at: r.get(6)? })
+}
+const PERSONA_COLS: &str = "id,name,description,style,avatar,frame,created_at";
+
+pub fn list_personas(c: &Connection, owner: &Owner) -> R<Vec<Persona>> {
+    let mut s = c.prepare(&format!("SELECT {PERSONA_COLS} FROM personas WHERE profile_id IS ?1 ORDER BY created_at, name COLLATE NOCASE"))?;
+    let rows = s.query_map([owner], row_persona)?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_persona(c: &Connection, id: &str, owner: &Owner) -> R<Option<Persona>> {
+    c.query_row(&format!("SELECT {PERSONA_COLS} FROM personas WHERE id=?1 AND profile_id IS ?2"), params![id, owner], row_persona).optional()
+}
+
+pub fn save_persona(c: &Connection, p: &Persona, owner: &Owner) -> R<()> {
+    let fr = p.frame.and_then(|x| serde_json::to_string(&x).ok());
+    c.execute(
+        "INSERT INTO personas(id,profile_id,name,description,style,avatar,frame,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, style=excluded.style, avatar=excluded.avatar, frame=excluded.frame WHERE profile_id IS ?2",
+        params![p.id, owner, p.name, p.description, p.style, p.avatar, fr, p.created_at],
+    )?;
+    Ok(())
+}
+
+pub fn delete_persona(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM personas WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
+pub fn get_profile_avatar(c: &Connection, pid: &str) -> Option<(String, Option<Frame>)> {
+    c.query_row("SELECT file,frame FROM profile_avatars WHERE profile_id=?1", [pid], |r| {
+        let fr: Option<String> = r.get(1)?;
+        Ok((r.get::<_, String>(0)?, fr.and_then(|j| serde_json::from_str(&j).ok())))
+    })
+    .ok()
+}
+
+pub fn set_profile_avatar(c: &Connection, pid: &str, file: &str, frame: Option<Frame>) -> R<()> {
+    let fr = frame.and_then(|x| serde_json::to_string(&x).ok());
+    c.execute(
+        "INSERT INTO profile_avatars(profile_id,file,frame) VALUES(?1,?2,?3) ON CONFLICT(profile_id) DO UPDATE SET file=excluded.file, frame=excluded.frame",
+        params![pid, file, fr],
+    )?;
+    Ok(())
+}
+
+pub fn clear_profile_avatar(c: &Connection, pid: &str) -> R<()> {
+    c.execute("DELETE FROM profile_avatars WHERE profile_id=?1", [pid])?;
+    Ok(())
+}
+
+// ----- lorebooks -----
+
+pub fn list_lorebooks(c: &Connection, owner: &Owner) -> R<Vec<Lorebook>> {
+    let mut s = c.prepare("SELECT id,name,json,created_at,updated_at FROM lorebooks WHERE profile_id IS ?1 ORDER BY name COLLATE NOCASE")?;
+    let rows = s.query_map([owner], |r| {
+        let j: String = r.get(2)?;
+        Ok(Lorebook { id: r.get(0)?, name: r.get(1)?, book: serde_json::from_str(&j).unwrap_or(serde_json::Value::Null), created_at: r.get(3)?, updated_at: r.get(4)? })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn save_lorebook(c: &Connection, b: &Lorebook, owner: &Owner) -> R<()> {
+    c.execute(
+        "INSERT INTO lorebooks(id,profile_id,name,json,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, json=excluded.json, updated_at=excluded.updated_at WHERE profile_id IS ?2",
+        params![b.id, owner, b.name, serde_json::to_string(&b.book).unwrap_or_else(|_| "{}".into()), b.created_at, b.updated_at],
+    )?;
+    Ok(())
+}
+
+/// Delete a lorebook and take it off every character it was attached to.
+pub fn delete_lorebook(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    for mut ch in list_characters(c, owner)? {
+        if ch.lorebooks.iter().any(|l| l == id) {
+            ch.lorebooks.retain(|l| l != id);
+            save_character(c, &ch, owner)?;
+        }
+    }
+    c.execute("DELETE FROM lorebooks WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
+// ----- folders -----
+
+fn row_folder(r: &rusqlite::Row) -> R<Folder> {
+    let fr: Option<String> = r.get(3)?;
+    Ok(Folder { id: r.get(0)?, name: r.get(1)?, cover: r.get(2)?, frame: fr.and_then(|j| serde_json::from_str(&j).ok()), created_at: r.get(4)? })
+}
+
+pub fn list_folders(c: &Connection, owner: &Owner) -> R<Vec<Folder>> {
+    let mut s = c.prepare("SELECT id,name,cover,frame,created_at FROM folders WHERE profile_id IS ?1 ORDER BY name COLLATE NOCASE")?;
+    let rows = s.query_map([owner], row_folder)?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_folder(c: &Connection, id: &str, owner: &Owner) -> R<Option<Folder>> {
+    c.query_row("SELECT id,name,cover,frame,created_at FROM folders WHERE id=?1 AND profile_id IS ?2", params![id, owner], row_folder).optional()
+}
+
+pub fn save_folder(c: &Connection, f: &Folder, owner: &Owner) -> R<()> {
+    let fr = f.frame.and_then(|x| serde_json::to_string(&x).ok());
+    c.execute(
+        "INSERT INTO folders(id,profile_id,name,cover,frame,created_at) VALUES(?1,?2,?3,?4,?5,?6)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, cover=excluded.cover, frame=excluded.frame WHERE profile_id IS ?2",
+        params![f.id, owner, f.name, f.cover, fr, f.created_at],
+    )?;
+    Ok(())
+}
+
+/// Delete a folder; its characters go back to the top level (never deleted with it).
+pub fn delete_folder(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    if get_folder(c, id, owner)?.is_none() {
+        return Ok(());
+    }
+    for mut ch in list_characters(c, owner)? {
+        if ch.folder.as_deref() == Some(id) {
+            ch.folder = None;
+            save_character(c, &ch, owner)?;
+        }
+    }
+    c.execute("DELETE FROM folders WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
+// ----- notes -----
+
+pub fn list_notes(c: &Connection, owner: &Owner) -> R<Vec<Note>> {
+    let mut s = c.prepare("SELECT id,title,body,pinned,created_at,updated_at FROM notes WHERE profile_id IS ?1 ORDER BY pinned DESC, updated_at DESC")?;
+    let rows = s.query_map([owner], |r| Ok(Note { id: r.get(0)?, title: r.get(1)?, body: r.get(2)?, pinned: r.get::<_, i64>(3)? != 0, created_at: r.get(4)?, updated_at: r.get(5)? }))?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Insert or update (only ever a note of this owner).
+pub fn save_note(c: &Connection, n: &Note, owner: &Owner) -> R<()> {
+    c.execute(
+        "INSERT INTO notes(id,profile_id,title,body,pinned,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7)
+         ON CONFLICT(id) DO UPDATE SET title=excluded.title, body=excluded.body, pinned=excluded.pinned, updated_at=excluded.updated_at WHERE profile_id IS ?2",
+        params![n.id, owner, n.title, n.body, n.pinned as i64, n.created_at, n.updated_at],
+    )?;
+    Ok(())
+}
+
+pub fn delete_note(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM notes WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
+// ----- mechanic packs -----
+
+pub fn list_mechanics(c: &Connection, owner: &Owner) -> R<Vec<MechanicRow>> {
+    let mut s = c.prepare("SELECT id,name,description,json,created_at FROM mechanics WHERE profile_id IS ?1 ORDER BY created_at, name")?;
+    let rows = s.query_map([owner], |r| Ok(MechanicRow { id: r.get(0)?, name: r.get(1)?, description: r.get(2)?, json: r.get(3)?, created_at: r.get(4)? }))?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_mechanic(c: &Connection, id: &str, owner: &Owner) -> R<Option<MechanicRow>> {
+    c.query_row("SELECT id,name,description,json,created_at FROM mechanics WHERE id=?1 AND profile_id IS ?2", params![id, owner], |r| {
+        Ok(MechanicRow { id: r.get(0)?, name: r.get(1)?, description: r.get(2)?, json: r.get(3)?, created_at: r.get(4)? })
+    })
+    .optional()
+}
+
+pub fn save_mechanic(c: &Connection, m: &MechanicRow, owner: &Owner) -> R<()> {
+    c.execute(
+        "INSERT INTO mechanics(id,profile_id,name,description,json,created_at) VALUES(?1,?2,?3,?4,?5,?6)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, json=excluded.json WHERE profile_id IS ?2",
+        params![m.id, owner, m.name, m.description, m.json, m.created_at],
+    )?;
+    Ok(())
+}
+
+pub fn delete_mechanic(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    if get_mechanic(c, id, owner)?.is_some() {
+        c.execute("DELETE FROM chat_mechanics WHERE mech_id=?1 AND chat_id IN (SELECT id FROM chats WHERE profile_id IS ?2)", params![id, owner])?;
+        c.execute("DELETE FROM mechanics WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    }
+    Ok(())
+}
+
+pub fn list_chat_mechanics(c: &Connection, chat_id: i64) -> R<Vec<ChatMechanic>> {
+    let mut s = c.prepare("SELECT mech_id,enabled,state FROM chat_mechanics WHERE chat_id=?1 ORDER BY rowid")?;
+    let rows = s.query_map([chat_id], |r| {
+        let st: String = r.get(2)?;
+        Ok(ChatMechanic { mech_id: r.get(0)?, enabled: r.get::<_, i64>(1)? != 0, state: serde_json::from_str(&st).unwrap_or_default() })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn save_chat_mechanic(c: &Connection, chat_id: i64, m: &ChatMechanic) -> R<()> {
+    c.execute(
+        "INSERT INTO chat_mechanics(chat_id,mech_id,enabled,state) VALUES(?1,?2,?3,?4)
+         ON CONFLICT(chat_id,mech_id) DO UPDATE SET enabled=excluded.enabled, state=excluded.state",
+        params![chat_id, m.mech_id, m.enabled as i64, serde_json::to_string(&m.state).unwrap_or_else(|_| "{}".into())],
+    )?;
+    Ok(())
+}
+
 
 pub fn rename_dorm(c: &Connection, id: i64, name: &str, owner: &Owner) -> R<()> {
     c.execute("UPDATE dorms SET name=?2 WHERE id=?1 AND profile_id IS ?3", params![id, name, owner])?;
@@ -340,10 +771,11 @@ fn row_chat(r: &rusqlite::Row) -> R<Chat> {
         max_auto_turns: r.get(8)?,
         created_at: r.get(9)?,
         updated_at: r.get(10)?,
+        style: r.get(11)?,
     })
 }
 
-const CHAT_COLS: &str = "id,dorm_id,name,kind,character_ids,auto_chat,auto_interval_s,turn_mode,max_auto_turns,created_at,updated_at";
+const CHAT_COLS: &str = "id,dorm_id,name,kind,character_ids,auto_chat,auto_interval_s,turn_mode,max_auto_turns,created_at,updated_at,style";
 
 pub fn list_chats(c: &Connection, owner: &Owner) -> R<Vec<Chat>> {
     let sql = format!("SELECT {CHAT_COLS} FROM chats WHERE profile_id IS ?1 ORDER BY updated_at DESC");
@@ -374,11 +806,12 @@ pub fn create_chat(c: &Connection, dorm_id: Option<i64>, name: &str, kind: &str,
 pub fn update_chat(c: &Connection, ch: &Chat, owner: &Owner) -> R<()> {
     c.execute(
         "UPDATE chats SET dorm_id=?2,name=?3,kind=?4,character_ids=?5,auto_chat=?6,auto_interval_s=?7,
-         turn_mode=?8,max_auto_turns=?9,updated_at=?10 WHERE id=?1 AND profile_id IS ?11",
+         turn_mode=?8,max_auto_turns=?9,updated_at=?10,style=?12 WHERE id=?1 AND profile_id IS ?11",
         params![
             ch.id, ch.dorm_id, ch.name, ch.kind,
             serde_json::to_string(&ch.character_ids).unwrap_or_default(),
-            ch.auto_chat as i64, ch.auto_interval_s.max(5), ch.turn_mode, ch.max_auto_turns.max(1), now(), owner
+            ch.auto_chat as i64, ch.auto_interval_s.max(5), ch.turn_mode, ch.max_auto_turns.max(1), now(), owner,
+            if ch.style == "phone" { "phone" } else { "chat" }
         ],
     )?;
     Ok(())
@@ -584,11 +1017,18 @@ pub fn touch_login(c: &Connection, id: &str) -> R<()> {
 /// Remove everything a profile owns (chats take their messages with them) and, for a named profile, the
 /// profile itself. For the guest space this just empties it.
 pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM rooms WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM mechanics WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM notes WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM folders WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM lorebooks WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM personas WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM chats WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM dorms WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM characters WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM settings WHERE key=?1", [settings_key(owner)])?;
     if let Some(id) = owner {
+        c.execute("DELETE FROM profile_avatars WHERE profile_id=?1", [id])?;
         c.execute("DELETE FROM profiles WHERE id=?1", [id])?;
     }
     Ok(())
@@ -596,7 +1036,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
@@ -626,6 +1066,9 @@ mod tests {
             media: None,
             outfits: vec![],
             outfit: None,
+            frame: None,
+            folder: None,
+            lorebooks: vec![],
             favorite: false,
             created_at: 1,
             updated_at: 1,
@@ -635,12 +1078,110 @@ mod tests {
     }
 
     #[test]
+    fn rooms_and_packs_belong_to_their_owner_and_dorms_can_only_use_their_own_rooms() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new() };
+        let ra = create_room(&c, &room("A's kitchen"), &a).unwrap();
+        let rb = create_room(&c, &room("B's kitchen"), &b).unwrap();
+        assert_eq!(list_rooms(&c, &a).unwrap().len(), 1);
+        assert!(get_room(&c, rb.id, &a).unwrap().is_none(), "A can't read B's room by id");
+        let d = create_dorm(&c, "d", Some(rb.id), &a).unwrap();
+        assert_eq!(d.room_id, None, "a dorm can't be set in someone else's room");
+        let d = create_dorm(&c, "d2", Some(ra.id), &a).unwrap();
+        assert_eq!(d.room_id, Some(ra.id));
+        assert_eq!(list_dorms(&c, &a).unwrap()[1].room_id, Some(ra.id));
+        delete_room(&c, ra.id, &b).unwrap();
+        assert!(get_room(&c, ra.id, &a).unwrap().is_some(), "B can't delete A's room");
+        delete_room(&c, ra.id, &a).unwrap();
+        assert_eq!(list_dorms(&c, &a).unwrap()[1].room_id, None, "deleting a room frees its dorms");
+
+        let m = MechanicRow { id: "m1".into(), name: "Aff".into(), description: "".into(), json: "{}".into(), created_at: 1 };
+        save_mechanic(&c, &m, &a).unwrap();
+        assert!(list_mechanics(&c, &b).unwrap().is_empty());
+        assert!(get_mechanic(&c, "m1", &b).unwrap().is_none());
+        let chat = create_chat(&c, None, "c", "dm", &[], &a).unwrap();
+        save_chat_mechanic(&c, chat.id, &ChatMechanic { mech_id: "m1".into(), enabled: true, state: serde_json::Map::new() }).unwrap();
+        delete_mechanic(&c, "m1", &b).unwrap();
+        assert_eq!(list_chat_mechanics(&c, chat.id).unwrap().len(), 1, "B can't remove A's pack");
+        delete_mechanic(&c, "m1", &a).unwrap();
+        assert!(list_chat_mechanics(&c, chat.id).unwrap().is_empty());
+        // a chat's texting style survives an update and rejects nonsense
+        let mut ch = get_chat(&c, chat.id, &a).unwrap().unwrap();
+        ch.style = "phone".into();
+        update_chat(&c, &ch, &a).unwrap();
+        assert_eq!(get_chat(&c, chat.id, &a).unwrap().unwrap().style, "phone");
+        ch.style = "weird".into();
+        update_chat(&c, &ch, &a).unwrap();
+        assert_eq!(get_chat(&c, chat.id, &a).unwrap().unwrap().style, "chat");
+    }
+
+    #[test]
+    fn folders_lorebooks_and_notes_are_private_and_cleaned_up() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        let f = Folder { id: "f1".into(), name: "Crew".into(), cover: None, frame: None, created_at: 1 };
+        save_folder(&c, &f, &a).unwrap();
+        assert!(list_folders(&c, &b).unwrap().is_empty() && get_folder(&c, "f1", &b).unwrap().is_none());
+        // B can't take over A's folder by saving with the same id
+        save_folder(&c, &Folder { name: "Stolen".into(), ..f.clone() }, &b).unwrap();
+        assert_eq!(get_folder(&c, "f1", &a).unwrap().unwrap().name, "Crew");
+        let mut x = ch("x", "X"); x.folder = Some("f1".into()); x.lorebooks = vec!["l1".into()];
+        save_character(&c, &x, &a).unwrap();
+        let lb = Lorebook { id: "l1".into(), name: "Lore".into(), book: serde_json::json!({"entries": []}), created_at: 1, updated_at: 1 };
+        save_lorebook(&c, &lb, &a).unwrap();
+        assert!(list_lorebooks(&c, &b).unwrap().is_empty());
+        delete_folder(&c, "f1", &b).unwrap();
+        assert!(get_folder(&c, "f1", &a).unwrap().is_some(), "B can't delete A's folder");
+        delete_folder(&c, "f1", &a).unwrap();
+        assert_eq!(get_character(&c, "x", &a).unwrap().unwrap().folder, None, "a deleted folder releases its characters");
+        delete_lorebook(&c, "l1", &a).unwrap();
+        assert!(get_character(&c, "x", &a).unwrap().unwrap().lorebooks.is_empty(), "a deleted lorebook detaches from characters");
+        let n = Note { id: "n1".into(), title: "t".into(), body: "b".repeat(1_000_000), pinned: false, created_at: 1, updated_at: 1 };
+        save_note(&c, &n, &a).unwrap();
+        save_note(&c, &Note { body: "hijack".into(), ..n.clone() }, &b).unwrap();
+        assert_eq!(list_notes(&c, &a).unwrap()[0].body.len(), 1_000_000, "a megabyte note round-trips; B can't overwrite it");
+        assert!(list_notes(&c, &b).unwrap().is_empty());
+        delete_note(&c, "n1", &b).unwrap();
+        assert_eq!(list_notes(&c, &a).unwrap().len(), 1);
+        wipe_owner(&c, &a).unwrap();
+        assert!(list_notes(&c, &a).unwrap().is_empty() && list_folders(&c, &a).unwrap().is_empty() && list_lorebooks(&c, &a).unwrap().is_empty());
+    }
+
+    #[test]
+    fn personas_and_profile_pictures_are_private() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        let p = Persona { id: "p1".into(), name: "Kai".into(), description: "d".into(), style: "s".into(), avatar: Some("media/x.png".into()), frame: Some(Frame { x: 0.2, y: 0.3, zoom: 2.0 }), created_at: 1 };
+        save_persona(&c, &p, &a).unwrap();
+        assert!(list_personas(&c, &b).unwrap().is_empty() && get_persona(&c, "p1", &b).unwrap().is_none());
+        save_persona(&c, &Persona { name: "Stolen".into(), ..p.clone() }, &b).unwrap();
+        assert_eq!(get_persona(&c, "p1", &a).unwrap().unwrap().name, "Kai", "B can't overwrite A's persona by reusing the id");
+        assert_eq!(get_persona(&c, "p1", &a).unwrap().unwrap().frame, p.frame);
+        delete_persona(&c, "p1", &b).unwrap();
+        assert!(get_persona(&c, "p1", &a).unwrap().is_some());
+        set_profile_avatar(&c, "a", "media/a.gif", Some(Frame { x: 0.1, y: 0.1, zoom: 1.5 })).unwrap();
+        assert_eq!(get_profile_avatar(&c, "a").unwrap().0, "media/a.gif");
+        assert!(get_profile_avatar(&c, "b").is_none());
+        wipe_owner(&c, &a).unwrap();
+        assert!(list_personas(&c, &a).unwrap().is_empty() && get_profile_avatar(&c, "a").is_none(), "wiping a profile removes its personas and picture");
+    }
+
+    #[test]
+    fn framing_is_kept_in_bounds_and_default_means_none() {
+        assert_eq!(Frame { x: 0.5, y: 0.5, zoom: 1.0 }.clean(), None);
+        assert_eq!(Frame { x: 7.0, y: -2.0, zoom: 99.0 }.clean(), Some(Frame { x: 1.0, y: 0.0, zoom: 5.0 }));
+        assert_eq!(Frame { x: f64::NAN, y: 0.2, zoom: f64::INFINITY }.clean(), Some(Frame { x: 0.5, y: 0.2, zoom: 1.0 }));
+        assert_eq!(Frame { x: 0.5, y: 0.5, zoom: 0.2 }.clean(), None, "zooming out is not possible");
+    }
+
+    #[test]
     fn every_kind_of_row_is_invisible_to_other_owners() {
         let c = fresh();
         let (a, b, guest) = (me("a"), me("b"), None);
         for o in [&a, &b, &guest] {
             save_character(&c, &ch(&format!("char-{}", o.clone().unwrap_or_else(|| "g".into())), "X"), o).unwrap();
-            let d = create_dorm(&c, "dorm", o).unwrap();
+            let d = create_dorm(&c, "dorm", None, o).unwrap();
             let chat = create_chat(&c, Some(d.id), "chat", "dm", &[], o).unwrap();
             add_message(&c, chat.id, "user", None, &["hi".into()]).unwrap();
         }
@@ -672,7 +1213,7 @@ mod tests {
     #[test]
     fn a_chat_can_only_live_in_a_dorm_of_its_own_profile() {
         let c = fresh();
-        let d = create_dorm(&c, "A's dorm", &me("a")).unwrap();
+        let d = create_dorm(&c, "A's dorm", None, &me("a")).unwrap();
         let chat = create_chat(&c, Some(d.id), "x", "dm", &[], &me("b")).unwrap();
         assert_eq!(chat.dorm_id, None);
     }

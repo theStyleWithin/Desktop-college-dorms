@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use dorms_core::prompt::{build_prompt, clean_reply, substitute, HistoryItem, PromptInput, PromptSettings};
+use dorms_core::prompt::{build_prompt, clean_reply, join_continuation, substitute, HistoryItem, PromptInput, PromptSettings};
 use dorms_core::{CardError, CardSpec};
 use serde::Serialize;
 use serde_json::json;
@@ -10,7 +10,7 @@ use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::{Emitter, State};
 use tokio::sync::Notify;
 
-use crate::db::{self, ApiProfile, Character, Chat, Dorm, Media, Message, Settings};
+use crate::db::{self, ApiProfile, Character, Chat, Media, Message, Settings};
 use crate::llm::{self, Auth, Endpoint, Extras, GenParams};
 use crate::{llama, secrets, AppState, Shared};
 
@@ -19,12 +19,12 @@ type R<T> = Result<T, String>;
 /// Largest card file we will parse (cards are normally well under 5 MB).
 const MAX_CARD_BYTES: usize = 64 * 1024 * 1024;
 
-fn e<E: std::fmt::Display>(err: E) -> String {
+pub(crate) fn e<E: std::fmt::Display>(err: E) -> String {
     err.to_string()
 }
 
 /// Whose data this session may touch. `None` is the guest space. Chosen by signing in, never by the web view.
-fn owner(st: &AppState) -> R<db::Owner> {
+pub(crate) fn owner(st: &AppState) -> R<db::Owner> {
     let s = st.session.lock().unwrap();
     if s.chosen { Ok(s.profile.clone()) } else { Err("Pick a profile first.".into()) }
 }
@@ -37,11 +37,11 @@ fn skey(o: &db::Owner, name: &str) -> String {
     }
 }
 
-fn uid() -> String {
+pub(crate) fn uid() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
-fn emit(st: &AppState, event: &str, payload: serde_json::Value) {
+pub(crate) fn emit(st: &AppState, event: &str, payload: serde_json::Value) {
     let _ = st.app.emit(event, payload);
 }
 
@@ -98,14 +98,14 @@ fn out(st: &AppState, c: Character) -> CharacterOut {
     CharacterOut { c, media_path, outfit_paths }
 }
 
-fn raw_body<'a>(req: &'a Request<'_>) -> R<&'a [u8]> {
+pub(crate) fn raw_body<'a>(req: &'a Request<'_>) -> R<&'a [u8]> {
     match req.body() {
         InvokeBody::Raw(b) => Ok(b.as_slice()),
         _ => Err("Expected a binary payload".into()),
     }
 }
 
-fn header(req: &Request<'_>, name: &str) -> String {
+pub(crate) fn header(req: &Request<'_>, name: &str) -> String {
     let raw = req.headers().get(name).and_then(|v| v.to_str().ok()).unwrap_or("");
     // header values are percent-encoded by the frontend (file names may be non-ASCII)
     let b = raw.as_bytes();
@@ -176,19 +176,38 @@ pub fn save_character(state: State<'_, Shared>, mut character: Character) -> R<C
     if !known {
         character.id = uid();
         character.created_at = now;
+        character.folder = None;
     }
     // media is owned by the backend; never trust the frontend copy
     if let Some(existing) = db::get_character(&db, &character.id, &o).map_err(e)? {
         character.media = existing.media;
         character.outfits = existing.outfits;
         character.outfit = existing.outfit;
+        character.folder = existing.folder; // filing is done by dragging, not by editing
         if character.created_at == 0 {
             character.created_at = existing.created_at;
         }
     }
+    character.frame = character.frame.and_then(|f| f.clean());
+    // only this person's own lorebooks can be attached (each once)
+    let mine: Vec<String> = db::list_lorebooks(&db, &o).map_err(e)?.into_iter().map(|b| b.id).collect();
+    let mut seen = std::collections::HashSet::new();
+    character.lorebooks.retain(|l| mine.contains(l) && seen.insert(l.clone()));
     character.updated_at = now;
     db::save_character(&db, &character, &o).map_err(e)?;
     Ok(out(&state, character))
+}
+
+/// Move/zoom the avatar picture (kept apart from the card text so adjusting it never touches unsaved edits).
+#[tauri::command]
+pub fn set_frame(state: State<'_, Shared>, id: String, frame: Option<db::Frame>) -> R<CharacterOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Character not found")?;
+    c.frame = frame.and_then(|f| f.clean());
+    c.updated_at = db::now();
+    db::save_character(&db, &c, &o).map_err(e)?;
+    Ok(out(&state, c))
 }
 
 #[tauri::command]
@@ -368,6 +387,9 @@ pub fn import_card(request: Request<'_>, state: State<'_, Shared>) -> R<ImportOu
         media: None,
         outfits: vec![],
         outfit: None,
+        frame: None,
+        folder: None,
+        lorebooks: vec![],
         favorite: false,
         created_at: now,
         updated_at: now,
@@ -416,13 +438,15 @@ pub fn export_card(state: State<'_, Shared>, id: String, format: String) -> R<Re
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn list_dorms(state: State<'_, Shared>) -> R<Vec<Dorm>> {
-    db::list_dorms(&state.db.lock().unwrap(), &owner(&state)?).map_err(e)
+pub fn list_dorms(state: State<'_, Shared>) -> R<Vec<crate::extras::DormOut>> {
+    let l = db::list_dorms(&state.db.lock().unwrap(), &owner(&state)?).map_err(e)?;
+    Ok(l.into_iter().map(|d| crate::extras::dorm_out(&state, d)).collect())
 }
 
 #[tauri::command]
-pub fn create_dorm(state: State<'_, Shared>, name: String) -> R<Dorm> {
-    db::create_dorm(&state.db.lock().unwrap(), name.trim(), &owner(&state)?).map_err(e)
+pub fn create_dorm(state: State<'_, Shared>, name: String, room_id: Option<i64>) -> R<crate::extras::DormOut> {
+    let d = db::create_dorm(&state.db.lock().unwrap(), name.trim(), room_id, &owner(&state)?).map_err(e)?;
+    Ok(crate::extras::dorm_out(&state, d))
 }
 
 #[tauri::command]
@@ -432,7 +456,14 @@ pub fn rename_dorm(state: State<'_, Shared>, id: i64, name: String) -> R<()> {
 
 #[tauri::command]
 pub fn delete_dorm(state: State<'_, Shared>, id: i64) -> R<()> {
-    db::delete_dorm(&state.db.lock().unwrap(), id, &owner(&state)?).map_err(e)
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    if let Some(d) = db::get_dorm(&db, id, &o).map_err(e)? {
+        if !d.music.is_empty() {
+            let _ = std::fs::remove_file(state.data_dir.join(&d.music));
+        }
+    }
+    db::delete_dorm(&db, id, &o).map_err(e)
 }
 
 #[tauri::command]
@@ -447,6 +478,7 @@ pub fn create_chat(
     name: String,
     kind: String,
     character_ids: Vec<String>,
+    opening: Option<usize>,
 ) -> R<Chat> {
     let o = owner(&state)?;
     let db = state.db.lock().unwrap();
@@ -454,14 +486,18 @@ pub fn create_chat(
     let chat = db::create_chat(&db, dorm_id, name.trim(), &kind, &character_ids, &o).map_err(e)?;
     // Seed greetings: DMs get the character's, groups get each one's. Channels start empty.
     if kind != "channel" {
-        let user = db::get_settings(&db, &o).user_name;
+        let user = {
+            let mut s = db::get_settings(&db, &o);
+            crate::extras::apply_persona(&db, &o, &mut s);
+            s.user_name
+        };
         for id in character_ids.iter().take(if kind == "dm" { 1 } else { usize::MAX }) {
             if let Some(c) = db::get_character(&db, id, &o).map_err(e)? {
                 let mut greetings: Vec<String> = vec![];
                 if !c.card.first_mes.trim().is_empty() {
                     greetings.push(c.card.first_mes.clone());
                 }
-                greetings.extend(c.card.alternate_greetings.iter().cloned());
+                greetings.extend(c.card.alternate_greetings.iter().filter(|g| !g.trim().is_empty()).cloned());
                 if kind != "dm" {
                     greetings.truncate(1);
                 }
@@ -469,7 +505,13 @@ pub fn create_chat(
                     continue;
                 }
                 let swipes: Vec<String> = greetings.iter().map(|g| substitute(g, &c.card.name, &user, "")).collect();
-                db::add_message(&db, chat.id, "character", Some(id), &swipes).map_err(e)?;
+                let msg = db::add_message(&db, chat.id, "character", Some(id), &swipes).map_err(e)?;
+                // a one-on-one chat can open with any of the greetings (the others stay one swipe away)
+                if let (Some(k), "dm") = (opening, kind.as_str()) {
+                    if k > 0 && k < swipes.len() {
+                        db::save_message_swipes(&db, msg.id, &swipes, k as i64).map_err(e)?;
+                    }
+                }
             }
         }
     }
@@ -501,7 +543,9 @@ pub fn add_user_message(state: State<'_, Shared>, chat_id: i64, text: String) ->
     let o = owner(&state)?;
     let db = state.db.lock().unwrap();
     db::get_chat(&db, chat_id, &o).map_err(e)?.ok_or("Chat not found")?;
-    db::add_message(&db, chat_id, "user", None, &[text]).map_err(e)
+    let m = db::add_message(&db, chat_id, "user", None, &[text.clone()]).map_err(e)?;
+    crate::extras::on_user_message(&state, &db, chat_id, &o, &text);
+    Ok(m)
 }
 
 #[tauri::command]
@@ -574,7 +618,13 @@ pub fn save_settings(state: State<'_, Shared>, mut settings: Settings) -> R<Sett
             p.id = uid();
         }
     }
-    db::save_settings(&state.db.lock().unwrap(), &settings, &owner(&state)?).map_err(e)?;
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    // the active persona has to be one of this person's own (otherwise the plain name is used)
+    if !settings.active_persona.is_empty() && db::get_persona(&db, &settings.active_persona, &o).map_err(e)?.is_none() {
+        settings.active_persona.clear();
+    }
+    db::save_settings(&db, &settings, &o).map_err(e)?;
     Ok(settings)
 }
 
@@ -852,11 +902,13 @@ async fn run_generation(
     chat_id: i64,
     speaker: Option<String>,
     regen: Option<i64>,
+    cont: Option<i64>,
     cancel: &Notify,
 ) -> R<Message> {
     let (settings, chat, chars, msgs) = {
         let db = st.db.lock().unwrap();
-        let settings = db::get_settings(&db, o);
+        let mut settings = db::get_settings(&db, o);
+        crate::extras::apply_persona(&db, o, &mut settings);
         let chat = db::get_chat(&db, chat_id, o).map_err(e)?.ok_or("Chat not found")?;
         let mut chars = HashMap::new();
         for id in &chat.character_ids {
@@ -871,16 +923,28 @@ async fn run_generation(
         return Err("This chat has no characters yet. Add one first.".into());
     }
 
-    let (history, target): (Vec<&Message>, Option<&Message>) = match regen {
-        Some(mid) => {
+    let (history, target): (Vec<&Message>, Option<&Message>) = match (regen, cont) {
+        (Some(mid), _) => {
             let pos = msgs.iter().position(|m| m.id == mid).ok_or("Message not found")?;
             (msgs[..pos].iter().collect(), Some(&msgs[pos]))
         }
-        None => (msgs.iter().collect(), None),
+        // continuing: the whole chat is history, including the message being extended
+        (None, Some(cid)) => {
+            let last = msgs.last().ok_or("Message not found")?;
+            if last.id != cid {
+                return Err("Only the newest message can be continued.".into());
+            }
+            if last.role != "character" || last.character_id.is_none() {
+                return Err("Only a character's message can be continued.".into());
+            }
+            (msgs.iter().collect(), Some(last))
+        }
+        (None, None) => (msgs.iter().collect(), None),
     };
+    let continuing = cont.is_some() && regen.is_none();
 
     let speaker_id = match (target, speaker) {
-        (Some(m), _) => m.character_id.clone().ok_or("Only character messages can be regenerated")?,
+        (Some(m), _) => m.character_id.clone().ok_or("Only character messages can be regenerated or continued")?,
         (None, Some(s)) => s,
         (None, None) => pick_speaker(&chat, &history, &chars),
     };
@@ -909,8 +973,14 @@ async fn run_generation(
         .filter(|i| **i != speaker_id)
         .filter_map(|i| chars.get(i).map(|c| (i.clone(), c.card.clone())))
         .collect();
-    emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "loading" }));
+    emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "loading", "continue_of": cont }));
     let (endpoint, context_tokens) = resolve_endpoint(st, o, &settings).await?;
+    // the room, the texting style and the switched-on packs
+    let extra = {
+        let db = st.db.lock().unwrap();
+        let recent: String = history.iter().rev().take(6).map(|m| m.content()).collect::<Vec<_>>().join("\n");
+        crate::extras::extra_system(&db, &chat, o, &recent)
+    };
     let ps = PromptSettings {
         user_name: settings.user_name.clone(),
         user_description: settings.user_description.clone(),
@@ -919,32 +989,65 @@ async fn run_generation(
         use_card_system_prompt: settings.use_card_system_prompt,
         default_system: Some(settings.default_system.clone()).filter(|s| !s.trim().is_empty()),
         default_scan_depth: 4,
+        continue_last: continuing,
+    };
+    // lorebooks attached to the speaker work together with the book inside her card
+    let speaker_card = {
+        let db = st.db.lock().unwrap();
+        crate::extras::card_with_lorebooks(&db, o, speaker_char)
     };
     let prompt = build_prompt(&PromptInput {
         speaker_id: &speaker_id,
-        speaker: &speaker_char.card,
+        speaker: &speaker_card,
         others: &others,
         history: &items,
         settings: &ps,
         group: chat.kind != "dm",
         trusted: speaker_char.trusted,
+        extra_system: &extra,
     });
-    emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "start" }));
+    emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "start", "continue_of": cont }));
 
     let params = GenParams { temperature: settings.temperature, top_p: settings.top_p, max_tokens: ps.max_response_tokens };
     let full = llm::stream_chat(&st.http, &endpoint, &prompt, &params, cancel, |t| {
-        emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "token", "text": t }));
+        emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "token", "text": t, "continue_of": cont }));
     })
     .await?;
 
-    let text = clean_reply(&full, &speaker_char.card.name);
-    if text.is_empty() {
+    // A continuation keeps its leading spacing (it may start a new paragraph); only a stray "Name:" is removed.
+    let text = if continuing {
+        let prefix = format!("{}:", speaker_char.card.name);
+        let t = full.trim_start();
+        if t.starts_with(&prefix) { t[prefix.len()..].trim_start().to_string() } else { full.clone() }
+    } else {
+        clean_reply(&full, &speaker_char.card.name)
+    };
+    // hidden [variable: add 3] lines of any switched-on mechanic pack are taken out and applied
+    let text = {
+        let db = st.db.lock().unwrap();
+        let turns = db::list_messages(&db, chat_id).map(|m| m.iter().filter(|x| x.role == "character").count() as u64).unwrap_or(0) + u64::from(target.is_none());
+        crate::extras::after_reply(st, &db, chat_id, o, &text, turns)
+    };
+    if text.trim().is_empty() {
         return Err("The model returned an empty reply. Try again, or raise the max length in Settings.".into());
     }
 
     let msg = {
         let db = st.db.lock().unwrap();
         let m = match target {
+            // extend the version being shown, in place
+            Some(t) if continuing => {
+                let mut swipes = t.swipes.clone();
+                let idx = (t.swipe_index.max(0) as usize).min(swipes.len().saturating_sub(1));
+                let joined = join_continuation(swipes.get(idx).map(String::as_str).unwrap_or(""), &text);
+                if swipes.is_empty() {
+                    swipes.push(joined);
+                } else {
+                    swipes[idx] = joined;
+                }
+                db::save_message_swipes(&db, t.id, &swipes, idx as i64).map_err(e)?;
+                db::get_message(&db, t.id).map_err(e)?.ok_or("Message vanished")?
+            }
             Some(t) => {
                 let mut swipes = t.swipes.clone();
                 swipes.push(text);
@@ -960,12 +1063,12 @@ async fn run_generation(
         }
         m
     };
-    emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "done", "message": msg }));
+    emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "done", "message": msg, "continue_of": cont }));
     Ok(msg)
 }
 
 /// One full reply, with busy/cancel bookkeeping and error events.
-async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option<String>, regen: Option<i64>, rid: String) -> R<Message> {
+async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option<String>, regen: Option<i64>, cont: Option<i64>, rid: String) -> R<Message> {
     if !st.busy.lock().unwrap().insert(chat_id) {
         let err = "This chat is already generating a reply.".to_string();
         emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "kind": "error", "error": err }));
@@ -974,7 +1077,7 @@ async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option
     let cancel = Arc::new(Notify::new());
     st.cancels.lock().unwrap().insert(rid.clone(), cancel.clone());
     let _guard = BusyGuard { st: st.clone(), chat_id, rid: rid.clone() };
-    let res = run_generation(st, o, &rid, chat_id, speaker, regen, &cancel).await;
+    let res = run_generation(st, o, &rid, chat_id, speaker, regen, cont, &cancel).await;
     if let Err(err) = &res {
         emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "kind": "error", "error": err }));
     }
@@ -983,13 +1086,13 @@ async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option
 
 /// Starts a reply in the background; progress arrives as `dorms://gen` events.
 #[tauri::command]
-pub fn generate(state: State<'_, Shared>, chat_id: i64, character_id: Option<String>, regenerate_message_id: Option<i64>) -> R<String> {
+pub fn generate(state: State<'_, Shared>, chat_id: i64, character_id: Option<String>, regenerate_message_id: Option<i64>, continue_message_id: Option<i64>) -> R<String> {
     let o = owner(&state)?;
     let rid = uid();
     let st: Shared = state.inner().clone();
     let r = rid.clone();
     tauri::async_runtime::spawn(async move {
-        let _ = generate_once(&st, &o, chat_id, character_id, regenerate_message_id, r).await;
+        let _ = generate_once(&st, &o, chat_id, character_id, regenerate_message_id, continue_message_id, r).await;
     });
     Ok(rid)
 }
@@ -1103,7 +1206,7 @@ async fn auto_loop(st: Shared, o: db::Owner, chat_id: i64) {
         if st.busy.lock().unwrap().contains(&chat_id) {
             continue;
         }
-        if generate_once(&st, &o, chat_id, None, None, uid()).await.is_err() {
+        if generate_once(&st, &o, chat_id, None, None, None, uid()).await.is_err() {
             let _ = db::set_auto_chat(&st.db.lock().unwrap(), chat_id, false);
             emit(&st, "dorms://auto-stopped", json!({ "chat_id": chat_id, "reason": "error" }));
             break;

@@ -1,17 +1,19 @@
 import { useRef, useState } from "react";
-import { api, type ImportPreview, type SessionState } from "../api";
+import { api, type Frame, type ImportPreview, type SessionState } from "../api";
+import { frameStyle } from "./Art";
 import { errText, hue, timeAgo } from "../lib/util";
 import { Modal } from "./ui";
 
 export const PASSCODE_NOTE =
   "A passcode keeps other people on this computer out of your profile inside the app. It doesn't encrypt your files on disk.";
 
-export function ProfileAvatar({ name, size = 56 }: { name: string; size?: number }) {
+/** A person's picture, or their initial on a colour when they have none. */
+export function ProfileAvatar({ name, size = 56, src, frame }: { name: string; size?: number; src?: string | null; frame?: Frame | null }) {
   const h = hue(name);
   return (
-    <div className="avatar" style={{ width: size, height: size, display: "grid", placeItems: "center", fontFamily: "var(--serif)", fontSize: size * 0.45, color: "#fff",
+    <div className="avatar" style={{ width: size, height: size, display: "grid", placeItems: "center", fontFamily: "var(--serif)", fontSize: size * 0.45, color: "#fff", overflow: "hidden", flex: "none",
       background: `linear-gradient(135deg, hsl(${h} 45% 38%), hsl(${(h + 50) % 360} 50% 24%))` }}>
-      {(name.trim()[0] ?? "?").toUpperCase()}
+      {src ? <img src={src} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", ...frameStyle(frame) }} /> : (name.trim()[0] ?? "?").toUpperCase()}
     </div>
   );
 }
