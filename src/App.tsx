@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type AppInfo, type Character, type Chat, type Dorm, type Folder, type Room, type SessionState, type Settings } from "./api";
+import { api, type AppInfo, type Character, type Chat, type Dorm, type Folder, type Persona, type Room, type SessionState, type Settings } from "./api";
 import { StoreCtx, type Route, type Store } from "./store";
 import { Logo, ToastProvider, useToast } from "./components/ui";
 import { ProfileAvatar } from "./components/ProfileForms";
+import { personaAvatar, profileAvatar } from "./api";
 import Welcome from "./pages/Welcome";
 import Home from "./pages/Home";
 import Library from "./pages/Library";
@@ -19,7 +20,7 @@ const DEFAULTS: Settings = {
   temperature: 0.8, top_p: 0.95, local_model: "", local_gpu: true, openai_base_url: "https://api.openai.com/v1",
   openai_model: "gpt-4o-mini", anthropic_model: "claude-haiku-5-5", use_card_system_prompt: true,
   default_system: "", theme: "dusk",
-  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true,
+  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true, active_persona: "",
 };
 
 const NAV: { page: Route["page"]; label: string; icon: string }[] = [
@@ -40,6 +41,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
   const [dorms, setDorms] = useState<Dorm[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [personas, setPersonas] = useState<Persona[]>([]);
   const [settings, setSettingsState] = useState<Settings>(DEFAULTS);
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [modelCount, setModelCount] = useState(0);
@@ -47,10 +49,10 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
 
   const refresh = useCallback(async () => {
     try {
-      const [c, ch, d, s, m, rm, fo] = await Promise.all([
-        api.listCharacters(), api.listChats(), api.listDorms(), api.getSettings(), api.listModels(), api.listRooms(), api.listFolders(),
+      const [c, ch, d, s, m, rm, fo, pe] = await Promise.all([
+        api.listCharacters(), api.listChats(), api.listDorms(), api.getSettings(), api.listModels(), api.listRooms(), api.listFolders(), api.listPersonas(),
       ]);
-      setCharacters(c); setChats(ch); setDorms(d); setRooms(rm); setFolders(fo); setSettingsState(s); setModelCount(m.length);
+      setCharacters(c); setChats(ch); setDorms(d); setRooms(rm); setFolders(fo); setPersonas(pe); setSettingsState(s); setModelCount(m.length);
     } catch (e) {
       toast(`Could not load your data: ${errText(e)}`, "err");
     } finally {
@@ -65,9 +67,15 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
     setSettingsState(await api.saveSettings(s));
   }, []);
 
+  const me = useMemo<Store["me"]>(() => {
+    const p = personas.find((x) => x.id === settings.active_persona) ?? null;
+    if (p) return { name: p.name, avatar: personaAvatar(p), frame: p.frame, persona: p };
+    return { name: settings.user_name, avatar: profileAvatar(session.profile), frame: session.profile?.avatar_frame ?? null, persona: null };
+  }, [personas, settings.active_persona, settings.user_name, session.profile]);
+
   const store: Store = useMemo(
-    () => ({ characters, chats, dorms, rooms, folders, settings, info, modelCount, go: setRoute, refresh, setSettings, session, setSession }),
-    [characters, chats, dorms, rooms, folders, settings, info, modelCount, refresh, setSettings, session, setSession],
+    () => ({ characters, chats, dorms, rooms, folders, personas, me, settings, info, modelCount, go: setRoute, refresh, setSettings, session, setSession }),
+    [characters, chats, dorms, rooms, folders, personas, me, settings, info, modelCount, refresh, setSettings, session, setSession],
   );
 
   return (
@@ -83,7 +91,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
           ))}
           <div className="grow" />
           <button className="nav" style={{ gap: 8 }} onClick={() => setRoute({ page: "settings", tab: "profile" })} title="Profile settings">
-            <ProfileAvatar name={session.profile?.handle ?? "Guest"} size={26} />
+            <ProfileAvatar name={session.profile?.handle ?? "Guest"} size={26} src={profileAvatar(session.profile)} frame={session.profile?.avatar_frame} />
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.profile?.handle ?? "Guest"}</span>
           </button>
           <small>v{info?.version ?? "…"}{info?.portable ? " · portable" : ""}</small>

@@ -486,7 +486,11 @@ pub fn create_chat(
     let chat = db::create_chat(&db, dorm_id, name.trim(), &kind, &character_ids, &o).map_err(e)?;
     // Seed greetings: DMs get the character's, groups get each one's. Channels start empty.
     if kind != "channel" {
-        let user = db::get_settings(&db, &o).user_name;
+        let user = {
+            let mut s = db::get_settings(&db, &o);
+            crate::extras::apply_persona(&db, &o, &mut s);
+            s.user_name
+        };
         for id in character_ids.iter().take(if kind == "dm" { 1 } else { usize::MAX }) {
             if let Some(c) = db::get_character(&db, id, &o).map_err(e)? {
                 let mut greetings: Vec<String> = vec![];
@@ -614,7 +618,13 @@ pub fn save_settings(state: State<'_, Shared>, mut settings: Settings) -> R<Sett
             p.id = uid();
         }
     }
-    db::save_settings(&state.db.lock().unwrap(), &settings, &owner(&state)?).map_err(e)?;
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    // the active persona has to be one of this person's own (otherwise the plain name is used)
+    if !settings.active_persona.is_empty() && db::get_persona(&db, &settings.active_persona, &o).map_err(e)?.is_none() {
+        settings.active_persona.clear();
+    }
+    db::save_settings(&db, &settings, &o).map_err(e)?;
     Ok(settings)
 }
 
@@ -897,7 +907,8 @@ async fn run_generation(
 ) -> R<Message> {
     let (settings, chat, chars, msgs) = {
         let db = st.db.lock().unwrap();
-        let settings = db::get_settings(&db, o);
+        let mut settings = db::get_settings(&db, o);
+        crate::extras::apply_persona(&db, o, &mut settings);
         let chat = db::get_chat(&db, chat_id, o).map_err(e)?.ok_or("Chat not found")?;
         let mut chars = HashMap::new();
         for id in &chat.character_ids {

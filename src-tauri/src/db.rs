@@ -123,6 +123,22 @@ pub struct Room {
     pub music_name: String,
 }
 
+/// Someone the player can be: a name, who they are, and how they like to roleplay. The active one is described to the AI
+/// before the chat begins (it replaces the plain name and "about you" text).
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Persona {
+    pub id: String,
+    pub name: String,
+    /// Who this persona is (appearance, background, personality).
+    pub description: String,
+    /// How the player wants to roleplay and what the AI should remember.
+    pub style: String,
+    /// Picture (path inside the data folder) and its framing.
+    pub avatar: Option<String>,
+    pub frame: Option<Frame>,
+    pub created_at: i64,
+}
+
 /// A lorebook in the library: keyword-triggered lore that can be attached to any number of characters.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Lorebook {
@@ -293,6 +309,8 @@ pub struct Settings {
     pub stt_language: String,
     /// Send the message as soon as it has been transcribed.
     pub stt_auto_send: bool,
+    /// The persona being played (an id from `personas`); empty means the plain name and description above.
+    pub active_persona: String,
 }
 
 impl Default for Settings {
@@ -318,6 +336,7 @@ impl Default for Settings {
             stt_model: "whisper-1".into(),
             stt_language: String::new(),
             stt_auto_send: true,
+            active_persona: String::new(),
         }
     }
 }
@@ -359,6 +378,10 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
             id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id TEXT, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'other',
             description TEXT NOT NULL DEFAULT '', owner_kind TEXT NOT NULL DEFAULT 'self', character_id TEXT,
             backdrop TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS personas(
+            id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', style TEXT NOT NULL DEFAULT '',
+            avatar TEXT, frame TEXT, created_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS profile_avatars(profile_id TEXT PRIMARY KEY, file TEXT NOT NULL, frame TEXT);
          CREATE TABLE IF NOT EXISTS lorebooks(
             id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS folders(
@@ -379,7 +402,7 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
     ensure_column(&conn, "rooms", "music", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "rooms", "music_name", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "chats", "style", "TEXT NOT NULL DEFAULT 'chat'")?;
-    for t in ["rooms", "mechanics", "notes", "folders", "lorebooks"] {
+    for t in ["rooms", "mechanics", "notes", "folders", "lorebooks", "personas"] {
         conn.execute_batch(&format!("CREATE INDEX IF NOT EXISTS idx_{t}_profile ON {t}(profile_id);"))?;
     }
     // Local profiles: everything a person owns carries their profile id. NULL is the guest space, which is
@@ -516,6 +539,61 @@ pub fn update_room(c: &Connection, r: &Room, owner: &Owner) -> R<()> {
 pub fn delete_room(c: &Connection, id: i64, owner: &Owner) -> R<()> {
     c.execute("UPDATE dorms SET room_id=NULL WHERE room_id=?1 AND profile_id IS ?2", params![id, owner])?;
     c.execute("DELETE FROM rooms WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
+// ----- personas and profile pictures -----
+
+fn row_persona(r: &rusqlite::Row) -> R<Persona> {
+    let fr: Option<String> = r.get(5)?;
+    Ok(Persona { id: r.get(0)?, name: r.get(1)?, description: r.get(2)?, style: r.get(3)?, avatar: r.get(4)?, frame: fr.and_then(|j| serde_json::from_str(&j).ok()), created_at: r.get(6)? })
+}
+const PERSONA_COLS: &str = "id,name,description,style,avatar,frame,created_at";
+
+pub fn list_personas(c: &Connection, owner: &Owner) -> R<Vec<Persona>> {
+    let mut s = c.prepare(&format!("SELECT {PERSONA_COLS} FROM personas WHERE profile_id IS ?1 ORDER BY created_at, name COLLATE NOCASE"))?;
+    let rows = s.query_map([owner], row_persona)?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_persona(c: &Connection, id: &str, owner: &Owner) -> R<Option<Persona>> {
+    c.query_row(&format!("SELECT {PERSONA_COLS} FROM personas WHERE id=?1 AND profile_id IS ?2"), params![id, owner], row_persona).optional()
+}
+
+pub fn save_persona(c: &Connection, p: &Persona, owner: &Owner) -> R<()> {
+    let fr = p.frame.and_then(|x| serde_json::to_string(&x).ok());
+    c.execute(
+        "INSERT INTO personas(id,profile_id,name,description,style,avatar,frame,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, style=excluded.style, avatar=excluded.avatar, frame=excluded.frame WHERE profile_id IS ?2",
+        params![p.id, owner, p.name, p.description, p.style, p.avatar, fr, p.created_at],
+    )?;
+    Ok(())
+}
+
+pub fn delete_persona(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM personas WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
+pub fn get_profile_avatar(c: &Connection, pid: &str) -> Option<(String, Option<Frame>)> {
+    c.query_row("SELECT file,frame FROM profile_avatars WHERE profile_id=?1", [pid], |r| {
+        let fr: Option<String> = r.get(1)?;
+        Ok((r.get::<_, String>(0)?, fr.and_then(|j| serde_json::from_str(&j).ok())))
+    })
+    .ok()
+}
+
+pub fn set_profile_avatar(c: &Connection, pid: &str, file: &str, frame: Option<Frame>) -> R<()> {
+    let fr = frame.and_then(|x| serde_json::to_string(&x).ok());
+    c.execute(
+        "INSERT INTO profile_avatars(profile_id,file,frame) VALUES(?1,?2,?3) ON CONFLICT(profile_id) DO UPDATE SET file=excluded.file, frame=excluded.frame",
+        params![pid, file, fr],
+    )?;
+    Ok(())
+}
+
+pub fn clear_profile_avatar(c: &Connection, pid: &str) -> R<()> {
+    c.execute("DELETE FROM profile_avatars WHERE profile_id=?1", [pid])?;
     Ok(())
 }
 
@@ -944,11 +1022,13 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM notes WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM folders WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM lorebooks WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM personas WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM chats WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM dorms WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM characters WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM settings WHERE key=?1", [settings_key(owner)])?;
     if let Some(id) = owner {
+        c.execute("DELETE FROM profile_avatars WHERE profile_id=?1", [id])?;
         c.execute("DELETE FROM profiles WHERE id=?1", [id])?;
     }
     Ok(())
@@ -956,7 +1036,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
@@ -1066,6 +1146,25 @@ mod tests {
         assert_eq!(list_notes(&c, &a).unwrap().len(), 1);
         wipe_owner(&c, &a).unwrap();
         assert!(list_notes(&c, &a).unwrap().is_empty() && list_folders(&c, &a).unwrap().is_empty() && list_lorebooks(&c, &a).unwrap().is_empty());
+    }
+
+    #[test]
+    fn personas_and_profile_pictures_are_private() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        let p = Persona { id: "p1".into(), name: "Kai".into(), description: "d".into(), style: "s".into(), avatar: Some("media/x.png".into()), frame: Some(Frame { x: 0.2, y: 0.3, zoom: 2.0 }), created_at: 1 };
+        save_persona(&c, &p, &a).unwrap();
+        assert!(list_personas(&c, &b).unwrap().is_empty() && get_persona(&c, "p1", &b).unwrap().is_none());
+        save_persona(&c, &Persona { name: "Stolen".into(), ..p.clone() }, &b).unwrap();
+        assert_eq!(get_persona(&c, "p1", &a).unwrap().unwrap().name, "Kai", "B can't overwrite A's persona by reusing the id");
+        assert_eq!(get_persona(&c, "p1", &a).unwrap().unwrap().frame, p.frame);
+        delete_persona(&c, "p1", &b).unwrap();
+        assert!(get_persona(&c, "p1", &a).unwrap().is_some());
+        set_profile_avatar(&c, "a", "media/a.gif", Some(Frame { x: 0.1, y: 0.1, zoom: 1.5 })).unwrap();
+        assert_eq!(get_profile_avatar(&c, "a").unwrap().0, "media/a.gif");
+        assert!(get_profile_avatar(&c, "b").is_none());
+        wipe_owner(&c, &a).unwrap();
+        assert!(list_personas(&c, &a).unwrap().is_empty() && get_profile_avatar(&c, "a").is_none(), "wiping a profile removes its personas and picture");
     }
 
     #[test]

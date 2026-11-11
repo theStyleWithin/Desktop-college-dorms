@@ -702,3 +702,209 @@ pub fn card_with_lorebooks(db: &Connection, o: &db::Owner, c: &db::Character) ->
     }
     card
 }
+
+// ---------------------------------------------------------------------------
+// Personas and profile pictures
+// ---------------------------------------------------------------------------
+
+const AVATAR_EXTS: [&str; 6] = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
+const MAX_AVATAR_BYTES: usize = 25 * 1024 * 1024;
+
+fn avatar_file(req: &Request<'_>, stem: &str) -> R<(Vec<u8>, String)> {
+    let name = header(req, "x-file-name");
+    let bytes = raw_body(req)?;
+    if bytes.len() > MAX_AVATAR_BYTES {
+        return Err("That picture is too large (25 MB at most).".into());
+    }
+    let ext = std::path::Path::new(&name).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+    if !AVATAR_EXTS.contains(&ext.as_str()) {
+        return Err("A picture has to be a PNG, JPG, GIF (animated is fine) or WebP image.".into());
+    }
+    let safe: String = stem.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+    Ok((bytes.to_vec(), format!("media/avatar-{safe}-{}.{ext}", db::now())))
+}
+
+#[derive(Serialize)]
+pub struct PersonaOut {
+    #[serde(flatten)]
+    persona: db::Persona,
+    avatar_path: Option<String>,
+}
+
+fn persona_out(st: &AppState, p: db::Persona) -> PersonaOut {
+    let avatar_path = p.avatar.as_ref().map(|a| st.data_dir.join(a).to_string_lossy().to_string());
+    PersonaOut { persona: p, avatar_path }
+}
+
+fn clean_text(s: &str, max: usize) -> String {
+    s.chars().filter(|c| !c.is_control() || *c == '\n' || *c == '\t').take(max).collect::<String>().trim().to_string()
+}
+
+#[tauri::command]
+pub fn list_personas(state: State<'_, Shared>) -> R<Vec<PersonaOut>> {
+    let o = owner(&state)?;
+    let l = db::list_personas(&state.db.lock().unwrap(), &o).map_err(e)?;
+    Ok(l.into_iter().map(|p| persona_out(&state, p)).collect())
+}
+
+/// Creates the persona when `id` is empty. The picture changes only through its own commands.
+#[tauri::command]
+pub fn save_persona(state: State<'_, Shared>, persona: db::Persona) -> R<PersonaOut> {
+    let name: String = persona.name.chars().filter(|c| !c.is_control()).take(60).collect::<String>().trim().to_string();
+    if name.is_empty() {
+        return Err("Give the persona a name.".into());
+    }
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let existing = if persona.id.is_empty() { None } else { db::get_persona(&db, &persona.id, &o).map_err(e)? };
+    if existing.is_none() && db::list_personas(&db, &o).map_err(e)?.len() >= 100 {
+        return Err("That's a lot of personas. Delete some first.".into());
+    }
+    let saved = db::Persona {
+        id: existing.as_ref().map(|p| p.id.clone()).unwrap_or_else(uid),
+        name,
+        description: clean_text(&persona.description, 20_000),
+        style: clean_text(&persona.style, 20_000),
+        avatar: existing.as_ref().and_then(|p| p.avatar.clone()),
+        frame: existing.as_ref().and_then(|p| p.frame),
+        created_at: existing.map(|p| p.created_at).unwrap_or_else(db::now),
+    };
+    db::save_persona(&db, &saved, &o).map_err(e)?;
+    Ok(persona_out(&state, saved))
+}
+
+#[tauri::command]
+pub fn delete_persona(state: State<'_, Shared>, id: String) -> R<()> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    if let Some(p) = db::get_persona(&db, &id, &o).map_err(e)? {
+        if let Some(a) = &p.avatar {
+            let _ = std::fs::remove_file(state.data_dir.join(a));
+        }
+        let mut s = db::get_settings(&db, &o);
+        if s.active_persona == id {
+            s.active_persona.clear();
+            db::save_settings(&db, &s, &o).map_err(e)?;
+        }
+    }
+    db::delete_persona(&db, &id, &o).map_err(e)
+}
+
+/// Body: raw image bytes. Headers: `x-persona-id`, `x-file-name` (percent-encoded).
+#[tauri::command]
+pub fn set_persona_avatar(request: Request<'_>, state: State<'_, Shared>) -> R<PersonaOut> {
+    let id = header(&request, "x-persona-id");
+    let (bytes, rel) = avatar_file(&request, &format!("p-{id}"))?;
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut p = db::get_persona(&db, &id, &o).map_err(e)?.ok_or("Save the persona first")?;
+    std::fs::write(state.data_dir.join(&rel), bytes).map_err(e)?;
+    if let Some(old) = &p.avatar {
+        let _ = std::fs::remove_file(state.data_dir.join(old));
+    }
+    p.avatar = Some(rel);
+    p.frame = None;
+    db::save_persona(&db, &p, &o).map_err(e)?;
+    Ok(persona_out(&state, p))
+}
+
+#[tauri::command]
+pub fn set_persona_frame(state: State<'_, Shared>, id: String, frame: Option<db::Frame>) -> R<PersonaOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut p = db::get_persona(&db, &id, &o).map_err(e)?.ok_or("Persona not found")?;
+    p.frame = frame.and_then(|f| f.clean());
+    db::save_persona(&db, &p, &o).map_err(e)?;
+    Ok(persona_out(&state, p))
+}
+
+#[tauri::command]
+pub fn clear_persona_avatar(state: State<'_, Shared>, id: String) -> R<PersonaOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut p = db::get_persona(&db, &id, &o).map_err(e)?.ok_or("Persona not found")?;
+    if let Some(old) = p.avatar.take() {
+        let _ = std::fs::remove_file(state.data_dir.join(old));
+    }
+    p.frame = None;
+    db::save_persona(&db, &p, &o).map_err(e)?;
+    Ok(persona_out(&state, p))
+}
+
+/// Who the player is in chats from now on. An empty id goes back to the plain name and description in Settings.
+#[tauri::command]
+pub fn set_active_persona(state: State<'_, Shared>, id: Option<String>) -> R<db::Settings> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut s = db::get_settings(&db, &o);
+    s.active_persona = match id {
+        Some(i) if !i.is_empty() => {
+            db::get_persona(&db, &i, &o).map_err(e)?.ok_or("That persona doesn't exist any more.")?;
+            i
+        }
+        _ => String::new(),
+    };
+    db::save_settings(&db, &s, &o).map_err(e)?;
+    Ok(s)
+}
+
+/// The name and description the AI is given for the player: the active persona's, or the plain ones from Settings.
+/// The persona's roleplay preferences ride along with its description, so the AI knows beforehand how the player
+/// wants to play and what to remember.
+pub fn apply_persona(db: &Connection, o: &db::Owner, s: &mut db::Settings) {
+    if s.active_persona.is_empty() {
+        return;
+    }
+    let Some(p) = db::get_persona(db, &s.active_persona, o).ok().flatten() else { return };
+    s.user_name = p.name.clone();
+    let mut d = p.description.trim().to_string();
+    if !p.style.trim().is_empty() {
+        if !d.is_empty() {
+            d.push_str("\n\n");
+        }
+        d.push_str(&format!("How {} wants to roleplay, and what to remember:\n{}", p.name, p.style.trim()));
+    }
+    s.user_description = d;
+}
+
+// ----- profile picture (named profiles) -----
+
+fn session_profile(st: &AppState) -> R<String> {
+    let s = st.session.lock().unwrap();
+    match (&s.profile, s.chosen) {
+        (Some(p), true) => Ok(p.clone()),
+        (None, true) => Err("The guest space has no profile picture. Make it a real profile first (Settings → Profile), or use a persona picture.".into()),
+        _ => Err("Pick a profile first.".into()),
+    }
+}
+
+/// Body: raw image bytes. Header: `x-file-name` (percent-encoded). Replaces the current picture and resets its framing.
+#[tauri::command]
+pub fn set_profile_avatar(request: Request<'_>, state: State<'_, Shared>) -> R<()> {
+    let pid = session_profile(&state)?;
+    let (bytes, rel) = avatar_file(&request, &format!("profile-{pid}"))?;
+    let db = state.db.lock().unwrap();
+    std::fs::write(state.data_dir.join(&rel), bytes).map_err(e)?;
+    if let Some((old, _)) = db::get_profile_avatar(&db, &pid) {
+        let _ = std::fs::remove_file(state.data_dir.join(old));
+    }
+    db::set_profile_avatar(&db, &pid, &rel, None).map_err(e)
+}
+
+#[tauri::command]
+pub fn set_profile_avatar_frame(state: State<'_, Shared>, frame: Option<db::Frame>) -> R<()> {
+    let pid = session_profile(&state)?;
+    let db = state.db.lock().unwrap();
+    let (file, _) = db::get_profile_avatar(&db, &pid).ok_or("There is no picture to frame.")?;
+    db::set_profile_avatar(&db, &pid, &file, frame.and_then(|f| f.clean())).map_err(e)
+}
+
+#[tauri::command]
+pub fn clear_profile_avatar(state: State<'_, Shared>) -> R<()> {
+    let pid = session_profile(&state)?;
+    let db = state.db.lock().unwrap();
+    if let Some((old, _)) = db::get_profile_avatar(&db, &pid) {
+        let _ = std::fs::remove_file(state.data_dir.join(old));
+    }
+    db::clear_profile_avatar(&db, &pid).map_err(e)
+}

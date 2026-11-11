@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, type ProfileInfo, type SessionState } from "../api";
+import { api, profileAvatar, type ProfileInfo, type SessionState } from "../api";
 import { CreateProfileModal, ImportProfileModal, ProfileAvatar } from "../components/ProfileForms";
 import { Logo, Modal } from "../components/ui";
 import { errText, timeAgo } from "../lib/util";
@@ -32,7 +32,7 @@ export default function Welcome({ session, onSession }: { session: SessionState;
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))" }}>
         {session.profiles.map((p) => (
           <button key={p.id} className="ccard" style={{ gridTemplateColumns: "auto 1fr", alignItems: "center", gap: 14, padding: 14, minHeight: 0, textAlign: "left" }} onClick={() => pickProfile(p)} disabled={busy}>
-            <ProfileAvatar name={p.display_name || p.handle} />
+            <ProfileAvatar name={p.display_name || p.handle} src={profileAvatar(p)} frame={p.avatar_frame} />
             <div style={{ minWidth: 0 }}>
               <h3 style={{ padding: 0 }}>{p.handle} {p.has_passcode && <span title="Has a passcode" aria-label="Has a passcode">🔒</span>}</h3>
               <div className="hint">{p.last_login ? `Last here ${timeAgo(p.last_login)}` : "New"}</div>

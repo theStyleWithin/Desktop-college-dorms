@@ -161,6 +161,8 @@ export interface Settings {
   profiles: ApiProfile[];
   user_name: string;
   user_description: string;
+  /** The persona being played (an id), or "" for the plain name and description. */
+  active_persona: string;
   context_tokens: number;
   max_tokens: number;
   temperature: number;
@@ -187,7 +189,8 @@ export interface EngineStatus { running: boolean; model: string; backend: string
 export interface AppInfo { version: string; data_dir: string; portable: boolean; platform: string; local_engine: boolean }
 export interface ImportResult { character: Character; warnings: string[]; spec: string }
 
-export interface ProfileInfo { id: string; handle: string; display_name: string; has_passcode: boolean; created_at: number; last_login: number }
+export interface ProfileInfo { id: string; handle: string; display_name: string; has_passcode: boolean; created_at: number; last_login: number; avatar?: string | null; avatar_frame?: Frame | null }
+export interface Persona { id: string; name: string; description: string; style: string; avatar: string | null; frame: Frame | null; created_at: number; avatar_path?: string | null }
 export interface SessionState {
   signed_in: boolean;
   guest: boolean;
@@ -272,13 +275,29 @@ export const api = {
   setFolderFrame: (id: string, frame: Frame | null) => invoke<Folder>("set_folder_frame", { id, frame }),
   clearFolderCover: (id: string) => invoke<Folder>("clear_folder_cover", { id }),
   moveCharacters: (ids: string[], folder: string | null) => invoke<void>("move_characters", { ids, folder }),
+  // personas (who you are in chats) and the profile picture
+  listPersonas: () => invoke<Persona[]>("list_personas"),
+  savePersona: (p: { id?: string; name: string; description: string; style: string }) =>
+    invoke<Persona>("save_persona", { persona: { avatar: null, frame: null, created_at: 0, ...p, id: p.id ?? "" } }),
+  deletePersona: (id: string) => invoke<void>("delete_persona", { id }),
+  async setPersonaAvatar(id: string, file: File): Promise<Persona> {
+    return bin("set_persona_avatar", new Uint8Array(await file.arrayBuffer()), { "x-persona-id": id, "x-file-name": enc(file.name) });
+  },
+  setPersonaFrame: (id: string, frame: Frame | null) => invoke<Persona>("set_persona_frame", { id, frame }),
+  clearPersonaAvatar: (id: string) => invoke<Persona>("clear_persona_avatar", { id }),
+  setActivePersona: (id: string | null) => invoke<Settings>("set_active_persona", { id }),
+  async setProfileAvatar(file: File): Promise<void> {
+    await bin("set_profile_avatar", new Uint8Array(await file.arrayBuffer()), { "x-file-name": enc(file.name) });
+  },
+  setProfileAvatarFrame: (frame: Frame | null) => invoke<void>("set_profile_avatar_frame", { frame }),
+  clearProfileAvatar: () => invoke<void>("clear_profile_avatar"),
   // lorebooks
   listLorebooks: () => invoke<Lorebook[]>("list_lorebooks"),
-  saveLorebook: (b: { id?: string; name: string; book: CharacterBook }) => invoke<Lorebook>("save_lorebook", { lorebook: { id: "", created_at: 0, updated_at: 0, ...b } }),
+  saveLorebook: (b: { id?: string; name: string; book: CharacterBook }) => invoke<Lorebook>("save_lorebook", { lorebook: { created_at: 0, updated_at: 0, ...b, id: b.id ?? "" } }),
   deleteLorebook: (id: string) => invoke<void>("delete_lorebook", { id }),
   // notes
   listNotes: () => invoke<Note[]>("list_notes"),
-  saveNote: (note: Pick<Note, "title" | "body" | "pinned"> & { id?: string }) => invoke<Note>("save_note", { note: { id: "", created_at: 0, updated_at: 0, ...note } }),
+  saveNote: (note: Pick<Note, "title" | "body" | "pinned"> & { id?: string }) => invoke<Note>("save_note", { note: { created_at: 0, updated_at: 0, ...note, id: note.id ?? "" } }),
   deleteNote: (id: string) => invoke<void>("delete_note", { id }),
   // background music
   async setRoomMusic(id: number, file: File): Promise<Room> {
@@ -380,6 +399,8 @@ export const onModelProgress = (cb: (e: ModelProgress) => void): Promise<Unliste
 export const onAutoStopped = (cb: (e: { chat_id: number; reason: string }) => void): Promise<UnlistenFn> =>
   listen("dorms://auto-stopped", (ev) => cb(ev.payload as { chat_id: number; reason: string }));
 
+export const personaAvatar = (p: { avatar_path?: string | null }) => (p.avatar_path ? convertFileSrc(p.avatar_path) : null);
+export const profileAvatar = (p: { avatar?: string | null } | null | undefined) => (p?.avatar ? convertFileSrc(p.avatar) : null);
 export const folderCover = (f: { cover_path?: string | null }) => (f.cover_path ? convertFileSrc(f.cover_path) : null);
 export const musicUrl = (x: { music_path?: string | null }) => (x.music_path ? convertFileSrc(x.music_path) : null);
 export const roomBackdrop = (r: { backdrop_path?: string | null }) => (r.backdrop_path ? convertFileSrc(r.backdrop_path) : null);

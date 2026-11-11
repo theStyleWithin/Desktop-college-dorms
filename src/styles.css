@@ -386,3 +386,11 @@ button.chip { cursor: pointer; } button.chip.on { background: var(--accent); col
 .music-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; color: var(--muted); }
 .music-bar input[type=range] { width: 70px; }
 .music-chip { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: #00000030; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9rem; }
+
+/* ---- personas ---- */
+.persona-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.persona-card { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--panel); }
+.persona-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.persona-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }
+.f2 { display: grid; gap: 4px; }
+.f2 > span { font-weight: 600; font-size: .9rem; }

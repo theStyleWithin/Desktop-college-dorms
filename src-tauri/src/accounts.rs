@@ -50,6 +50,9 @@ pub struct ProfileOut {
     pub has_passcode: bool,
     pub created_at: i64,
     pub last_login: i64,
+    /// Absolute path of the profile picture, and how it is framed (filled in when the session is described).
+    pub avatar: Option<String>,
+    pub avatar_frame: Option<db::Frame>,
 }
 
 impl From<&db::Profile> for ProfileOut {
@@ -61,6 +64,8 @@ impl From<&db::Profile> for ProfileOut {
             has_passcode: p.passcode_hash.is_some(),
             created_at: p.created_at,
             last_login: p.last_login,
+            avatar: None,
+            avatar_frame: None,
         }
     }
 }
@@ -175,13 +180,24 @@ fn session_out(st: &AppState) -> R<SessionOut> {
     };
     let db = st.db.lock().unwrap();
     let profiles = db::list_profiles(&db).map_err(e)?;
-    let current = profile.as_ref().and_then(|id| profiles.iter().find(|p| &p.id == id)).map(ProfileOut::from);
+    let outs: Vec<ProfileOut> = profiles
+        .iter()
+        .map(|p| {
+            let mut o = ProfileOut::from(p);
+            if let Some((file, frame)) = db::get_profile_avatar(&db, &p.id) {
+                o.avatar = Some(st.data_dir.join(file).to_string_lossy().to_string());
+                o.avatar_frame = frame;
+            }
+            o
+        })
+        .collect();
+    let current = profile.as_ref().and_then(|id| outs.iter().find(|p| &p.id == id)).cloned();
     let guest_items = ["characters", "dorms", "chats"].iter().map(|t| db::count_rows(&db, t, &None)).sum();
     Ok(SessionOut {
         signed_in: chosen,
         guest: chosen && profile.is_none(),
         profile: current,
-        profiles: profiles.iter().map(ProfileOut::from).collect(),
+        profiles: outs,
         ask_on_launch: db::get_device(&db).ask_on_launch,
         guest_items,
     })
@@ -459,6 +475,11 @@ struct Data {
     folders: Vec<db::Folder>,
     #[serde(default)]
     lorebooks: Vec<db::Lorebook>,
+    #[serde(default)]
+    personas: Vec<db::Persona>,
+    /// The profile's own picture (file name inside the archive's media folder) and its framing.
+    #[serde(default)]
+    profile_avatar: Option<(String, Option<db::Frame>)>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -560,7 +581,7 @@ pub struct ExportInfo {
 }
 
 fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
-    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks) = {
+    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, profile_avatar) = {
         let db = st.db.lock().unwrap();
         let characters = db::list_characters(&db, o).map_err(e)?;
         let dorms = db::list_dorms(&db, o).map_err(e)?;
@@ -578,12 +599,14 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
         let notes = db::list_notes(&db, o).map_err(e)?;
         let folders = db::list_folders(&db, o).map_err(e)?;
         let lorebooks = db::list_lorebooks(&db, o).map_err(e)?;
+        let personas = db::list_personas(&db, o).map_err(e)?;
+        let profile_avatar = o.as_ref().and_then(|pid| db::get_profile_avatar(&db, pid));
         let settings = db::get_settings(&db, o);
         let profile = match o {
             Some(id) => db::get_profile(&db, id).map_err(e)?,
             None => None,
         };
-        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks)
+        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, profile_avatar)
     };
     let mut chats = chats;
     for c in chats.iter_mut() {
@@ -671,6 +694,18 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
         }
         Ok(())
     };
+    let mut personas = personas;
+    let mut profile_avatar = profile_avatar;
+    for p in personas.iter_mut() {
+        let mut a = p.avatar.take().unwrap_or_default();
+        pack_music(&mut a, &mut zip)?;
+        p.avatar = Some(a).filter(|a| !a.is_empty());
+        if p.avatar.is_none() { p.frame = None; }
+    }
+    if let Some((f, _)) = profile_avatar.as_mut() {
+        pack_music(f, &mut zip)?;
+    }
+    if profile_avatar.as_ref().map(|(f, _)| f.is_empty()).unwrap_or(false) { profile_avatar = None; }
     for r in rooms.iter_mut() { pack_music(&mut r.music, &mut zip)?; if r.music.is_empty() { r.music_name.clear(); } }
     for d in dorms.iter_mut() { pack_music(&mut d.music, &mut zip)?; if d.music.is_empty() { d.music_name.clear(); } }
     // room backdrops travel with their rooms
@@ -702,7 +737,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     // API keys, passcodes and per-device model choices are deliberately not part of the file.
     let mut exported_settings = settings;
     exported_settings.local_model = String::new();
-    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks };
+    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, profile_avatar };
     zip.start_file("manifest.json", deflated).map_err(e)?;
     zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(e)?).map_err(e)?;
     zip.start_file("data.json", deflated).map_err(e)?;
@@ -801,6 +836,8 @@ fn remove_owner_data(st: &AppState, o: &Owner) -> R<()> {
         let settings = db::get_settings(&db, o);
         let mut files: Vec<String> = db::list_characters(&db, o).map_err(e)?.into_iter().flat_map(|c| c.media.map(|m| m.file).into_iter().chain(c.outfits.into_iter().map(|x| x.file))).collect();
         files.extend(db::list_folders(&db, o).map_err(e)?.into_iter().filter_map(|f| f.cover));
+        files.extend(db::list_personas(&db, o).map_err(e)?.into_iter().filter_map(|p| p.avatar));
+        if let Some(pid) = o { files.extend(db::get_profile_avatar(&db, pid).map(|(f, _)| f)); }
         files.extend(db::list_rooms(&db, o).map_err(e)?.into_iter().flat_map(|r| r.backdrop.strip_prefix("file:").map(str::to_string).into_iter().chain(Some(r.music).filter(|m| !m.is_empty()))));
         files.extend(db::list_dorms(&db, o).map_err(e)?.into_iter().filter(|d| !d.music.is_empty()).map(|d| d.music));
         (settings, files)
@@ -965,6 +1002,32 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             folder_map.insert(f.id.clone(), nf.id);
         }
 
+        // personas and the profile picture (an image, a safe name, written under a fresh name)
+        let restore_pic = |file: &str, stem: String, written: &mut Vec<std::path::PathBuf>| -> R<Option<String>> {
+            let Some(base) = file.strip_prefix("media/").filter(|b| safe_media_name(b)) else { return Ok(None) };
+            let ext = std::path::Path::new(base).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+            if !["png", "jpg", "jpeg", "gif", "webp", "bmp"].contains(&ext.as_str()) { return Ok(None); }
+            let Some(bytes) = parsed.media.get(base) else { return Ok(None) };
+            let rel = format!("media/avatar-{stem}-{}.{ext}", db::now());
+            let abs = st.data_dir.join(&rel);
+            std::fs::write(&abs, bytes).map_err(e)?;
+            written.push(abs);
+            Ok(Some(rel))
+        };
+        let mut persona_map: HashMap<String, String> = HashMap::new();
+        for (i, p) in parsed.data.personas.iter().enumerate() {
+            let id = uid();
+            let avatar = match &p.avatar { Some(a) => restore_pic(a, format!("p-{id}-{i}"), &mut written)?, None => None };
+            let frame = if avatar.is_some() { p.frame.and_then(|f| f.clean()) } else { None };
+            db::save_persona(&db, &db::Persona { id: id.clone(), avatar, frame, ..p.clone() }, &o).map_err(e)?;
+            persona_map.insert(p.id.clone(), id);
+        }
+        if let Some((file, frame)) = &parsed.data.profile_avatar {
+            if let Some(rel) = restore_pic(file, format!("profile-{pid}"), &mut written)? {
+                db::set_profile_avatar(&db, &pid, &rel, frame.and_then(|f| f.clean())).map_err(e)?;
+            }
+        }
+
         let mut book_map: HashMap<String, String> = HashMap::new();
         for b in &parsed.data.lorebooks {
             let nb = db::Lorebook { id: uid(), ..b.clone() };
@@ -1092,6 +1155,7 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
         }
 
         let mut settings = parsed.data.settings.clone();
+        settings.active_persona = persona_map.get(&settings.active_persona).cloned().unwrap_or_default();
         settings.user_name = display;
         db::save_settings(&db, &settings, &o).map_err(e)?;
         Ok(())

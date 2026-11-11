@@ -25,16 +25,17 @@ function renderText(text: string) {
   );
 }
 
-function Avatar({ c, name }: { c?: Character; name: string }) {
+function Avatar({ c, name, pic }: { c?: Character; name: string; pic?: { src: string | null; frame: import("../api").Frame | null } }) {
   return (
     <div className="avatar">
-      <Art kind={c?.media?.kind === "vrm" ? null : c?.media?.kind ?? null} url={c ? mediaUrl(c) : null} name={name} frame={c?.frame} />
+      {pic ? <Art kind={pic.src ? "image" : null} url={pic.src} name={name} frame={pic.frame} />
+        : <Art kind={c?.media?.kind === "vrm" ? null : c?.media?.kind ?? null} url={c ? mediaUrl(c) : null} name={name} frame={c?.frame} />}
     </div>
   );
 }
 
 export default function ChatPage({ initialChatId }: { initialChatId?: number }) {
-  const { chats, dorms, rooms, characters, settings, go, refresh, modelCount } = useStore();
+  const { chats, dorms, rooms, characters, settings, go, refresh, modelCount, personas, me } = useStore();
   const toast = useToast();
   const [selected, setSelected] = useState<number | null>(initialChatId ?? chats[0]?.id ?? null);
   const [msgs, setMsgs] = useState<Message[]>([]);
@@ -177,7 +178,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
     </button>
   );
 
-  const nameOf = (m: Message) => (m.role === "user" ? settings.user_name : byId.get(m.character_id ?? "")?.card.name ?? "Unknown");
+  const nameOf = (m: Message) => (m.role === "user" ? me.name : byId.get(m.character_id ?? "")?.card.name ?? "Unknown");
 
   return (
     <div className="chatwrap">
@@ -249,6 +250,13 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                   </select>
                 </>
               )}
+              {personas.length > 0 && (
+                <select style={{ width: "auto" }} aria-label="Playing as" title="Who you are in this roleplay" value={settings.active_persona}
+                  onChange={(e) => { void api.setActivePersona(e.target.value || null).then(refresh).catch((er) => toast(errText(er), "err")); }}>
+                  <option value="">Playing as {settings.user_name}</option>
+                  {personas.map((p) => <option key={p.id} value={p.id}>Playing as {p.name}</option>)}
+                </select>
+              )}
               <button className={`btn sm ${phone ? "primary" : ""}`} aria-pressed={phone} onClick={() => patchChat({ style: phone ? "chat" : "phone" })} title="Switch between the normal chat and a texting view">📱 Phone</button>
               <button className="btn sm" onClick={() => setModal({ type: "mech" })} title="Optional story layers: affection, status, and more">🧩 Mechanics</button>
               <button className="btn sm" onClick={() => setModal({ type: "who" })}>👥 Who's here</button>
@@ -258,7 +266,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
             </header>
 
             {phone ? (
-              <PhoneView msgs={msgs} live={live} members={members} userName={settings.user_name} busy={busy} text={text} setText={setText} send={send} stop={stop} nameOf={nameOf} onExit={() => patchChat({ style: "chat" })} />
+              <PhoneView msgs={msgs} live={live} members={members} userName={me.name} busy={busy} text={text} setText={setText} send={send} stop={stop} nameOf={nameOf} onExit={() => patchChat({ style: "chat" })} />
             ) : (<>
             <div className="msgs" ref={scroller}>
               {msgs.length === 0 && !live && <div className="empty">{chat.kind === "channel" ? "A quiet channel. Say something, or press Next to let a character start." : "No messages yet."}</div>}
@@ -271,7 +279,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                 const body = extending ? saved + (saved && live.text && !/\s$/.test(saved) && !/^\s/.test(live.text) ? " " : "") + hideDirectives(live.text) : saved;
                 return (
                   <div className={`msg ${m.role}`} key={m.id}>
-                    <Avatar c={c} name={nameOf(m)} />
+                    <Avatar c={c} name={nameOf(m)} pic={m.role === "user" ? { src: me.avatar, frame: me.frame } : undefined} />
                     <div>
                       <div className="who">{nameOf(m)} <small>{timeAgo(m.created_at)}</small></div>
                       {editing?.id === m.id ? (

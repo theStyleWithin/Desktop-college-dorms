@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
-import { api, newProfile, onModelProgress, saveExportFile, type ApiProfile, type EngineStatus, type ExportInfo, type Hardware, type ModelFile, type ModelProgress, type Settings } from "../api";
+import { api, newProfile, profileAvatar, onModelProgress, saveExportFile, type ApiProfile, type EngineStatus, type ExportInfo, type Hardware, type ModelFile, type ModelProgress, type Settings } from "../api";
 import { CreateProfileModal, PASSCODE_NOTE, ProfileAvatar } from "../components/ProfileForms";
+import { PersonasTab, ProfilePicture } from "../components/Personas";
 import { Modal, useToast } from "../components/ui";
 import { errText, fmtBytes } from "../lib/util";
 import type { SessionState } from "../api";
 import { useStore } from "../store";
 
-type Tab = "profile" | "models" | "chat" | "voice" | "look" | "privacy" | "about";
-const TABS: [Tab, string][] = [["profile", "Profile"], ["models", "Models"], ["chat", "Chat"], ["voice", "Voice"], ["look", "Appearance"], ["privacy", "Privacy"], ["about", "About"]];
+type Tab = "profile" | "personas" | "models" | "chat" | "voice" | "look" | "privacy" | "about";
+const TABS: [Tab, string][] = [["profile", "Profile"], ["personas", "Personas"], ["models", "Models"], ["chat", "Chat"], ["voice", "Voice"], ["look", "Appearance"], ["privacy", "Privacy"], ["about", "About"]];
 
 const ENDPOINTS: [string, string, string][] = [
   ["OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"],
@@ -43,6 +44,7 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
         {TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}
       </div>
       {tab === "profile" && <ProfileTab s={s} patch={patch} />}
+      {tab === "personas" && <PersonasTab />}
       {tab === "models" && <Models s={s} patch={patch} onChanged={refresh} />}
       {tab === "chat" && <ChatTab s={s} patch={patch} />}
       {tab === "voice" && <VoiceTab s={s} patch={patch} ensureSaved={async () => { if (dirty) await setSettings(s); }} />}
@@ -534,9 +536,10 @@ function ProfileTab({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) =
     <div style={{ display: "grid", gap: 18 }}>
       <div className="card">
         <div className="row" style={{ gap: 14 }}>
-          <ProfileAvatar name={p?.handle ?? "Guest"} size={64} />
+          <ProfileAvatar name={p?.handle ?? "Guest"} size={64} src={profileAvatar(p)} frame={p?.avatar_frame} />
           <div className="grow" style={{ minWidth: 200 }}>
             <h3>{p ? p.handle : "Guest"}</h3>
+            <ProfilePicture />
             <div className="hint">{p ? "A profile on this device. Its characters, chats and keys are separate from every other profile." : "Guest space. Nothing here is tied to a profile."}</div>
           </div>
           <button className="btn" onClick={signOut}>Switch profile</button>

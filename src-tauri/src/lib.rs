@@ -118,6 +118,16 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            extras::list_personas,
+            extras::save_persona,
+            extras::delete_persona,
+            extras::set_persona_avatar,
+            extras::set_persona_frame,
+            extras::clear_persona_avatar,
+            extras::set_active_persona,
+            extras::set_profile_avatar,
+            extras::set_profile_avatar_frame,
+            extras::clear_profile_avatar,
             extras::list_lorebooks,
             extras::save_lorebook,
             extras::delete_lorebook,
