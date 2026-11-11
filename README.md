@@ -45,6 +45,10 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
 - **She has a life of her own** (no AI needed): when you aren't talking to her she wanders the room, scrolls her phone (and sometimes
   gets annoyed, amused or upset at something she reads), drinks coffee at her desk, sits on the bed and goes to sleep, with the time of
   day nudging what she does. The moment you start typing she stops and pays attention. Turn it off with the 🎭 button.
+- **Wardrobe** (👕 button in the 3D viewer): add extra outfits for a 3D character, which are other `.vrm` files of the same character in
+  different clothes, and switch between them (rename and remove too). They are saved with the character and travel in backups.
+  Accessories switch on and off: **cat, dog, fox, raccoon, bunny and wolf ears and their tails**, plus glasses, hats, hair accessories,
+  bags and shoes, each remembered per model. Outfits change by swapping model files; individual garments are not switched off one by one.
 - **Pause / Play** (or the Space bar) freezes her in place like a video: pose, walking, breathing, blinking and physics all stop,
   while you can still orbit the camera around her.
 - **Talk to her inside the scene**: the big viewer has a see-through message bar along the bottom (type, or tap the mic), and her reply

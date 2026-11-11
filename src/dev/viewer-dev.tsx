@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import "../styles.css";
 import VrmViewer from "../components/VrmViewer";
 import type { Speech } from "../components/SpeechBubble";
+import type { Wardrobe } from "../components/WardrobePanel";
 
 const REPLY = "*waves a little* Oh, hi! I was just thinking about you. Did you eat something today? You always forget, so I made coffee. Sit with me for a bit, okay? I want to hear everything about your day.";
 
@@ -16,6 +17,11 @@ function Harness() {
   const [busy, setBusy] = useState(false);
   const [speech, setSpeech] = useState<Speech | null>(null);
   const timer = useRef<number>(0);
+  // a fake wardrobe (wardrobe=1): outfits live in this page only, to try the panel without the app
+  const [outfits, setOutfits] = useState([{ id: "a", name: "Summer dress" }]);
+  const [worn, setWorn] = useState<string | null>(null);
+  const wardrobe: Wardrobe = { outfits, current: worn, onSwitch: setWorn, onAdd: (f) => setOutfits((o) => [...o, { id: "n" + o.length, name: f.name.replace(/\.[^.]+$/, "") }]),
+    onRename: (id, name) => setOutfits((o) => o.map((x) => (x.id === id ? { ...x, name } : x))), onRemove: (id) => { setOutfits((o) => o.filter((x) => x.id !== id)); setWorn((w) => (w === id ? null : w)); } };
   useEffect(() => {
     fetch(q.get("src") ?? "").then((r) => r.blob()).then((b) => setUrl(URL.createObjectURL(b))).catch(() => {});
     return () => clearInterval(timer.current);
@@ -33,7 +39,7 @@ function Harness() {
   };
   return (
     <div className="vrm-big" style={{ width: "100vw", height: "100vh" }}>
-      {url && <VrmViewer url={url} large={q.get("large") !== "0"} speech={speech}
+      {url && <VrmViewer url={url} large={q.get("large") !== "0"} speech={speech} wardrobe={q.get("wardrobe") ? wardrobe : undefined}
         talk={q.get("talk") ? { draft, setDraft, send: () => send(), busy, onHeard: (t) => setDraft(t), onListening: () => {} } : undefined} />}
     </div>
   );

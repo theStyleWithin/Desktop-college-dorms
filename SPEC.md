@@ -113,6 +113,14 @@ mouse or touch) let the user pet the character. When nobody is chatting, a small
 around the furniture, a procedural walk cycle, activities with props (phone, coffee), sitting and sleeping on the bed. Imported models
 are only ever the user's own files; nothing is bundled.
 
+## Wardrobe
+
+A 3D character can hold extra outfits: more VRM files of the same character (for example exported from VRoid Studio in other clothes).
+The backend owns them (add, switch, rename, remove; they follow the character through backup, eject, import and delete), and the viewer
+shows the one being worn. Accessories are found by material name (VRoid's `Accessory_CatEar_01_CLOTH` and friends) and can be switched
+on and off per model: cat, dog, fox, raccoon, bunny and wolf ears and tails, plus glasses, hats, hair accessories, bags and shoes.
+Garments such as tops and bottoms are changed by swapping to another outfit file, not hidden one by one.
+
 ## Voice input
 
 A mic button in the chat composer records 16 kHz mono WAV in the webview (a voice-activity check ends the recording when the user stops
@@ -123,7 +131,7 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
 
 ## Status
 
-v0.2.0 adds local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.
+v0.3.0 adds a real 3D viewer for VRM / VRoid models (room, idle life, physics, hands, wardrobe) and voice input. v0.2.0 added local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.
 
 Built: everything above except battery-aware pausing and a standalone lorebook library (lorebooks are embedded in characters).
 Android builds without the local engine (the OS can't run the helper binary); it uses cloud or network models. See README for the verification status of each platform.

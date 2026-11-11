@@ -588,6 +588,22 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
             }
         }
     }
+    // the wardrobe travels with the character
+    for c in media_chars.iter_mut() {
+        let mut keep = Vec::new();
+        for (k, o) in c.outfits.clone().into_iter().enumerate() {
+            let Ok(bytes) = std::fs::read(st.data_dir.join(&o.file)) else { continue }; // the file is gone; don't promise it
+            let base = format!("{}-outfit-{k}.vrm", c.id.chars().filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-').collect::<String>());
+            if safe_media_name(&base) && seen.insert(base.clone()) {
+                zip.start_file(format!("media/{base}"), stored).map_err(e)?;
+                zip.write_all(&bytes).map_err(e)?;
+                media_count += 1;
+            }
+            keep.push(db::Outfit { id: o.id, name: o.name, file: format!("media/{base}") });
+        }
+        c.outfits = keep;
+        if let Some(cur) = &c.outfit { if !c.outfits.iter().any(|x| &x.id == cur) { c.outfit = None; } }
+    }
     let counts = Counts { characters: characters.len(), dorms: dorms.len(), chats: chats.len(), messages: messages.len(), media: media_count };
     let manifest = Manifest {
         format: EXPORT_FORMAT.into(),
@@ -697,7 +713,7 @@ fn remove_owner_data(st: &AppState, o: &Owner) -> R<()> {
     let (settings, media_files) = {
         let db = st.db.lock().unwrap();
         let settings = db::get_settings(&db, o);
-        let files: Vec<String> = db::list_characters(&db, o).map_err(e)?.into_iter().filter_map(|c| c.media.map(|m| m.file)).collect();
+        let files: Vec<String> = db::list_characters(&db, o).map_err(e)?.into_iter().flat_map(|c| c.media.map(|m| m.file).into_iter().chain(c.outfits.into_iter().map(|x| x.file))).collect();
         (settings, files)
     };
     end_session(st);
@@ -846,6 +862,20 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
                     _ => c.media = None,
                 }
             }
+            let mut kept = Vec::new();
+            for (k, mut of) in c.outfits.clone().into_iter().enumerate() {
+                let base = of.file.strip_prefix("media/").unwrap_or("").to_string();
+                if let Some(bytes) = parsed.media.get(&base).filter(|_| safe_media_name(&base)) {
+                    let rel = format!("media/{}-{}-{i}-o{k}.vrm", c.id, db::now());
+                    let abs = st.data_dir.join(&rel);
+                    std::fs::write(&abs, bytes).map_err(e)?;
+                    written.push(abs);
+                    of.file = rel;
+                    kept.push(of);
+                }
+            }
+            c.outfits = kept;
+            if let Some(cur) = &c.outfit { if !c.outfits.iter().any(|x| &x.id == cur) { c.outfit = None; } }
             c.last_used = c.last_used.max(0);
             db::save_character(&db, &c, &o).map_err(e)?;
         }

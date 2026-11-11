@@ -3,6 +3,7 @@ import {
   api, blankCard, blankEntry, mediaUrl, type BookEntry, type CardData, type Character, type MediaKind,
 } from "../api";
 import Art from "../components/Art";
+import { makeWardrobe } from "../components/WardrobePanel";
 import { TagInput, useToast } from "../components/ui";
 import { errText, tokens } from "../lib/util";
 import { useStore } from "../store";
@@ -171,7 +172,7 @@ export default function Editor({ id }: { id: string | null }) {
           <div className="editor-media" title="Drop an image, GIF, video or .vrm model here"
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); pickMedia(e.dataTransfer.files?.[0]); }}>
-            <Art kind={previewKind} url={previewUrl} name={name || "?"} mode="full" />
+            <Art kind={previewKind} url={previewUrl} name={name || "?"} mode="full" wardrobe={pending ? undefined : makeWardrobe(char, (n) => { hydrate(n); refresh(); }, toast)} />
           </div>
           <div style={{ display: "grid", gap: 8 }}>
             <button type="button" className="btn" onClick={() => fileRef.current?.click()}>⇪ Upload</button>

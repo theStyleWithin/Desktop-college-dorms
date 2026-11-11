@@ -10,6 +10,8 @@ import { createHands } from "../lib/hands";
 import { createNpc, type PlanName } from "../lib/npc";
 import SpeechBubble, { type Speech } from "./SpeechBubble";
 import TalkBar, { type Talk } from "./TalkBar";
+import WardrobePanel, { type Wardrobe } from "./WardrobePanel";
+import { findAccessories, loadHidden, saveHidden, setAccessoryVisible, type Accessory } from "../lib/wardrobe";
 
 // One verdict per app run, shared by every viewer (see the crash guard in the backend).
 let verdict: Promise<boolean> | null = null;
@@ -27,6 +29,8 @@ interface Props {
   speech?: Speech | null;
   /** When given (in the big viewer), shows a see-through message bar so you can talk to her from inside the scene. */
   talk?: Talk;
+  /** The character's outfits (extra VRM files); adds a wardrobe button next to the other tools. */
+  wardrobe?: Wardrobe;
   /** Shows an expand button that opens the big viewer. */
   onExpand?: () => void;
 }
@@ -35,7 +39,7 @@ interface Props {
  * A 3D viewer for VRM / VRoid models: the character stands idle in a furnished room, with soft shadows, orbit
  * camera controls (drag to turn, scroll or pinch to zoom, double-click to reset) and eyes that follow the camera.
  */
-export default function VrmViewer({ url, large, attentive, speech, talk, onExpand }: Props) {
+export default function VrmViewer({ url, large, attentive, speech, talk, wardrobe, onExpand }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const resetView = useRef<() => void>(() => {});
   const idleRef = useRef<ReturnType<typeof createIdle> | null>(null);
@@ -47,6 +51,10 @@ export default function VrmViewer({ url, large, attentive, speech, talk, onExpan
     try { const v = localStorage.getItem("dorms.vrm.physics"); if (v === "off" || v === "bouncy" || v === "natural") return v; } catch { /* storage unavailable */ }
     return "natural";
   });
+  const [accs, setAccs] = useState<Accessory[]>([]);
+  const [hiddenAcc, setHiddenAcc] = useState<Set<string>>(new Set());
+  const [wardrobeOpen, setWardrobeOpen] = useState(false);
+  const accsRef = useRef<Accessory[]>([]);
   const bubbleRef = useRef<HTMLDivElement>(null);
   const speechOn = useRef(false);
   speechOn.current = !!speech;
@@ -183,6 +191,11 @@ export default function VrmViewer({ url, large, attentive, speech, talk, onExpan
             if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; }
           });
           scene.add(v.scene);
+          // accessories (ears, tails, glasses, ...) can be switched off from the wardrobe; remember the choice per model
+          const found = findAccessories(v.scene);
+          const off = loadHidden(url);
+          for (const a of found) setAccessoryVisible(a, !off.has(a.key));
+          accsRef.current = found; setAccs(found); setHiddenAcc(off);
           // stand on the floor, at the centre of the rug
           const box = new THREE.Box3().setFromObject(v.scene);
           v.scene.position.y -= box.min.y;
@@ -349,6 +362,11 @@ export default function VrmViewer({ url, large, attentive, speech, talk, onExpan
       <div ref={host} className="vrm-box" />
       {state === "ready" && (
         <div className="vrm-tools">
+          {(wardrobe || accs.length > 0) && (
+            <button className={`iconbtn${wardrobeOpen ? " on" : ""}`} title="Wardrobe: outfits and accessories" aria-label="Wardrobe" aria-expanded={wardrobeOpen} onClick={() => setWardrobeOpen((v) => !v)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 3 3 6l2 4 3-1v12h8V9l3 1 2-4-5-3a4 4 0 0 1-8 0z" /></svg>
+            </button>
+          )}
           <button className={`iconbtn${frozen ? " on" : ""}`} title={frozen ? "Play: time moves again (Space)" : "Pause: freezes her in place, you can still look around (Space)"} aria-label={frozen ? "Play" : "Pause"} data-paused={frozen ? "1" : "0"}
             onClick={() => setFrozen((v) => !v)}>
             <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" fill="currentColor">{frozen ? <path d="M3 1.5v11l9-5.5z" /> : <><rect x="2.5" y="1.5" width="3.2" height="11" rx="0.8" /><rect x="8.3" y="1.5" width="3.2" height="11" rx="0.8" /></>}</svg>
@@ -364,6 +382,15 @@ export default function VrmViewer({ url, large, attentive, speech, talk, onExpan
           <button className="iconbtn" title="Reset the view (or double-click)" aria-label="Reset view" onClick={() => resetView.current()}>⟲</button>
           {onExpand && <button className="iconbtn" title="Open the big 3D viewer" aria-label="Open big viewer" onClick={onExpand}>⛶</button>}
         </div>
+      )}
+      {state === "ready" && wardrobeOpen && (
+        <WardrobePanel wardrobe={wardrobe} accessories={accs} hidden={hiddenAcc} onClose={() => setWardrobeOpen(false)}
+          onToggle={(key) => {
+            const next = new Set(hiddenAcc);
+            if (next.has(key)) next.delete(key); else next.add(key);
+            for (const a of accsRef.current) if (a.key === key) setAccessoryVisible(a, !next.has(key));
+            saveHidden(url, next); setHiddenAcc(next);
+          }} />
       )}
       {state === "ready" && <SpeechBubble ref={bubbleRef} speech={speech ?? null} small={!large} />}
       {state === "ready" && large && talk && <TalkBar talk={talk} />}

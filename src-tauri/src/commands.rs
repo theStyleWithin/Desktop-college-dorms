@@ -74,15 +74,28 @@ pub fn app_info(state: State<'_, Shared>) -> AppInfo {
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
+pub struct OutfitOut {
+    id: String,
+    name: String,
+    path: String,
+}
+
+#[derive(Serialize)]
 pub struct CharacterOut {
     #[serde(flatten)]
     c: Character,
+    /// What to show right now: the outfit being worn, or the original model.
     media_path: Option<String>,
+    /// The wardrobe: where each extra outfit's model file is.
+    outfit_paths: Vec<OutfitOut>,
 }
 
 fn out(st: &AppState, c: Character) -> CharacterOut {
-    let media_path = c.media.as_ref().map(|m| st.data_dir.join(&m.file).to_string_lossy().to_string());
-    CharacterOut { c, media_path }
+    let abs = |f: &str| st.data_dir.join(f).to_string_lossy().to_string();
+    let worn = c.outfit.as_ref().and_then(|id| c.outfits.iter().find(|o| &o.id == id));
+    let media_path = worn.map(|o| abs(&o.file)).or_else(|| c.media.as_ref().map(|m| abs(&m.file)));
+    let outfit_paths = c.outfits.iter().map(|o| OutfitOut { id: o.id.clone(), name: o.name.clone(), path: abs(&o.file) }).collect();
+    CharacterOut { c, media_path, outfit_paths }
 }
 
 fn raw_body<'a>(req: &'a Request<'_>) -> R<&'a [u8]> {
@@ -167,6 +180,8 @@ pub fn save_character(state: State<'_, Shared>, mut character: Character) -> R<C
     // media is owned by the backend; never trust the frontend copy
     if let Some(existing) = db::get_character(&db, &character.id, &o).map_err(e)? {
         character.media = existing.media;
+        character.outfits = existing.outfits;
+        character.outfit = existing.outfit;
         if character.created_at == 0 {
             character.created_at = existing.created_at;
         }
@@ -182,6 +197,9 @@ pub fn delete_character(state: State<'_, Shared>, id: String) -> R<()> {
     let db = state.db.lock().unwrap();
     if let Some(c) = db::get_character(&db, &id, &o).map_err(e)? {
         remove_media_file(&state, &c.media);
+        for f in &c.outfits {
+            let _ = std::fs::remove_file(state.data_dir.join(&f.file));
+        }
     }
     db::delete_character(&db, &id, &o).map_err(e)
 }
@@ -211,6 +229,99 @@ pub fn set_media(request: Request<'_>, state: State<'_, Shared>) -> R<CharacterO
     c.media = Some(media);
     c.updated_at = db::now();
     db::save_character(&db, &c, &o).map_err(e)?;
+    Ok(out(&state, c))
+}
+
+// ---- wardrobe: extra outfits (VRM models) for a 3D character ---------------------------------------------
+
+const MAX_OUTFITS: usize = 24;
+
+fn clean_outfit_name(n: &str) -> String {
+    let n: String = n.chars().filter(|c| !c.is_control()).collect();
+    let n = n.trim();
+    if n.is_empty() { "Outfit".to_string() } else { n.chars().take(40).collect() }
+}
+
+/// Adds an outfit: another VRM of the same character (exported from VRoid Studio or similar) and puts it on.
+/// Body: raw file bytes. Headers: `x-char-id`, `x-file-name` (percent-encoded), optional `x-outfit-name`.
+#[tauri::command]
+pub fn add_outfit(request: Request<'_>, state: State<'_, Shared>) -> R<CharacterOut> {
+    let id = header(&request, "x-char-id");
+    let file_name = header(&request, "x-file-name");
+    let wanted = header(&request, "x-outfit-name");
+    let bytes = raw_body(&request)?;
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Save the character first")?;
+    if c.media.as_ref().map(|m| m.kind.as_str()) != Some("vrm") {
+        return Err("Outfits are for 3D characters. Give this character a VRM model first.".into());
+    }
+    if c.outfits.len() >= MAX_OUTFITS {
+        return Err(format!("That's the most outfits one character can have ({MAX_OUTFITS}). Remove one first."));
+    }
+    let (kind, _) = media_kind(&file_name)?;
+    if kind != "vrm" {
+        return Err("An outfit has to be a VRM model (.vrm), for example the same character exported with different clothes.".into());
+    }
+    let media = write_media(&state, &format!("{id}-outfit"), &file_name, bytes)?;
+    let stem = std::path::Path::new(&file_name).file_stem().and_then(|s| s.to_str()).unwrap_or("Outfit");
+    let mut name = clean_outfit_name(if wanted.trim().is_empty() { stem } else { &wanted });
+    let base = name.clone();
+    let mut n = 2;
+    while c.outfits.iter().any(|x| x.name.eq_ignore_ascii_case(&name)) {
+        name = format!("{base} {n}");
+        n += 1;
+    }
+    let outfit = db::Outfit { id: uid(), name, file: media.file };
+    c.outfit = Some(outfit.id.clone());
+    c.outfits.push(outfit);
+    c.updated_at = db::now();
+    db::save_character(&db, &c, &o).map_err(e)?;
+    Ok(out(&state, c))
+}
+
+/// Puts an outfit on (`None` = back to the original model).
+#[tauri::command]
+pub fn set_outfit(state: State<'_, Shared>, id: String, outfit_id: Option<String>) -> R<CharacterOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Character not found")?;
+    match outfit_id.filter(|x| !x.is_empty()) {
+        Some(oid) => {
+            if !c.outfits.iter().any(|x| x.id == oid) { return Err("That outfit isn't in the wardrobe any more.".into()); }
+            c.outfit = Some(oid);
+        }
+        None => c.outfit = None,
+    }
+    db::save_character(&db, &c, &o).map_err(e)?;
+    Ok(out(&state, c))
+}
+
+#[tauri::command]
+pub fn rename_outfit(state: State<'_, Shared>, id: String, outfit_id: String, name: String) -> R<CharacterOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Character not found")?;
+    let name = clean_outfit_name(&name);
+    if c.outfits.iter().any(|x| x.id != outfit_id && x.name.eq_ignore_ascii_case(&name)) {
+        return Err(format!("There's already an outfit called \"{name}\"."));
+    }
+    c.outfits.iter_mut().find(|x| x.id == outfit_id).ok_or("That outfit isn't in the wardrobe any more.")?.name = name;
+    db::save_character(&db, &c, &o).map_err(e)?;
+    Ok(out(&state, c))
+}
+
+#[tauri::command]
+pub fn remove_outfit(state: State<'_, Shared>, id: String, outfit_id: String) -> R<CharacterOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Character not found")?;
+    if let Some(i) = c.outfits.iter().position(|x| x.id == outfit_id) {
+        let gone = c.outfits.remove(i);
+        let _ = std::fs::remove_file(state.data_dir.join(&gone.file));
+        if c.outfit.as_deref() == Some(&outfit_id) { c.outfit = None; }
+        db::save_character(&db, &c, &o).map_err(e)?;
+    }
     Ok(out(&state, c))
 }
 
@@ -255,6 +366,8 @@ pub fn import_card(request: Request<'_>, state: State<'_, Shared>) -> R<ImportOu
         id: uid(),
         card: parsed.data,
         media: None,
+        outfits: vec![],
+        outfit: None,
         favorite: false,
         created_at: now,
         updated_at: now,

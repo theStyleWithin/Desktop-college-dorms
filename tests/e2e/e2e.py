@@ -697,6 +697,59 @@ try:
     # guest space can be ejected too, and guest has no passcode
     check("the guest space has no passcode to set", inv_err("set_passcode", {"current": None, "new": "abcd"}) is not None)
 
+    # ---- wardrobe: extra outfits (VRM files) for a 3D character ---------------------------------------------------
+    invoke("create_profile", {"handle": "Stylist", "displayName": None, "passcode": None})
+    wc = invoke("save_character", {"character": {"card": dict(blank_card, name="Model")}})
+    wid = wc["id"]
+    def add_outfit(path, name=None):
+        hdr = {"x-char-id": wid, "x-file-name": os.path.basename(path), "x-outfit-name": name or ""}
+        b64 = base64.b64encode(open(path, "rb").read()).decode()
+        r = d.execute_async_script("const done=arguments[arguments.length-1];const b=Uint8Array.from(atob(arguments[0]),c=>c.charCodeAt(0));window.__TAURI_INTERNALS__.invoke('add_outfit', b, {headers:arguments[1]}).then(v=>done({ok:v})).catch(e=>done({err:String(e)}));", b64, hdr)
+        if "err" in r: raise RuntimeError(r["err"])
+        return r["ok"]
+    def add_outfit_err(path, name=None):
+        try: add_outfit(path, name); return None
+        except RuntimeError as ex: return str(ex)
+    check("an image-only character can't have outfits", "VRM model first" in (add_outfit_err(os.path.join(FIX, "sample.vrm")) or ""))
+    wc = set_media_ipc(wid, os.path.join(FIX, "sample.vrm"))
+    check("the wardrobe starts empty on the original model", wc["outfits"] == [] and wc["outfit"] is None and wc["outfit_paths"] == [])
+    orig_path = wc["media_path"]
+    check("only VRM files are accepted as outfits", "has to be a VRM" in (add_outfit_err(os.path.join(FIX, "avatar.gif")) or ""))
+    wc = add_outfit(os.path.join(FIX, "sample.vrm"), "Summer dress")
+    check("adding an outfit puts it on", len(wc["outfits"]) == 1 and wc["outfits"][0]["name"] == "Summer dress" and wc["outfit"] == wc["outfits"][0]["id"])
+    check("the character now shows the outfit's file, the original is kept", wc["media_path"] != orig_path and wc["media_path"] == wc["outfit_paths"][0]["path"] and os.path.exists(orig_path) and os.path.exists(wc["media_path"]))
+    first = wc["outfits"][0]["id"]
+    wc = add_outfit(os.path.join(FIX, "sample.vrm"), "summer DRESS")
+    check("outfit names stay unique", [o["name"] for o in wc["outfits"]] == ["Summer dress", "summer DRESS 2"])
+    second = wc["outfits"][1]["id"]
+    wc = invoke("set_outfit", {"id": wid, "outfitId": None})
+    check("'Original' puts the original model back", wc["outfit"] is None and wc["media_path"] == orig_path)
+    wc = invoke("set_outfit", {"id": wid, "outfitId": first})
+    check("an outfit can be put on", wc["media_path"] == wc["outfit_paths"][0]["path"])
+    check("an unknown outfit is refused", "isn't in the wardrobe" in (inv_err("set_outfit", {"id": wid, "outfitId": "nope"}) or ""))
+    wc = invoke("rename_outfit", {"id": wid, "outfitId": second, "name": "  Pajamas  "})
+    check("outfits can be renamed (trimmed)", wc["outfits"][1]["name"] == "Pajamas")
+    check("renaming to an existing name is refused", "already an outfit" in (inv_err("rename_outfit", {"id": wid, "outfitId": second, "name": "summer dress"}) or ""))
+    saved_again = invoke("save_character", {"character": {"id": wid, "card": dict(blank_card, name="Model", description="edited"), "outfits": [], "outfit": None}})
+    check("editing the card never loses or changes the wardrobe (the backend owns it)", len(saved_again["outfits"]) == 2 and saved_again["outfit"] == first)
+    # backup, eject and restore: the wardrobe travels with the character
+    info = invoke("prepare_export")
+    check("the backup counts every outfit file", info["media"] == 3, str(info))
+    wpath = os.path.join(WORK, "stylist.dorms")
+    invoke("save_export", {"token": info["token"], "path": wpath})
+    n_media_now = len(os.listdir(media_dir))
+    invoke("eject_profile", {"token": info["token"]})
+    check("eject removes the outfit files too", len(os.listdir(media_dir)) == n_media_now - 3)
+    out = invoke_file("import_profile", wpath, {"x-mode": "import", "x-handle": "Stylist", "x-passcode": ""})
+    back = chars()[0]
+    check("the restored character has its whole wardrobe back, with the same outfit on", [o["name"] for o in back["outfits"]] == ["Summer dress", "Pajamas"] and back["outfit"] == first and all(os.path.exists(o["path"]) for o in back["outfit_paths"]), str(back.get("outfits")))
+    wid = back["id"]
+    wc = invoke("remove_outfit", {"id": wid, "outfitId": first})
+    check("removing the outfit being worn goes back to the original and deletes its file", wc["outfit"] is None and len(wc["outfits"]) == 1 and wc["media_path"] != "" and len(os.listdir(media_dir)) == n_media_now - 3 + 2)
+    invoke("delete_character", {"id": wid})
+    check("deleting the character deletes its outfit files", len(os.listdir(media_dir)) == n_media_now - 3)
+    invoke("sign_out")
+
     # -- delete needs the name typed
     gid = [p for p in invoke("session_state")["profiles"] if p["handle"] == "Guesty"][0]["id"]
     invoke("sign_in", {"profileId": gid})

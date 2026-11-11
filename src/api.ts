@@ -60,7 +60,12 @@ export interface Character {
   id: string;
   card: CardData;
   media: Media | null;
+  /** What to show right now: the outfit being worn, or the original model. */
   media_path: string | null;
+  /** The wardrobe (3D characters): extra outfit models, and which one is on (null = the original). */
+  outfits?: { id: string; name: string; file: string }[];
+  outfit?: string | null;
+  outfit_paths?: { id: string; name: string; path: string }[];
   favorite: boolean;
   created_at: number;
   updated_at: number;
@@ -190,6 +195,13 @@ export const api = {
     const bytes = new Uint8Array(await file.arrayBuffer());
     return bin("set_media", bytes, { "x-char-id": id, "x-file-name": enc(file.name) });
   },
+  async addOutfit(id: string, file: File, name?: string): Promise<Character> {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return bin("add_outfit", bytes, { "x-char-id": id, "x-file-name": enc(file.name), "x-outfit-name": enc(name ?? "") });
+  },
+  setOutfit: (id: string, outfitId: string | null) => invoke<Character>("set_outfit", { id, outfitId }),
+  renameOutfit: (id: string, outfitId: string, name: string) => invoke<Character>("rename_outfit", { id, outfitId, name }),
+  removeOutfit: (id: string, outfitId: string) => invoke<Character>("remove_outfit", { id, outfitId }),
   clearMedia: (id: string) => invoke<Character>("clear_media", { id }),
   async importCard(file: File): Promise<ImportResult> {
     const bytes = new Uint8Array(await file.arrayBuffer());

@@ -4,6 +4,7 @@ import {
 } from "../api";
 import Art from "../components/Art";
 import MicButton from "../components/MicButton";
+import { makeWardrobe } from "../components/WardrobePanel";
 import type { Speech } from "../components/SpeechBubble";
 import { Modal, useToast } from "../components/ui";
 import { errText, timeAgo } from "../lib/util";
@@ -318,6 +319,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
         {stageChar ? (
           <>
             <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "")} kind={stageChar.media?.kind ?? null} url={mediaUrl(stageChar)} name={displayName(stageChar)} mode="full" attentive={busy || listening || text.trim().length > 0}
+              wardrobe={makeWardrobe(stageChar, () => void refresh(), toast)}
               speech={speech && speech.characterId === stageChar.id ? speech : null}
               talk={{ draft: text, setDraft: setText, send: (t) => void sendText(t), busy, onHeard: heard, onListening: setListening }} /></div>
             <div>

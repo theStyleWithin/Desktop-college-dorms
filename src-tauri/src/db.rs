@@ -20,6 +20,15 @@ pub struct Media {
     pub file: String,
 }
 
+/// An extra model file for a 3D character (the same character in different clothes): the wardrobe.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Outfit {
+    pub id: String,
+    pub name: String,
+    /// Path relative to the data dir.
+    pub file: String,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Character {
     #[serde(default)]
@@ -27,6 +36,12 @@ pub struct Character {
     pub card: CharacterData,
     #[serde(default)]
     pub media: Option<Media>,
+    /// Extra outfits (VRM models) for a 3D character; `media` stays the original.
+    #[serde(default)]
+    pub outfits: Vec<Outfit>,
+    /// The outfit being worn (an `outfits` id); `None` means the original model.
+    #[serde(default)]
+    pub outfit: Option<String>,
     #[serde(default)]
     pub favorite: bool,
     #[serde(default)]
@@ -609,6 +624,8 @@ mod tests {
             id: id.into(),
             card: CharacterData { name: name.into(), ..Default::default() },
             media: None,
+            outfits: vec![],
+            outfit: None,
             favorite: false,
             created_at: 1,
             updated_at: 1,

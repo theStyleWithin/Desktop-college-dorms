@@ -220,3 +220,21 @@ button.chip { cursor: pointer; } button.chip.on { background: var(--accent); col
 .talkbar .btn.send { background: var(--accent); color: var(--accent-ink); }
 .talkbar .btn:disabled { opacity: 0.45; }
 .talkbar .btn.mic.listening { background: #c2253f; }
+
+/* ---- wardrobe popover ---- */
+.wardrobe { position: absolute; top: 46px; right: 8px; z-index: 6; width: min(300px, calc(100% - 16px)); max-height: calc(100% - 70px); overflow: auto; padding: 12px 14px 14px;
+  border-radius: 14px; background: rgba(20, 16, 36, 0.86); color: #fff; border: 1px solid rgba(255, 255, 255, 0.2);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); font-size: 0.9rem; }
+.wardrobe.drag { outline: 2px dashed var(--accent); outline-offset: -4px; }
+.wardrobe-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.wardrobe h4 { margin: 10px 0 6px; font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.65); }
+.wardrobe ul { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; }
+.wardrobe .outfits li { display: flex; align-items: center; gap: 4px; padding: 2px 4px; border-radius: 10px; }
+.wardrobe .outfits li.on { background: rgba(255, 255, 255, 0.14); }
+.wardrobe .pick { flex: 1; text-align: left; background: none; border: 0; color: inherit; padding: 6px 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; font: inherit; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wardrobe .dot { width: 9px; height: 9px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.6); flex: none; }
+.wardrobe li.on .dot { background: var(--accent); border-color: var(--accent); }
+.wardrobe input[type="text"], .wardrobe li > input:not([type]) { flex: 1; min-width: 0; background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.3); color: #fff; border-radius: 8px; padding: 5px 8px; }
+.wardrobe .accs label { display: flex; align-items: center; gap: 8px; padding: 4px 4px; cursor: pointer; }
+.wardrobe .hint { color: rgba(255, 255, 255, 0.6); font-size: 0.78rem; margin: 8px 0 0; }
+.wardrobe .btn.sm { background: rgba(255, 255, 255, 0.16); color: #fff; border: 0; }
