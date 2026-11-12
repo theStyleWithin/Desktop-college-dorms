@@ -1,6 +1,6 @@
 [package]
 name = "desktop-college-dorms"
-version = "0.6.0"
+version = "0.6.1"
 description = "Offline-first AI character creator and chat rooms"
 authors = ["theStyleWithin"]
 license = "MIT"
@@ -31,6 +31,7 @@ argon2 = "0.5"
 rand_core = { version = "0.6", features = ["getrandom"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 sha2 = "0.10"
+fs4 = "1.1.0"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }

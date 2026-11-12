@@ -101,6 +101,7 @@ function RoomForm({ id }: { id: number | null }) {
   const [model, setModel] = useState<ModelDraft>({ scale: existing?.model_scale ?? 1, rot: existing?.model_rot ?? 0, y: existing?.model_y ?? 0, share: existing?.model_share ?? false });
   const [preview, setPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [upload, setUpload] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
   const set = (p: Partial<Room>) => setR((x) => ({ ...x, ...p }));
@@ -119,11 +120,11 @@ function RoomForm({ id }: { id: number | null }) {
       if (pendingFile) saved = await api.setRoomBackdrop(saved.id, pendingFile);
       if (music.file) saved = await api.setRoomMusic(saved.id, music.file);
       else if (music.remove && existing?.music) saved = await api.clearRoomMusic(saved.id);
-      if (model.file) { saved = await api.setRoomModel(saved.id, model.file); saved = await api.setRoomModelCfg(saved.id, model.scale, model.rot, model.y, model.share); }
+      if (model.file) { setUpload(0); saved = await api.setRoomModel(saved.id, model.file, setUpload); saved = await api.setRoomModelCfg(saved.id, model.scale, model.rot, model.y, model.share); }
       else if (model.remove && existing?.model) saved = await api.clearRoomModel(saved.id);
       else if (existing?.model && (model.scale !== (existing.model_scale ?? 1) || model.rot !== (existing.model_rot ?? 0) || model.y !== (existing.model_y ?? 0) || model.share !== !!existing.model_share)) saved = await api.setRoomModelCfg(saved.id, model.scale, model.rot, model.y, model.share);
       return saved;
-    } catch (e) { toast(errText(e), "err"); return null; } finally { setBusy(false); }
+    } catch (e) { toast(errText(e), "err"); return null; } finally { setBusy(false); setUpload(null); }
   };
 
   return (
@@ -185,6 +186,7 @@ function RoomForm({ id }: { id: number | null }) {
 
       <RoomModelField name={model.file ? model.file.name : existing?.model_name ?? ""} draft={model} onChange={setModel} />
 
+      {upload != null && <div className="hint" role="status" data-testid="model-upload">Saving the 3D model… {Math.round(upload * 100)}%. Big files take a moment, please stay on this page.</div>}
       <div className="row form-actions">
         {!existing && (
           <button className="btn primary" disabled={busy} onClick={async () => {
