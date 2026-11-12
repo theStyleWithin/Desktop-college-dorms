@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { VRM } from "@pixiv/three-vrm";
-import { BED, DESK, FLOOR, OBSTACLES } from "./room";
+import { BED, DESK, FLOOR, LAYOUT, OBSTACLES } from "./room";
 import type { createIdle } from "./idle";
 
 /**
@@ -23,14 +23,30 @@ const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)];
 
 // ---------------------------------------------------------------- path finding
-const CELL = 0.2;
-const NX = Math.ceil((FLOOR.x1 - FLOOR.x0) / CELL), NZ = Math.ceil((FLOOR.z1 - FLOOR.z0) / CELL);
+let CELL = 0.2;
+let NX = 1, NZ = 1;
 const PAD = 0.24; // body radius
-const blocked = new Uint8Array(NX * NZ);
+let blocked = new Uint8Array(1);
 const inObstacle = (x: number, z: number, pad: number) => OBSTACLES.some(([x0, z0, x1, z1]) => x > x0 - pad && x < x1 + pad && z > z0 - pad && z < z1 + pad);
-for (let i = 0; i < NX; i++) for (let j = 0; j < NZ; j++) {
-  const x = FLOOR.x0 + (i + 0.5) * CELL, z = FLOOR.z0 + (j + 0.5) * CELL;
-  blocked[i * NZ + j] = x < FLOOR.x0 + 0.25 || x > FLOOR.x1 - 0.25 || z < FLOOR.z0 + 0.25 || z > FLOOR.z1 - 0.1 || inObstacle(x, z, PAD) ? 1 : 0;
+/** (Re)build the walkable grid from `FLOOR` and `OBSTACLES`: call it whenever the room's layout changes (an imported 3D room). */
+export function rebuildGrid() {
+  const span = Math.max(FLOOR.x1 - FLOOR.x0, FLOOR.z1 - FLOOR.z0);
+  CELL = Math.max(0.2, span / 90); // a big house gets coarser cells so finding a way stays quick
+  NX = Math.max(1, Math.ceil((FLOOR.x1 - FLOOR.x0) / CELL)); NZ = Math.max(1, Math.ceil((FLOOR.z1 - FLOOR.z0) / CELL));
+  blocked = new Uint8Array(NX * NZ);
+  for (let i = 0; i < NX; i++) for (let j = 0; j < NZ; j++) {
+    const x = FLOOR.x0 + (i + 0.5) * CELL, z = FLOOR.z0 + (j + 0.5) * CELL;
+    blocked[i * NZ + j] = x < FLOOR.x0 + 0.25 || x > FLOOR.x1 - 0.25 || z < FLOOR.z0 + 0.25 || z > FLOOR.z1 - 0.1 || inObstacle(x, z, PAD) ? 1 : 0;
+  }
+}
+rebuildGrid();
+/** A random place she can stand (an imported room has no fixed spots, so she picks from its walkable floor). */
+export function randomSpot(): [number, number] {
+  for (let k = 0; k < 40; k++) {
+    const x = rand(FLOOR.x0, FLOOR.x1), z = rand(FLOOR.z0, FLOOR.z1);
+    if (free(x, z)) return [x, z];
+  }
+  return [...LAYOUT.spawn];
 }
 const cellOf = (x: number, z: number): [number, number] => [clamp(Math.floor((x - FLOOR.x0) / CELL), 0, NX - 1), clamp(Math.floor((z - FLOOR.z0) / CELL), 0, NZ - 1)];
 const free = (x: number, z: number) => { const [i, j] = cellOf(x, z); return !blocked[i * NZ + j]; };
@@ -121,8 +137,8 @@ function emoteTexture(text: string, color: string, angry: boolean) {
 
 // ---------------------------------------------------------------- the NPC
 export type Reaction = "angry" | "laugh" | "sad" | "shock";
-export type PlanName = "wander" | "phone" | "phoneBed" | "coffee" | "sit" | "sleep" | "window" | "greet" | "home" | `react-${Reaction}`;
-export const PLAN_NAMES: PlanName[] = ["wander", "phone", "phoneBed", "coffee", "sit", "sleep", "window", "greet", "home", "react-angry", "react-laugh", "react-sad", "react-shock"];
+export type PlanName = "wander" | "phone" | "phoneBed" | "coffee" | "sit" | "sleep" | "window" | "stretch" | "greet" | "home" | `react-${Reaction}`;
+export const PLAN_NAMES: PlanName[] = ["wander", "phone", "phoneBed", "coffee", "sit", "sleep", "window", "stretch", "greet", "home", "react-angry", "react-laugh", "react-sad", "react-shock"];
 
 export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; scene: THREE.Scene; scale: number }) {
   const { vrm, idle, camera, scene } = opts;
@@ -227,7 +243,7 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
   };
 
   // ---- locomotion state (room units)
-  const me = { x: 0, z: 0, yaw: 0 };
+  const me = { x: LAYOUT.spawn[0], z: LAYOUT.spawn[1], yaw: 0 };
   let path: [number, number][] = [];
   let walking = false;
   let walkPhase = 0;
@@ -318,7 +334,7 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
     *wander() {
       label = "wander";
       for (let n = rand(2, 4); n > 0; n--) {
-        const [x, z] = [rand(-3.4, 3.2), rand(-2.2, 2.2)];
+        const [x, z] = LAYOUT.custom ? randomSpot() : [rand(-3.4, 3.2), rand(-2.2, 2.2)];
         yield* walkTo(x, z);
         if (Math.random() < 0.4) { gazeMode = "window"; yield* wait(rand(1.5, 3)); gazeMode = "camera"; }
         yield* wait(rand(1.2, 3.5));
@@ -326,7 +342,7 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
     },
     *phone() {
       label = "phone";
-      yield* walkTo(rand(-2.5, 2.5), rand(-1.5, 1.8));
+      yield* (LAYOUT.custom ? walkTo(...randomSpot()) : walkTo(rand(-2.5, 2.5), rand(-1.5, 1.8)));
       yield* scroll(rand(10, 22), true);
       yield* wait(1);
     },
@@ -382,24 +398,32 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
       yield* wait(0.8);
       yield* standUpFromBed();
     },
+    *stretch() {
+      // a big stretch with a yawn, arms over her head (she is wide open to being tickled)
+      label = "stretch"; gazeMode = "ahead";
+      yield* wait(0.7); arms("stretch"); yawnAmt = 1; moodGoal.mouth = 0.8; moodGoal.closed = 0.5;
+      yield* wait(4.2);
+      yawnAmt = 0; moodGoal.mouth = 0; moodGoal.closed = 0; arms("none"); gazeMode = "camera";
+      yield* wait(1);
+    },
     *greet() {
       label = "greet";
       yield* standUpFromBed();
       moodGoal.closed = 0;
-      yield* walkTo(0, 1.1, toCamera());
+      yield* walkTo(LAYOUT.spawn[0], LAYOUT.spawn[1] + 1.1, toCamera());
       arms("wave"); moodGoal.happy = 0.6; yield* wait(2); arms("none"); moodGoal.happy = 0.2;
       label = "attentive";
       yield () => false; // stay put until she's released
     },
     // test/demo plans: take the phone out and have this exact reaction right away
-    *"react-angry"() { label = "phone"; yield* walkTo(0.4, 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("angry"); yield* wait(1); arms("none"); holdPhone(false); },
-    *"react-laugh"() { label = "phone"; yield* walkTo(0.4, 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("laugh"); yield* wait(1); arms("none"); holdPhone(false); },
-    *"react-sad"() { label = "phone"; yield* walkTo(0.4, 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("sad"); yield* wait(1); arms("none"); holdPhone(false); },
-    *"react-shock"() { label = "phone"; yield* walkTo(0.4, 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("shock"); yield* wait(1); arms("none"); holdPhone(false); },
+    *"react-angry"() { label = "phone"; yield* walkTo(LAYOUT.spawn[0] + 0.4, LAYOUT.spawn[1] + 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("angry"); yield* wait(1); arms("none"); holdPhone(false); },
+    *"react-laugh"() { label = "phone"; yield* walkTo(LAYOUT.spawn[0] + 0.4, LAYOUT.spawn[1] + 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("laugh"); yield* wait(1); arms("none"); holdPhone(false); },
+    *"react-sad"() { label = "phone"; yield* walkTo(LAYOUT.spawn[0] + 0.4, LAYOUT.spawn[1] + 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("sad"); yield* wait(1); arms("none"); holdPhone(false); },
+    *"react-shock"() { label = "phone"; yield* walkTo(LAYOUT.spawn[0] + 0.4, LAYOUT.spawn[1] + 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("shock"); yield* wait(1); arms("none"); holdPhone(false); },
     *home() {
       label = "idle";
       yield* standUpFromBed(); arms("none"); holdPhone(false); if (mugHeld) holdMug(false);
-      yield* walkTo(0, 0, toCamera());
+      yield* walkTo(LAYOUT.spawn[0], LAYOUT.spawn[1], toCamera());
       yield () => false;
     },
   };
@@ -407,10 +431,13 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
   const hour = () => new Date().getHours();
   function nextPlan(): PlanName {
     const night = hour() >= 23 || hour() < 6, late = hour() >= 21 || hour() < 8;
-    const table: [PlanName, number][] = [
-      ["wander", 22], ["phone", 14], ["phoneBed", late ? 24 : 14], ["coffee", night ? 4 : 16],
-      ["sit", 10], ["window", 10], ["sleep", night ? 46 : late ? 10 : 4],
-    ];
+    // an imported room has no bed, desk or window to use: she wanders, uses her phone and stretches
+    const table: [PlanName, number][] = LAYOUT.custom
+      ? [["wander", 40], ["phone", 30], ["stretch", 10]]
+      : [
+        ["wander", 22], ["phone", 14], ["phoneBed", late ? 24 : 14], ["coffee", night ? 4 : 16],
+        ["sit", 10], ["window", 10], ["stretch", 8], ["sleep", night ? 46 : late ? 10 : 4],
+      ];
     const total = table.reduce((a, [, w]) => a + w, 0);
     let r = Math.random() * total;
     for (const [n, w] of table) { if ((r -= w) <= 0) return n; }
@@ -471,6 +498,8 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
   };
   const q = new THREE.Quaternion(), qLie = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)).premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2));
   const qYaw = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  const hq1 = new THREE.Quaternion(), hq2 = new THREE.Quaternion(), hq3 = new THREE.Quaternion();
+  const hv1 = new THREE.Vector3(), hv2 = new THREE.Vector3(), hv3 = new THREE.Vector3(), hv4 = new THREE.Vector3();
   const qLieBase = qLie.clone().multiply(new THREE.Quaternion().setFromAxisAngle(up, baseYaw));
 
   const dbg = (window as unknown as { __pose?: Partial<Record<N, V3>> });
@@ -538,6 +567,10 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
     // --- arm tasks
     const R = (a: V3, f: V3, h: V3, w: number) => { mix("rArm", { 0: a[0], 1: a[1], 2: a[2] }, w); mix("rFore", { 0: f[0], 1: f[1], 2: f[2] }, w); mix("rHand", { 0: h[0], 1: h[1], 2: h[2] }, w); };
     const L = (a: V3, f: V3, h: V3, w: number) => { mix("lArm", { 0: a[0], 1: a[1], 2: a[2] }, w); mix("lFore", { 0: f[0], 1: f[1], 2: f[2] }, w); mix("lHand", { 0: h[0], 1: h[1], 2: h[2] }, w); };
+    // the fingers close round whatever she holds (the mug's handle, the edge of the phone)
+    const holding = Math.max(W.phone, mugHeld ? W.mug : 0);
+    idle.grip.r += (Math.min(1, holding * 1.2) - idle.grip.r) * Math.min(1, dt * 8);
+    idle.grip.tightR = mugHeld ? 1.3 : 0.4;
     const tap = Math.sin(t * 5.2) * 0.05;
     R(POSE.phoneR.arm, [POSE.phoneR.fore[0], POSE.phoneR.fore[1] + tap * 0.4, POSE.phoneR.fore[2]], POSE.phoneR.hand, W.phone);
         const lv = (x: V3, y: V3, k: number): V3 => [lerpA(x[0], y[0], k), lerpA(x[1], y[1], k), lerpA(x[2], y[2], k)];
@@ -583,6 +616,20 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
     root.position.set(me.x * s + hipsHw * W.lie, y, me.z * s);
     root.updateMatrixWorld(true);
 
+    // --- holding the phone: the palm turns up (a little toward her face), so the phone lies on it with the screen toward her eyes
+    const wPh = Math.min(1, W.phone);
+    if (wPh > 0.01 && B.rHand && B.rHand.parent && B.head) {
+      B.rHand.getWorldQuaternion(hq1); B.rHand.getWorldPosition(hv1); B.head.getWorldPosition(hv2);
+      hv3.set(0, -1, 0).applyQuaternion(hq1);                                   // where the palm faces now
+      hv2.sub(hv1).normalize();
+      hv4.set(0, 1, 0).addScaledVector(hv2, 0.45).normalize();                  // where it should: up, tilted to her face
+      hq2.setFromUnitVectors(hv3, hv4).multiply(hq1);                           // the hand's new world rotation
+      B.rHand.parent.getWorldQuaternion(hq3);
+      hq3.invert().multiply(hq2);
+      B.rHand.quaternion.slerp(hq3, wPh * 0.95);
+      root.updateMatrixWorld(true);
+    }
+
     // --- props follow
     feedTex.offset.y = (feedTex.offset.y + dt * 0.45) % 1;
     if (!mugHeld) mug.position.copy(mugHome);
@@ -626,6 +673,33 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
       if (v === attentive) return; attentive = v;
       if (v) start("greet"); else { start("home"); gen = (function* () { yield* wait(5); yield* plans.home(); })(); }
     },
+    /** Being carried in someone's hand: no planning or walking, standing posture (the carry module places her). */
+    carry(v: boolean) {
+      if (v) { sitTarget = 0; lieTarget = 0; sleeping = false; start("home"); paused = 1e9; }
+      else { paused = 0; start("home"); }
+    },
+    /** Put her somewhere (world units); used when she is set down. */
+    teleport(x: number, z: number) { me.x = x / s; me.z = z / s; path = []; },
+    get yaw() { return me.yaw; },
+    /** Test hook: put a prop in her hand right now (and pose the arm for it), or let go. */
+    debugHold(kind: "mug" | "phone" | "none") {
+      resetTransient();
+      if (kind === "mug") { holdMug(true); arms("mug"); sipTarget = 0; }
+      else if (kind === "phone") { holdPhone(true); arms("phone"); gazeMode = "hands"; }
+      paused = 1e9;
+    },
+    /** Arms up in a big stretch (and a yawn): the worst moment to be tickled. */
+    get stretching() { return W.stretch > 0.4; },
+    /** Drop whatever she is doing and stand there (a stretch ends at once). */
+    interrupt() { start("home"); },
+    /** She just said something short (an emote bubble above her head). */
+    say,
+    /** She was poked: stop for a moment, and wake her if she was asleep. Returns whether she was asleep. */
+    disturb(): boolean {
+      paused = Math.max(paused, 1.6);
+      if (W.lie > 0.5 && sleeping) { sleeping = false; moodGoal.closed = 0; start("home"); return true; }
+      return false;
+    },
     /** While her head is being petted she stays where she is (and wakes up, if asleep). */
     setPetting(amount: number, dt: number) {
       if (amount > 0.12) { paused = 0.8; if (W.lie > 0.5 && sleeping) { sleeping = false; moodGoal.closed = 0; start("home"); } }
@@ -643,8 +717,9 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
 // ---------------------------------------------------------------- tuned poses (x, y, z Euler per bone, VRM 1.0 axes)
 // These were tuned by eye on VRoid models; `idle.set` mirrors them for VRM 0.x. The phone and mug offsets are in the
 // hand bone's local frame (palm faces -y, fingers point away from the body along -x for the right hand).
-const PHONE_OFF = { pos: [-0.035, -0.03, 0.02] as V3, rot: [0, 0.3, 0] as V3 };
-const MUG_OFF = { pos: [-0.04, -0.02, 0.0] as V3, rot: [0, 0, 0] as V3 };
+// the phone lies on her palm, its back against it and its screen facing her eyes; the fingers curve gently up round its edge
+const PHONE_OFF = { pos: [-0.045, -0.026, 0] as V3, rot: [Math.PI, Math.PI / 2, 0] as V3 };
+const MUG_OFF = { pos: [0.06, -0.0509, -0.0544] as V3, rot: [0.4, -Math.PI / 2, 0] as V3 };
 const POSE = {
   phoneR: { arm: [-0.15, 0.6, 0.95] as V3, fore: [0, 2.15, 0] as V3, hand: [0, 0, 0] as V3 },
   phoneL: { arm: [0.1, -0.5, -1.0] as V3, fore: [0, -1.7, 0] as V3, hand: [0, 0, 0] as V3 },

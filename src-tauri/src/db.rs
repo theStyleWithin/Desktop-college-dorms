@@ -66,6 +66,9 @@ pub struct Character {
     /// The folder this character is filed in (an id from `folders`); `None` is the top level.
     #[serde(default)]
     pub folder: Option<String>,
+    /// Where this card sits when the library is in "my order" (lower comes first); `None` = not placed yet, goes last.
+    #[serde(default)]
+    pub order: Option<i64>,
     /// Shared lorebooks (ids from `lorebooks`) attached to this character, besides the book inside the card.
     #[serde(default)]
     pub lorebooks: Vec<String>,
@@ -121,7 +124,24 @@ pub struct Room {
     pub music: String,
     #[serde(default)]
     pub music_name: String,
+    /// An imported 3D scene (a .glb, .gltf or .fbx inside the data folder) that replaces the built-in 3D room, and its original file name.
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub model_name: String,
+    /// How the model is set in the room: size multiplier, turn (degrees), height shift (metres).
+    #[serde(default = "one")]
+    pub model_scale: f64,
+    #[serde(default)]
+    pub model_rot: f64,
+    #[serde(default)]
+    pub model_y: f64,
+    /// The owner marked this model as allowed to be shared. Only then does it go into an exported profile.
+    #[serde(default)]
+    pub model_share: bool,
 }
+
+fn one() -> f64 { 1.0 }
 
 /// Someone the player can be: a name, who they are, and how they like to roleplay. The active one is described to the AI
 /// before the chat begins (it replaces the plain name and "about you" text).
@@ -159,7 +179,16 @@ pub struct Folder {
     pub cover: Option<String>,
     pub frame: Option<Frame>,
     pub created_at: i64,
+    /// The folder this one sits inside (None = the top level). Folders nest, a few levels deep at most.
+    #[serde(default)]
+    pub parent: Option<String>,
+    /// A character (id) whose picture stands in for the folder's own picture, when it has none.
+    #[serde(default)]
+    pub cover_char: Option<String>,
 }
+
+/// How many folders may sit inside one another.
+pub const MAX_FOLDER_DEPTH: usize = 12;
 
 /// A free-form note. No length limit beyond sanity (it is meant for long writing, like a card's creator notes).
 #[derive(Serialize, Deserialize, Clone)]
@@ -396,11 +425,19 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
             chat_id INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE, mech_id TEXT NOT NULL,
             enabled INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL DEFAULT '{}', PRIMARY KEY(chat_id, mech_id));",
     )?;
+    ensure_column(&conn, "folders", "parent", "TEXT")?;
+    ensure_column(&conn, "folders", "cover_char", "TEXT")?;
     ensure_column(&conn, "dorms", "room_id", "INTEGER")?;
     ensure_column(&conn, "dorms", "music", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "dorms", "music_name", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "rooms", "music", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "rooms", "music_name", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "rooms", "model", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "rooms", "model_name", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "rooms", "model_scale", "REAL NOT NULL DEFAULT 1")?;
+    ensure_column(&conn, "rooms", "model_rot", "REAL NOT NULL DEFAULT 0")?;
+    ensure_column(&conn, "rooms", "model_y", "REAL NOT NULL DEFAULT 0")?;
+    ensure_column(&conn, "rooms", "model_share", "INTEGER NOT NULL DEFAULT 0")?;
     ensure_column(&conn, "chats", "style", "TEXT NOT NULL DEFAULT 'chat'")?;
     for t in ["rooms", "mechanics", "notes", "folders", "lorebooks", "personas"] {
         conn.execute_batch(&format!("CREATE INDEX IF NOT EXISTS idx_{t}_profile ON {t}(profile_id);"))?;
@@ -506,9 +543,9 @@ pub fn get_dorm(c: &Connection, id: i64, owner: &Owner) -> R<Option<Dorm>> {
 // ----- rooms -----
 
 fn row_room(r: &rusqlite::Row) -> R<Room> {
-    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)? })
+    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)?, model: r.get(10)?, model_name: r.get(11)?, model_scale: r.get(12)?, model_rot: r.get(13)?, model_y: r.get(14)?, model_share: r.get::<_, i64>(15)? != 0 })
 }
-const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name";
+const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share";
 
 pub fn list_rooms(c: &Connection, owner: &Owner) -> R<Vec<Room>> {
     let mut s = c.prepare(&format!("SELECT {ROOM_COLS} FROM rooms WHERE profile_id IS ?1 ORDER BY id DESC"))?;
@@ -522,16 +559,16 @@ pub fn get_room(c: &Connection, id: i64, owner: &Owner) -> R<Option<Room>> {
 
 pub fn create_room(c: &Connection, r: &Room, owner: &Owner) -> R<Room> {
     c.execute(
-        "INSERT INTO rooms(profile_id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
-        params![owner, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, now(), r.music, r.music_name],
+        "INSERT INTO rooms(profile_id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
+        params![owner, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, now(), r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64],
     )?;
     Ok(get_room(c, c.last_insert_rowid(), owner)?.expect("just inserted"))
 }
 
 pub fn update_room(c: &Connection, r: &Room, owner: &Owner) -> R<()> {
     c.execute(
-        "UPDATE rooms SET name=?2,kind=?3,description=?4,owner_kind=?5,character_id=?6,backdrop=?7,music=?9,music_name=?10 WHERE id=?1 AND profile_id IS ?8",
-        params![r.id, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, owner, r.music, r.music_name],
+        "UPDATE rooms SET name=?2,kind=?3,description=?4,owner_kind=?5,character_id=?6,backdrop=?7,music=?9,music_name=?10,model=?11,model_name=?12,model_scale=?13,model_rot=?14,model_y=?15,model_share=?16 WHERE id=?1 AND profile_id IS ?8",
+        params![r.id, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, owner, r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64],
     )?;
     Ok(())
 }
@@ -633,38 +670,73 @@ pub fn delete_lorebook(c: &Connection, id: &str, owner: &Owner) -> R<()> {
 
 fn row_folder(r: &rusqlite::Row) -> R<Folder> {
     let fr: Option<String> = r.get(3)?;
-    Ok(Folder { id: r.get(0)?, name: r.get(1)?, cover: r.get(2)?, frame: fr.and_then(|j| serde_json::from_str(&j).ok()), created_at: r.get(4)? })
+    Ok(Folder { id: r.get(0)?, name: r.get(1)?, cover: r.get(2)?, frame: fr.and_then(|j| serde_json::from_str(&j).ok()), created_at: r.get(4)?, parent: r.get(5)?, cover_char: r.get(6)? })
 }
 
 pub fn list_folders(c: &Connection, owner: &Owner) -> R<Vec<Folder>> {
-    let mut s = c.prepare("SELECT id,name,cover,frame,created_at FROM folders WHERE profile_id IS ?1 ORDER BY name COLLATE NOCASE")?;
+    let mut s = c.prepare("SELECT id,name,cover,frame,created_at,parent,cover_char FROM folders WHERE profile_id IS ?1 ORDER BY name COLLATE NOCASE")?;
     let rows = s.query_map([owner], row_folder)?;
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
 pub fn get_folder(c: &Connection, id: &str, owner: &Owner) -> R<Option<Folder>> {
-    c.query_row("SELECT id,name,cover,frame,created_at FROM folders WHERE id=?1 AND profile_id IS ?2", params![id, owner], row_folder).optional()
+    c.query_row("SELECT id,name,cover,frame,created_at,parent,cover_char FROM folders WHERE id=?1 AND profile_id IS ?2", params![id, owner], row_folder).optional()
 }
 
 pub fn save_folder(c: &Connection, f: &Folder, owner: &Owner) -> R<()> {
     let fr = f.frame.and_then(|x| serde_json::to_string(&x).ok());
     c.execute(
-        "INSERT INTO folders(id,profile_id,name,cover,frame,created_at) VALUES(?1,?2,?3,?4,?5,?6)
-         ON CONFLICT(id) DO UPDATE SET name=excluded.name, cover=excluded.cover, frame=excluded.frame WHERE profile_id IS ?2",
-        params![f.id, owner, f.name, f.cover, fr, f.created_at],
+        "INSERT INTO folders(id,profile_id,name,cover,frame,created_at,parent,cover_char) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, cover=excluded.cover, frame=excluded.frame, parent=excluded.parent, cover_char=excluded.cover_char WHERE profile_id IS ?2",
+        params![f.id, owner, f.name, f.cover, fr, f.created_at, f.parent, f.cover_char],
     )?;
     Ok(())
 }
 
-/// Delete a folder; its characters go back to the top level (never deleted with it).
-pub fn delete_folder(c: &Connection, id: &str, owner: &Owner) -> R<()> {
-    if get_folder(c, id, owner)?.is_none() {
-        return Ok(());
+/// The chain of folders from `id` up to the top: `[id, its parent, its grandparent, …]` (stops if the data loops).
+pub fn folder_chain(all: &[Folder], id: &str) -> Vec<String> {
+    let mut out = vec![];
+    let mut cur = Some(id.to_string());
+    while let Some(c) = cur {
+        if out.contains(&c) || out.len() > 64 { break; }
+        let next = all.iter().find(|f| f.id == c).and_then(|f| f.parent.clone());
+        out.push(c);
+        cur = next;
     }
+    out
+}
+
+/// How many levels deep the subtree under `id` goes (a folder with no subfolders is 1).
+pub fn folder_height(all: &[Folder], id: &str, guard: usize) -> usize {
+    if guard > 64 { return 1; }
+    1 + all.iter().filter(|f| f.parent.as_deref() == Some(id)).map(|f| folder_height(all, &f.id, guard + 1)).max().unwrap_or(0)
+}
+
+/// Can folder `id` be put inside `parent` (None = the top level)? Not into itself or something inside it, and not too deep.
+pub fn can_nest(all: &[Folder], id: &str, parent: Option<&str>) -> Result<(), &'static str> {
+    let Some(p) = parent else { return Ok(()) };
+    if p == id || folder_chain(all, p).iter().any(|a| a == id) {
+        return Err("A folder can't go inside itself or one of its own subfolders.");
+    }
+    if folder_chain(all, p).len() + folder_height(all, id, 0) > MAX_FOLDER_DEPTH {
+        return Err("Folders can only be nested a few levels deep.");
+    }
+    Ok(())
+}
+
+/// Delete a folder. Nothing inside is deleted: its characters and subfolders move up into the folder it sat in.
+pub fn delete_folder(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    let Some(gone) = get_folder(c, id, owner)? else { return Ok(()) };
     for mut ch in list_characters(c, owner)? {
         if ch.folder.as_deref() == Some(id) {
-            ch.folder = None;
+            ch.folder = gone.parent.clone();
             save_character(c, &ch, owner)?;
+        }
+    }
+    for mut f in list_folders(c, owner)? {
+        if f.parent.as_deref() == Some(id) {
+            f.parent = gone.parent.clone();
+            save_folder(c, &f, owner)?;
         }
     }
     c.execute("DELETE FROM folders WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
@@ -1068,6 +1140,7 @@ mod tests {
             outfit: None,
             frame: None,
             folder: None,
+            order: None,
             lorebooks: vec![],
             favorite: false,
             created_at: 1,
@@ -1081,7 +1154,7 @@ mod tests {
     fn rooms_and_packs_belong_to_their_owner_and_dorms_can_only_use_their_own_rooms() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new() };
+        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false };
         let ra = create_room(&c, &room("A's kitchen"), &a).unwrap();
         let rb = create_room(&c, &room("B's kitchen"), &b).unwrap();
         assert_eq!(list_rooms(&c, &a).unwrap().len(), 1);
@@ -1120,7 +1193,7 @@ mod tests {
     fn folders_lorebooks_and_notes_are_private_and_cleaned_up() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let f = Folder { id: "f1".into(), name: "Crew".into(), cover: None, frame: None, created_at: 1 };
+        let f = Folder { id: "f1".into(), name: "Crew".into(), cover: None, frame: None, created_at: 1, parent: None, cover_char: None };
         save_folder(&c, &f, &a).unwrap();
         assert!(list_folders(&c, &b).unwrap().is_empty() && get_folder(&c, "f1", &b).unwrap().is_none());
         // B can't take over A's folder by saving with the same id
@@ -1165,6 +1238,52 @@ mod tests {
         assert!(get_profile_avatar(&c, "b").is_none());
         wipe_owner(&c, &a).unwrap();
         assert!(list_personas(&c, &a).unwrap().is_empty() && get_profile_avatar(&c, "a").is_none(), "wiping a profile removes its personas and picture");
+    }
+
+    #[test]
+    fn card_order_and_folder_picture_character_survive_a_save() {
+        let c = fresh();
+        let a = me("a");
+        let mut x = ch("x", "X"); x.order = Some(2); save_character(&c, &x, &a).unwrap();
+        let mut y = ch("y", "Y"); y.order = Some(0); save_character(&c, &y, &a).unwrap();
+        let got = list_characters(&c, &a).unwrap();
+        assert_eq!(got.iter().find(|c| c.id == "x").unwrap().order, Some(2));
+        assert_eq!(got.iter().find(|c| c.id == "y").unwrap().order, Some(0));
+        let f = Folder { id: "f".into(), name: "F".into(), cover: None, frame: None, created_at: 1, parent: None, cover_char: Some("x".into()) };
+        save_folder(&c, &f, &a).unwrap();
+        assert_eq!(get_folder(&c, "f", &a).unwrap().unwrap().cover_char.as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn folders_nest_without_loops_and_deleting_moves_things_up() {
+        let c = fresh();
+        let a = me("a");
+        let mk = |id: &str, parent: Option<&str>| Folder { id: id.into(), name: id.into(), cover: None, frame: None, created_at: 1, parent: parent.map(String::from), cover_char: None };
+        for f in [mk("canon", None), mk("series", Some("canon")), mk("sub", Some("series"))] { save_folder(&c, &f, &a).unwrap(); }
+        let all = list_folders(&c, &a).unwrap();
+        assert_eq!(folder_chain(&all, "sub"), vec!["sub", "series", "canon"]);
+        assert_eq!(folder_height(&all, "canon", 0), 3);
+        assert!(can_nest(&all, "series", None).is_ok());
+        assert!(can_nest(&all, "canon", Some("sub")).is_err(), "a folder can't go inside its own subfolder");
+        assert!(can_nest(&all, "canon", Some("canon")).is_err(), "or inside itself");
+        assert!(can_nest(&all, "sub", Some("canon")).is_ok());
+        // depth limit
+        let mut deep = vec![mk("d0", None)];
+        for i in 1..MAX_FOLDER_DEPTH { deep.push(mk(&format!("d{i}"), Some(&format!("d{}", i - 1)))); }
+        deep.push(mk("loose", None));
+        assert!(can_nest(&deep, "loose", Some(&format!("d{}", MAX_FOLDER_DEPTH - 1))).is_err(), "too deep");
+        assert!(can_nest(&deep, "loose", Some("d0")).is_ok());
+        // a looping file can't hang the helpers
+        let looped = vec![mk("x", Some("y")), mk("y", Some("x"))];
+        assert!(folder_chain(&looped, "x").len() <= 2 && folder_height(&looped, "x", 0) < 100);
+        // characters in a deleted folder, and its subfolders, move up one level (not out of everything)
+        let mut x = ch("x", "X"); x.folder = Some("series".into()); save_character(&c, &x, &a).unwrap();
+        delete_folder(&c, "series", &a).unwrap();
+        assert_eq!(get_character(&c, "x", &a).unwrap().unwrap().folder.as_deref(), Some("canon"));
+        assert_eq!(get_folder(&c, "sub", &a).unwrap().unwrap().parent.as_deref(), Some("canon"));
+        delete_folder(&c, "canon", &a).unwrap();
+        assert_eq!(get_character(&c, "x", &a).unwrap().unwrap().folder, None);
+        assert_eq!(get_folder(&c, "sub", &a).unwrap().unwrap().parent, None);
     }
 
     #[test]

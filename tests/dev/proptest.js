@@ -1,0 +1,20 @@
+const { chromium } = require("playwright");
+(async () => {
+  const kind = process.argv[2]; const out = process.argv[3];
+  const b = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--enable-webgl"] });
+  const p = await b.newPage({ viewport: { width: 1100, height: 700 }, deviceScaleFactor: 1 });
+  const errs = []; p.on("pageerror", (e) => errs.push(String(e)));
+  await p.goto("http://localhost:5199/viewer-dev.html?src=" + encodeURIComponent("http://127.0.0.1:8099/m.vrm"));
+  await p.waitForSelector(".vrm-box[data-ready='1']", { timeout: 90000 });
+  await p.click("[aria-label=Lively]"); await p.waitForTimeout(800);
+  if (process.env.POSE) await p.evaluate((t) => { window.__pose = JSON.parse(t); }, process.env.POSE);
+  await p.evaluate((k) => document.querySelector(".vrm-box").dispatchEvent(new CustomEvent("prop", { detail: k })), kind);
+  if (process.argv[5]) await p.evaluate((t) => document.querySelector(".vrm-box").dispatchEvent(new CustomEvent("thumb", { detail: JSON.parse(t) })), process.argv[5]);
+  await p.waitForTimeout(+(process.env.WAIT||2200));
+  const look = JSON.parse(process.argv[4] || '{"bone":"rHand","dist":0.5,"dx":0.15,"dy":0.1}');
+  await p.evaluate((d) => document.querySelector(".vrm-box").dispatchEvent(new CustomEvent("lookat", { detail: d })), look);
+  await p.waitForTimeout(800);
+  await p.screenshot({ path: out });
+  console.log("errors:", errs.slice(0, 3));
+  await b.close();
+})();

@@ -59,12 +59,26 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
   such as whisper.cpp's `whisper-server` for fully offline voice. Nothing is recorded unless you press the mic; the recording goes only to the
   server you choose in Settings → Voice (https required unless it's on your own network). Voice works best with a fast cloud API or a local
   model that fits your hardware. Microphone access depends on the system: the app opts in on Linux, Windows asks you, and Android asks for the permission.
-- **Virtual hands** for the 3D viewer: use a **game controller** (sticks move your hands, triggers reach in, bumpers pull back, A grips),
-  or the mouse or touch (press and hold to reach in). Stroke her head or ears and she leans into your hand, half-closes her eyes
-  and smiles; your controller rumbles gently.
+- **Virtual hands** for the 3D viewer, with three gestures (🖐 open, 👆 point, 🤏 pinch; switch with the buttons, **P** and **G**, or your controller):
+  - **Pet** (open hands): stroke her head or ears and she leans into your hand, half-closes her eyes and smiles; your controller rumbles gently.
+  - **Poke** (pointing finger): click a spot and she reacts to *where* you poked: a giggle for a cheek, a flick of annoyance for the forehead,
+    a boop on the nose, a squeal for an ear, a startled look over her shoulder from behind, a playful poke back at her hand. Poke her again and again
+    and she gets annoyed. (Only ordinary places react: face, ears, shoulders, arms, hands and back.)
+  - **Tickle**: press and hold with the pointing finger and the fingers wiggle. The laugh builds the longer you go (ears, arms, shoulders, back and hands are
+    ticklish), and if you catch her in the middle of a big stretch she is caught off guard and bursts out laughing.
+  - **Pick up** (pinch): pinch her by the scruff and lift her into the air. She dangles from your fingertips and swings like a pendulum as you move
+    your hand, and she either panics (kicking, flailing, yelling) or hangs limp and sulks. Carry her somewhere else in the room (scroll to push her
+    in or out), then let go: she drops, squashes on the floor, sees stars, and carries on from wherever you put her. Silly on purpose.
+  - **Controllers**: Xbox, PlayStation (DualShock 4, DualSense), Nintendo (Switch Pro, Joy-Con), Steam Controller and Steam Deck (through Steam Input)
+    and most other pads work. Sticks move the hands, triggers reach in, bumpers pull back; D-pad left / up / right pick open hands / point / pinch,
+    the top button cycles, the bottom button (A, Cross, B) and left button act with the right and left hand (tap to poke, hold to tickle or pinch). Hints show
+    your pad's own button names, and Settings → Controller lets you rebind every one.
 - **Rooms**: make a place (a living room, a rooftop, a character's bedroom) with a name, a description and a backdrop (your own
   image or a built-in scene), set a dorm in it, and the characters know where they are while the chat shows the room behind it.
   Make the room first and the dorm after ("Create & enter"), or add a room to a dorm you already have.
+- **Your own 3D rooms**: in a room's settings, import a house or room model (`.glb`, `.gltf` or `.fbx`, for example one bought on Booth; export it from Unity or Blender if you only have a `.unitypackage`). It replaces the built-in 3D room in chats set in that room.
+  The app finds the floor, centres the model and works out where she can walk: she wanders, uses her phone and stretches there, and steps around the furniture (a bed, desk or window are only in the built-in room). Set the size, turn and height if it doesn't sit right.
+  Each model has a sharing mark, **Not allowed to share** (the default) or **May be shared**. Only a model you mark as shareable goes into an exported profile file; the room itself is always exported, and the export tells you which models it left out. The mark is your own declaration, the app can't check a seller's licence. Unity shaders and baked lighting are not carried over, so rooms look flatter than in VRChat.
 - **Background music**: pick an MP3 (or another audio file) from your computer for a room or a dorm. It plays quietly on a loop while you
   are in a chat there, with pause, mute and volume. A dorm's own music is used instead of its room's.
 - **Mechanics** (🧩 in a chat): optional story layers you switch on or off per chat. Import a `.bundle.json` pack (an affection and trust
@@ -73,8 +87,10 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
   Nothing is forced on a chat. A pack's own custom screens are not run; the app shows its values in built-in panels instead.
 - **Phone mode** (📱 in a chat): the same conversation as a texting experience: a phone with message bubbles, and replies written and
   shown as short texts.
-- **Character folders**: optional folders in the library. Drag characters onto a folder (or ⋮ → Move to folder), rename it, give it its own picture.
-  Deleting a folder never deletes its characters.
+- **Character folders**: optional folders in the library, and folders can nest, so you can keep a "Canon character RP" folder with a folder per series inside it,
+  and each series' characters inside that. Drag characters or folders onto a folder (or onto the path at the top), or use ⋮ → Move to folder / Move folder…; rename a folder,
+  give it its own picture, or let it borrow the picture of one of the characters inside it (**Use a character's picture**). Deleting a folder never deletes anything: its characters and subfolders move up one level.
+  **My order** (the default sort) lets you drag a character's card to wherever you want it, in the top level and inside any folder; the left or right half of a card decides whether it lands before or after it. On a touch screen use ⋮ → Move earlier / Move later.
 - **Position your pictures**: choosing an avatar opens a window where you drag and zoom until the face is just right (with previews of the
   card, round avatar and banner). The framing is saved, can be changed later (⤧ Position), and is used everywhere the picture appears.
   Library cards are bigger too.

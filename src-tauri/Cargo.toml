@@ -1,6 +1,6 @@
 [package]
 name = "desktop-college-dorms"
-version = "0.4.0"
+version = "0.6.0"
 description = "Offline-first AI character creator and chat rooms"
 authors = ["theStyleWithin"]
 license = "MIT"
@@ -14,6 +14,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+base64 = "0.22"
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"

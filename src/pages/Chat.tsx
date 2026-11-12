@@ -8,7 +8,7 @@ import MechanicsPanel from "../components/MechanicsPanel";
 import PhoneView from "../components/PhoneView";
 import MusicPlayer from "../components/MusicPlayer";
 import MusicField from "../components/MusicField";
-import { hideDirectives, roomBackground, kindLabel } from "../lib/rooms";
+import { hideDirectives, roomBackground, roomScene, kindLabel } from "../lib/rooms";
 import { makeWardrobe } from "../components/WardrobePanel";
 import type { Speech } from "../components/SpeechBubble";
 import { Modal, useToast } from "../components/ui";
@@ -350,7 +350,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
       <aside className="side-panel">
         {stageChar ? (
           <>
-            <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "")} kind={stageChar.media?.kind ?? null} url={mediaUrl(stageChar)} name={displayName(stageChar)} frame={stageChar.frame} mode="full" attentive={busy || listening || text.trim().length > 0}
+            <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "")} kind={stageChar.media?.kind ?? null} url={mediaUrl(stageChar)} name={displayName(stageChar)} frame={stageChar.frame} mode="full" scene={roomScene(room)} attentive={busy || listening || text.trim().length > 0}
               wardrobe={makeWardrobe(stageChar, () => void refresh(), toast)}
               speech={speech && speech.characterId === stageChar.id ? { ...speech, text: hideDirectives(speech.text) } : null}
               talk={{ draft: text, setDraft: setText, send: (t) => void sendText(t), busy, onHeard: heard, onListening: setListening }} /></div>

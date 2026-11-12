@@ -7,6 +7,7 @@
 //! and only then (after the user confirms) take the profile off this device. It is not a delete: importing the
 //! file brings it all back, here or on another device, and never overwrites an existing profile.
 
+use std::sync::Arc;
 use std::collections::HashMap;
 use std::io::{Cursor, Read, Write};
 use std::time::{Duration, Instant};
@@ -578,6 +579,8 @@ pub struct ExportInfo {
     chats: usize,
     messages: usize,
     media: usize,
+    /// Names of rooms whose 3D model was left out because it isn't marked as shareable.
+    withheld_rooms: Vec<String>,
 }
 
 fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
@@ -707,6 +710,12 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     }
     if profile_avatar.as_ref().map(|(f, _)| f.is_empty()).unwrap_or(false) { profile_avatar = None; }
     for r in rooms.iter_mut() { pack_music(&mut r.music, &mut zip)?; if r.music.is_empty() { r.music_name.clear(); } }
+    // a 3D room goes along only when its owner marked it as allowed to be shared; otherwise the room travels without it
+    let withheld_rooms: Vec<String> = rooms.iter().filter(|r| !r.model.is_empty() && !r.model_share).map(|r| r.name.clone()).collect();
+    for r in rooms.iter_mut() {
+        if r.model_share { pack_music(&mut r.model, &mut zip)?; } else { r.model.clear(); }
+        if r.model.is_empty() { r.model_name.clear(); r.model_share = false; r.model_scale = 1.0; r.model_rot = 0.0; r.model_y = 0.0; }
+    }
     for d in dorms.iter_mut() { pack_music(&mut d.music, &mut zip)?; if d.music.is_empty() { d.music_name.clear(); } }
     // room backdrops travel with their rooms
     for r in rooms.iter_mut() {
@@ -760,6 +769,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
         chats: counts.chats,
         messages: counts.messages,
         media: counts.media,
+        withheld_rooms,
     };
     Ok((bytes, info, file_name))
 }
@@ -838,7 +848,7 @@ fn remove_owner_data(st: &AppState, o: &Owner) -> R<()> {
         files.extend(db::list_folders(&db, o).map_err(e)?.into_iter().filter_map(|f| f.cover));
         files.extend(db::list_personas(&db, o).map_err(e)?.into_iter().filter_map(|p| p.avatar));
         if let Some(pid) = o { files.extend(db::get_profile_avatar(&db, pid).map(|(f, _)| f)); }
-        files.extend(db::list_rooms(&db, o).map_err(e)?.into_iter().flat_map(|r| r.backdrop.strip_prefix("file:").map(str::to_string).into_iter().chain(Some(r.music).filter(|m| !m.is_empty()))));
+        files.extend(db::list_rooms(&db, o).map_err(e)?.into_iter().flat_map(|r| r.backdrop.strip_prefix("file:").map(str::to_string).into_iter().chain(Some(r.music).filter(|m| !m.is_empty())).chain(Some(r.model).filter(|m| !m.is_empty()))));
         files.extend(db::list_dorms(&db, o).map_err(e)?.into_iter().filter(|d| !d.music.is_empty()).map(|d| d.music));
         (settings, files)
     };
@@ -984,8 +994,12 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
         }
 
         let mut folder_map: HashMap<String, String> = HashMap::new();
+        // new ids first, so a folder can name its parent whichever comes first in the file
+        for f in &parsed.data.folders { folder_map.insert(f.id.clone(), uid()); }
         for (i, f) in parsed.data.folders.iter().enumerate() {
-            let mut nf = db::Folder { id: uid(), name: f.name.clone(), cover: None, frame: f.frame.and_then(|x| x.clean()), created_at: f.created_at };
+            // the parent has to exist in the file and must not lead back to this folder (a hand-edited file could loop)
+            let parent = f.parent.as_ref().filter(|p| folder_map.contains_key(*p) && !db::folder_chain(&parsed.data.folders, p).contains(&f.id)).and_then(|p| folder_map.get(p).cloned());
+            let mut nf = db::Folder { id: folder_map[&f.id].clone(), name: f.name.clone(), cover: None, frame: f.frame.and_then(|x| x.clean()), created_at: f.created_at, parent, cover_char: None };
             if let Some(base) = f.cover.as_ref().and_then(|c| c.strip_prefix("media/")).filter(|b| safe_media_name(b)) {
                 if let Some(bytes) = parsed.media.get(base) {
                     let ext = std::path::Path::new(base).extension().and_then(|x| x.to_str()).unwrap_or("png").to_lowercase();
@@ -999,7 +1013,6 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
                 }
             }
             db::save_folder(&db, &nf, &o).map_err(e)?;
-            folder_map.insert(f.id.clone(), nf.id);
         }
 
         // personas and the profile picture (an image, a safe name, written under a fresh name)
@@ -1075,6 +1088,14 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             c.last_used = c.last_used.max(0);
             db::save_character(&db, &c, &o).map_err(e)?;
         }
+        // a folder that borrows a character's picture (the characters have their new ids now)
+        for f in &parsed.data.folders {
+            let Some(new_char) = f.cover_char.as_ref().and_then(|c| char_map.get(c)) else { continue };
+            if let Some(mut nf) = db::get_folder(&db, &folder_map[&f.id], &o).map_err(e)? {
+                nf.cover_char = Some(new_char.clone());
+                db::save_folder(&db, &nf, &o).map_err(e)?;
+            }
+        }
 
         // rooms (after the characters, since a room can belong to one) and the dorms' place in them
         let mut room_map: HashMap<i64, i64> = HashMap::new();
@@ -1086,11 +1107,27 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             if had_file { room.backdrop.clear(); }
             let music = std::mem::take(&mut room.music);
             let music_name = std::mem::take(&mut room.music_name);
+            let model = std::mem::take(&mut room.model);
+            let model_name = std::mem::take(&mut room.model_name);
             let mut nr = db::create_room(&db, &room, &o).map_err(e)?;
             if let Some(rel) = restore_music(&music, format!("room{}", nr.id), &mut written)? {
                 nr.music = rel;
                 nr.music_name = music_name;
                 db::update_room(&db, &nr, &o).map_err(e)?;
+            }
+            // a shared 3D room (only ever packed when its owner allowed it): a 3D file, a safe name, written under a fresh name
+            if let Some(base) = model.strip_prefix("media/").filter(|b| safe_media_name(b) && r.model_share) {
+                let ext = std::path::Path::new(base).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+                if let (true, Some(bytes)) = (["glb", "gltf", "fbx"].contains(&ext.as_str()), parsed.media.get(base)) {
+                    let rel = format!("media/roommodel-{}-{}.{ext}", nr.id, db::now());
+                    let abs = st.data_dir.join(&rel);
+                    std::fs::write(&abs, bytes).map_err(e)?;
+                    written.push(abs);
+                    nr.model = rel; nr.model_name = model_name;
+                    nr.model_scale = r.model_scale.clamp(0.01, 100.0); nr.model_rot = r.model_rot.rem_euclid(360.0); nr.model_y = r.model_y.clamp(-50.0, 50.0);
+                    nr.model_share = true;
+                    db::update_room(&db, &nr, &o).map_err(e)?;
+                }
             }
             if let Some(base) = r.backdrop.strip_prefix("file:media/").filter(|b| had_file && safe_media_name(b)) {
                 if let Some(bytes) = parsed.media.get(base) {
@@ -1155,6 +1192,8 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
         }
 
         let mut settings = parsed.data.settings.clone();
+        // a profile from a computer that runs the built-in model, opened on a device that can't (a phone): use a cloud provider instead
+        if settings.provider == "local" && !crate::llama::engine_supported() { settings.provider = "openai".into(); }
         settings.active_persona = persona_map.get(&settings.active_persona).cloned().unwrap_or_default();
         settings.user_name = display;
         db::save_settings(&db, &settings, &o).map_err(e)?;
@@ -1176,6 +1215,65 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
     }
 }
 
+/// Largest profile file that can be staged (a profile with many 3D models and pictures can be a few hundred MB).
+const MAX_STAGED: usize = 2 * 1024 * 1024 * 1024;
+
+/// Start bringing a profile file in. The file comes across in small pieces (each a base64 string in an ordinary command),
+/// which works the same on every device, including phones where one huge message between the web view and the app does not.
+#[tauri::command]
+pub fn stage_begin(state: State<'_, Shared>) -> String {
+    let token = uid();
+    *state.staged.lock().unwrap() = Some((token.clone(), Arc::new(Vec::new())));
+    token
+}
+
+#[tauri::command]
+pub fn stage_chunk(state: State<'_, Shared>, token: String, data: String) -> R<usize> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.trim()).map_err(|_| "That piece of the file was damaged on the way in.".to_string())?;
+    let mut g = state.staged.lock().unwrap();
+    let (t, buf) = g.as_mut().ok_or("The file transfer was cancelled.")?;
+    if *t != token {
+        return Err("The file transfer was cancelled.".into());
+    }
+    let v = Arc::get_mut(buf).ok_or("The file transfer is busy.")?;
+    if v.len() + bytes.len() > MAX_STAGED {
+        return Err("That file is too large to be a profile.".into());
+    }
+    v.extend_from_slice(&bytes);
+    Ok(v.len())
+}
+
+#[tauri::command]
+pub fn stage_clear(state: State<'_, Shared>) {
+    *state.staged.lock().unwrap() = None;
+}
+
+fn staged_bytes(st: &AppState, token: &str) -> R<Arc<Vec<u8>>> {
+    match &*st.staged.lock().unwrap() {
+        Some((t, b)) if t == token && !b.is_empty() => Ok(b.clone()),
+        _ => Err("The file isn't here any more. Choose it again.".into()),
+    }
+}
+
+/// Look inside the staged profile file.
+#[tauri::command]
+pub async fn inspect_staged(state: State<'_, Shared>, token: String) -> R<serde_json::Value> {
+    let st: Shared = state.inner().clone();
+    let bytes = staged_bytes(&st, &token)?;
+    profile_op(st, bytes, "inspect", String::new(), String::new()).await
+}
+
+/// Import the staged profile file as a new profile.
+#[tauri::command]
+pub async fn import_staged(state: State<'_, Shared>, token: String, handle: String, passcode: String) -> R<serde_json::Value> {
+    let st: Shared = state.inner().clone();
+    let bytes = staged_bytes(&st, &token)?;
+    let out = profile_op(st.clone(), bytes, "import", handle, passcode).await?;
+    *st.staged.lock().unwrap() = None;
+    Ok(out)
+}
+
 /// Body: the profile file. Headers: `x-mode` = `inspect` | `import`; for import also `x-handle`, `x-passcode` (optional).
 #[tauri::command]
 pub async fn import_profile(request: Request<'_>, state: State<'_, Shared>) -> R<serde_json::Value> {
@@ -1184,9 +1282,13 @@ pub async fn import_profile(request: Request<'_>, state: State<'_, Shared>) -> R
     let handle = header(&request, "x-handle");
     let passcode = header(&request, "x-passcode");
     let bytes = match request.body() {
-        InvokeBody::Raw(b) => b.clone(),
+        InvokeBody::Raw(b) => Arc::new(b.clone()),
         _ => return Err("Expected a file.".into()),
     };
+    profile_op(st, bytes, &mode, handle, passcode).await
+}
+
+async fn profile_op(st: Shared, bytes: Arc<Vec<u8>>, mode: &str, handle: String, passcode: String) -> R<serde_json::Value> {
     let parsed = tauri::async_runtime::spawn_blocking(move || parse_profile_zip(&bytes)).await.map_err(e)??;
 
     if mode == "inspect" {

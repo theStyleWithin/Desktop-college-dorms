@@ -13,6 +13,8 @@ const REPLY = "*waves a little* Oh, hi! I was just thinking about you. Did you e
 function Harness() {
   const q = new URLSearchParams(location.search);
   const [url, setUrl] = useState("");
+  // room=<url of a .glb/.gltf/.fbx>&ext=glb&rscale=1&rrot=0&ry=0 stands her in an imported 3D room
+  const [roomUrl, setRoomUrl] = useState("");
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [speech, setSpeech] = useState<Speech | null>(null);
@@ -24,6 +26,7 @@ function Harness() {
     onRename: (id, name) => setOutfits((o) => o.map((x) => (x.id === id ? { ...x, name } : x))), onRemove: (id) => { setOutfits((o) => o.filter((x) => x.id !== id)); setWorn((w) => (w === id ? null : w)); } };
   useEffect(() => {
     fetch(q.get("src") ?? "").then((r) => r.blob()).then((b) => setUrl(URL.createObjectURL(b))).catch(() => {});
+    if (q.get("room")) fetch(q.get("room")!).then((r) => r.blob()).then((b) => setRoomUrl(URL.createObjectURL(b))).catch(() => {});
     return () => clearInterval(timer.current);
   }, []);
   const send = () => {
@@ -39,7 +42,7 @@ function Harness() {
   };
   return (
     <div className="vrm-big" style={{ width: "100vw", height: "100vh" }}>
-      {url && <VrmViewer url={url} large={q.get("large") !== "0"} speech={speech} wardrobe={q.get("wardrobe") ? wardrobe : undefined}
+      {url && (!q.get("room") || roomUrl) && <VrmViewer url={url} scene={roomUrl ? { url: roomUrl, ext: q.get("ext") ?? "glb", scale: Number(q.get("rscale") ?? 1), rot: Number(q.get("rrot") ?? 0), y: Number(q.get("ry") ?? 0) } : null} large={q.get("large") !== "0"} speech={speech} wardrobe={q.get("wardrobe") ? wardrobe : undefined}
         talk={q.get("talk") ? { draft, setDraft, send: () => send(), busy, onHeard: (t) => setDraft(t), onListening: () => {} } : undefined} />}
     </div>
   );

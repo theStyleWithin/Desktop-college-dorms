@@ -29,6 +29,8 @@ pub struct AppState {
     pub pending_export: Mutex<Option<crate::accounts::PendingExport>>,
     /// Wrong-passcode tracking per profile: (failures, locked until).
     pub login_fails: Mutex<HashMap<String, (u32, std::time::Instant)>>,
+    /// A profile file being brought in piece by piece (so a big file never has to cross into the app in one go, which phones can't do).
+    pub staged: Mutex<Option<(String, Arc<Vec<u8>>)>>,
 }
 
 pub type Shared = Arc<AppState>;
@@ -113,11 +115,17 @@ pub fn run() {
                 session: Default::default(),
                 pending_export: Default::default(),
                 login_fails: Default::default(),
+                staged: Default::default(),
             }));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            accounts::stage_begin,
+            accounts::stage_chunk,
+            accounts::stage_clear,
+            accounts::inspect_staged,
+            accounts::import_staged,
             extras::list_personas,
             extras::save_persona,
             extras::delete_persona,
@@ -133,12 +141,15 @@ pub fn run() {
             extras::delete_lorebook,
             extras::list_folders,
             extras::create_folder,
+            extras::move_folder,
             extras::rename_folder,
             extras::delete_folder,
             extras::set_folder_cover,
             extras::set_folder_frame,
             extras::clear_folder_cover,
             extras::move_characters,
+            extras::reorder_characters,
+            extras::set_folder_cover_char,
             extras::list_notes,
             extras::save_note,
             extras::delete_note,
@@ -150,6 +161,9 @@ pub fn run() {
             extras::set_dorm_room,
             extras::set_room_music,
             extras::clear_room_music,
+            extras::set_room_model,
+            extras::clear_room_model,
+            extras::set_room_model_cfg,
             extras::set_dorm_music,
             extras::clear_dorm_music,
             extras::list_mechanics,

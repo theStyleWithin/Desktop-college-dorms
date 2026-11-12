@@ -22,9 +22,17 @@ export function createIdle(vrm: VRM, camera: THREE.Camera) {
     lShin: bone("leftLowerLeg"), rShin: bone("rightLowerLeg"),
     lFoot: bone("leftFoot"), rFoot: bone("rightFoot"),
   };
+  // how far each finger segment curls when she grips something (a mug handle, the edge of a phone)
+  const GRIP = [[0.95, 1.25, 0.9], [1.1, 1.35, 0.95], [1.2, 1.35, 0.95], [1.25, 1.3, 0.9]];
   const fingers = (side: "left" | "right") =>
-    ["Index", "Middle", "Ring", "Little"].flatMap((f) =>
-      ["Proximal", "Intermediate", "Distal"].map((seg, i) => ({ node: bone(`${side}${f}${seg}`), curl: [0.28, 0.42, 0.26][i] })));
+    ["Index", "Middle", "Ring", "Little"].flatMap((f, fi) =>
+      ["Proximal", "Intermediate", "Distal"].map((seg, i) => ({ node: bone(`${side}${f}${seg}`), curl: [0.28, 0.42, 0.26][i], target: GRIP[fi][i] })));
+  /** 0..1 how tightly each hand is closed around something it holds (the NPC drives this), and how tight a fist that is. */
+  const grip = { l: 0, r: 0, tightL: 1, tightR: 1 };
+  // the thumb tucks in against the held thing: how far each thumb bone turns (x, y, z) at full grip
+  const thumbs = (side: "left" | "right") => ["Metacarpal", "Proximal", "Distal"].map((seg) => bone(`${side}Thumb${seg}`));
+  const lThumb = thumbs("left"), rThumb = thumbs("right");
+  const THUMB = { pose: [[0, 0, 0], [0, 0, 0], [0, 0, 0]] as [number, number, number][] };
   const lFingers = fingers("left");
   const rFingers = fingers("right");
 
@@ -78,7 +86,7 @@ export function createIdle(vrm: VRM, camera: THREE.Camera) {
   const state = { hopY: 0, sceneY };
 
   return {
-    mood, read, set, m, state,
+    mood, read, set, m, state, grip, THUMB,
     setPhysics,
     hop,
     resetPeak,
@@ -117,8 +125,10 @@ export function createIdle(vrm: VRM, camera: THREE.Camera) {
       set(B.lArm, 0.06, 0.05, -armDrop); set(B.rArm, 0.06, -0.05, armDrop);
       set(B.lFore, 0, -0.22, -0.04); set(B.rFore, 0, 0.22, 0.04);
       set(B.lHand, 0, 0, -0.06); set(B.rHand, 0, 0, 0.06);
-      for (const f of lFingers) set(f.node, 0, 0, -f.curl);
-      for (const f of rFingers) set(f.node, 0, 0, f.curl);
+      for (const f of lFingers) set(f.node, 0, 0, -(f.curl + grip.l * (f.target * grip.tightL - f.curl)));
+      for (const f of rFingers) set(f.node, 0, 0, f.curl + grip.r * (f.target * grip.tightR - f.curl));
+      // the thumbs (a gripping thumb folds over the held thing; left is the mirror of right)
+      THUMB.pose.forEach(([x, y, z], i) => { if (grip.r > 0.01) set(rThumb[i], x * grip.r, y * grip.r, z * grip.r); if (grip.l > 0.01) set(lThumb[i], x * grip.l, -y * grip.l, -z * grip.l); });
 
       // a relaxed stance: feet a little apart
       set(B.lLeg, 0, 0, -0.035 + sway * 0.006); set(B.rLeg, 0, 0, 0.035 + sway * 0.006);

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, displayName, type Room, type RoomKind } from "../api";
 import MusicField from "../components/MusicField";
+import RoomModelField, { type ModelDraft } from "../components/RoomModelField";
 import { Modal, useToast } from "../components/ui";
 import { PRESETS, ROOM_KINDS, kindLabel, roomBackground } from "../lib/rooms";
 import { errText } from "../lib/util";
@@ -97,6 +98,7 @@ function RoomForm({ id }: { id: number | null }) {
   const [pick, setPick] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [music, setMusic] = useState<{ file?: File; remove?: boolean }>({});
+  const [model, setModel] = useState<ModelDraft>({ scale: existing?.model_scale ?? 1, rot: existing?.model_rot ?? 0, y: existing?.model_y ?? 0, share: existing?.model_share ?? false });
   const [preview, setPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -117,6 +119,9 @@ function RoomForm({ id }: { id: number | null }) {
       if (pendingFile) saved = await api.setRoomBackdrop(saved.id, pendingFile);
       if (music.file) saved = await api.setRoomMusic(saved.id, music.file);
       else if (music.remove && existing?.music) saved = await api.clearRoomMusic(saved.id);
+      if (model.file) { saved = await api.setRoomModel(saved.id, model.file); saved = await api.setRoomModelCfg(saved.id, model.scale, model.rot, model.y, model.share); }
+      else if (model.remove && existing?.model) saved = await api.clearRoomModel(saved.id);
+      else if (existing?.model && (model.scale !== (existing.model_scale ?? 1) || model.rot !== (existing.model_rot ?? 0) || model.y !== (existing.model_y ?? 0) || model.share !== !!existing.model_share)) saved = await api.setRoomModelCfg(saved.id, model.scale, model.rot, model.y, model.share);
       return saved;
     } catch (e) { toast(errText(e), "err"); return null; } finally { setBusy(false); }
   };
@@ -177,6 +182,8 @@ function RoomForm({ id }: { id: number | null }) {
           onPick={(f) => setMusic({ file: f })} onRemove={() => setMusic({ remove: true })} />
         <div className="hint">Pick an MP3 (or another audio file) from your computer. It plays on a loop, quietly, whenever you are in a chat set in this room.</div>
       </div>
+
+      <RoomModelField name={model.file ? model.file.name : existing?.model_name ?? ""} draft={model} onChange={setModel} />
 
       <div className="row form-actions">
         {!existing && (

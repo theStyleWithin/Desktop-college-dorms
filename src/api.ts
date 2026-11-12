@@ -60,7 +60,7 @@ export interface CardData {
 export interface Frame { x: number; y: number; zoom: number }
 export const DEFAULT_FRAME: Frame = { x: 0.5, y: 0.5, zoom: 1 };
 export interface Lorebook { id: string; name: string; book: CharacterBook; created_at: number; updated_at: number }
-export interface Folder { id: string; name: string; cover: string | null; frame: Frame | null; created_at: number; cover_path?: string | null }
+export interface Folder { id: string; name: string; cover: string | null; frame: Frame | null; created_at: number; cover_path?: string | null; /** the folder this one sits inside (null = top level) */ parent?: string | null; /** a character whose picture stands in when the folder has none */ cover_char?: string | null }
 
 export interface Character {
   id: string;
@@ -76,6 +76,8 @@ export interface Character {
   frame?: Frame | null;
   /** The folder this character is filed in (null = top level). */
   folder?: string | null;
+  /** Place in "my order" (lower first); missing = not placed yet, goes last. */
+  order?: number | null;
   /** Library lorebooks attached to this character (besides the book inside the card). */
   lorebooks?: string[];
   favorite: boolean;
@@ -98,6 +100,8 @@ export interface Room {
   backdrop_path?: string | null;
   /** background music: the file's original name, and where it is (use musicUrl()) */
   music?: string; music_name?: string; music_path?: string | null;
+  /** An imported 3D scene that replaces the built-in room: its file name, where it is (use roomModelUrl()), how it is set, and whether its owner allowed sharing it. */
+  model?: string; model_name?: string; model_path?: string | null; model_scale?: number; model_rot?: number; model_y?: number; model_share?: boolean;
 }
 
 export interface Note { id: string; title: string; body: string; pinned: boolean; created_at: number; updated_at: number }
@@ -200,7 +204,7 @@ export interface SessionState {
   /** Characters, dorms and chats already in the guest space. */
   guest_items: number;
 }
-export interface ExportInfo { token: string; file_name: string; size: number; characters: number; dorms: number; chats: number; messages: number; media: number }
+export interface ExportInfo { token: string; file_name: string; size: number; characters: number; dorms: number; chats: number; messages: number; media: number; /** rooms whose 3D model was left out because it isn't marked as shareable */ withheld_rooms: string[] }
 export interface ImportPreview {
   handle: string; display_name: string; guest: boolean; app_version: string; exported_at: number;
   characters: number; dorms: number; chats: number; messages: number; media: number;
@@ -266,7 +270,8 @@ export const api = {
   setFrame: (id: string, frame: Frame | null) => invoke<Character>("set_frame", { id, frame }),
   // folders
   listFolders: () => invoke<Folder[]>("list_folders"),
-  createFolder: (name: string) => invoke<Folder>("create_folder", { name }),
+  createFolder: (name: string, parent: string | null = null) => invoke<Folder>("create_folder", { name, parent }),
+  moveFolder: (id: string, parent: string | null) => invoke<Folder>("move_folder", { id, parent }),
   renameFolder: (id: string, name: string) => invoke<Folder>("rename_folder", { id, name }),
   deleteFolder: (id: string) => invoke<void>("delete_folder", { id }),
   async setFolderCover(id: string, file: File): Promise<Folder> {
@@ -275,6 +280,8 @@ export const api = {
   setFolderFrame: (id: string, frame: Frame | null) => invoke<Folder>("set_folder_frame", { id, frame }),
   clearFolderCover: (id: string) => invoke<Folder>("clear_folder_cover", { id }),
   moveCharacters: (ids: string[], folder: string | null) => invoke<void>("move_characters", { ids, folder }),
+  reorderCharacters: (ids: string[]) => invoke<void>("reorder_characters", { ids }),
+  setFolderCoverChar: (id: string, character: string | null) => invoke<Folder>("set_folder_cover_char", { id, character }),
   // personas (who you are in chats) and the profile picture
   listPersonas: () => invoke<Persona[]>("list_personas"),
   savePersona: (p: { id?: string; name: string; description: string; style: string }) =>
@@ -304,6 +311,12 @@ export const api = {
     return bin("set_room_music", new Uint8Array(await file.arrayBuffer()), { "x-room-id": String(id), "x-file-name": enc(file.name) });
   },
   clearRoomMusic: (id: number) => invoke<Room>("clear_room_music", { id }),
+  // an imported 3D scene for the room
+  async setRoomModel(id: number, file: File): Promise<Room> {
+    return bin("set_room_model", new Uint8Array(await file.arrayBuffer()), { "x-room-id": String(id), "x-file-name": enc(file.name) });
+  },
+  clearRoomModel: (id: number) => invoke<Room>("clear_room_model", { id }),
+  setRoomModelCfg: (id: number, scale: number, rot: number, y: number, share: boolean) => invoke<Room>("set_room_model_cfg", { id, scale, rot, y, share }),
   async setDormMusic(id: number, file: File): Promise<Dorm> {
     return bin("set_dorm_music", new Uint8Array(await file.arrayBuffer()), { "x-dorm-id": String(id), "x-file-name": enc(file.name) });
   },
@@ -360,14 +373,32 @@ export const api = {
   prepareExport: () => invoke<ExportInfo>("prepare_export"),
   ejectProfile: (token: string) => invoke<SessionState>("eject_profile", { token }),
   deleteProfile: (confirm: string) => invoke<SessionState>("delete_profile", { confirm }),
-  async inspectProfileFile(file: File): Promise<ImportPreview> {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    return bin("import_profile", bytes, { "x-mode": "inspect" });
+  /**
+   * Bring a profile file into the app in small pieces (base64 in ordinary commands). That works the same on a PC and a phone;
+   * one huge message between the web view and the app does not, on Android. Returns the token to inspect and import it with.
+   */
+  async stageProfileFile(file: File, onProgress?: (fraction: number) => void): Promise<string> {
+    const token = await invoke<string>("stage_begin");
+    const CH = 1_500_000;
+    try {
+      for (let at = 0; at < file.size || at === 0; at += CH) {
+        const piece = file.slice(at, Math.min(file.size, at + CH));
+        const b64 = await new Promise<string>((res, rej) => {
+          const fr = new FileReader();
+          fr.onload = () => res(String(fr.result).split(",")[1] ?? "");
+          fr.onerror = () => rej(new Error("Couldn't read that file."));
+          fr.readAsDataURL(piece);
+        });
+        await invoke("stage_chunk", { token, data: b64 });
+        onProgress?.(Math.min(1, (at + CH) / Math.max(1, file.size)));
+        if (file.size === 0) break;
+      }
+    } catch (e) { await invoke("stage_clear").catch(() => {}); throw e; }
+    return token;
   },
-  async importProfileFile(file: File, handle: string, passcode: string): Promise<SessionState> {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    return bin("import_profile", bytes, { "x-mode": "import", "x-handle": enc(handle), "x-passcode": enc(passcode) });
-  },
+  inspectStaged: (token: string) => invoke<ImportPreview>("inspect_staged", { token }),
+  importStaged: (token: string, handle: string, passcode: string) => invoke<SessionState>("import_staged", { token, handle, passcode }),
+  clearStage: () => invoke<void>("stage_clear"),
   // 3D crash guard
   vrmGuardBegin: () => invoke<boolean>("vrm_guard_begin"),
   vrmGuardEnd: () => invoke<void>("vrm_guard_end"),
@@ -402,6 +433,15 @@ export const onAutoStopped = (cb: (e: { chat_id: number; reason: string }) => vo
 export const personaAvatar = (p: { avatar_path?: string | null }) => (p.avatar_path ? convertFileSrc(p.avatar_path) : null);
 export const profileAvatar = (p: { avatar?: string | null } | null | undefined) => (p?.avatar ? convertFileSrc(p.avatar) : null);
 export const folderCover = (f: { cover_path?: string | null }) => (f.cover_path ? convertFileSrc(f.cover_path) : null);
+/** The picture a folder shows: its own, else the picture of the character chosen for it (only a still picture or a GIF can be used). */
+export function folderArt(f: Folder, characters: Character[]): { url: string | null; frame: Frame | null; own: boolean } {
+  const own = folderCover(f);
+  if (own) return { url: own, frame: f.frame, own: true };
+  const c = f.cover_char ? characters.find((x) => x.id === f.cover_char) : undefined;
+  const u = c && (c.media?.kind === "image" || c.media?.kind === "gif") ? mediaUrl(c) : null;
+  return u ? { url: u, frame: c!.frame ?? null, own: false } : { url: null, frame: null, own: false };
+}
+export const roomModelUrl = (r: { model_path?: string | null }) => (r.model_path ? convertFileSrc(r.model_path) : null);
 export const musicUrl = (x: { music_path?: string | null }) => (x.music_path ? convertFileSrc(x.music_path) : null);
 export const roomBackdrop = (r: { backdrop_path?: string | null }) => (r.backdrop_path ? convertFileSrc(r.backdrop_path) : null);
 export const mediaUrl = (c: { media_path: string | null }) => (c.media_path ? convertFileSrc(c.media_path) : null);

@@ -4,6 +4,7 @@ import type { Speech } from "./SpeechBubble";
 import type { Talk } from "./TalkBar";
 import type { Wardrobe } from "./WardrobePanel";
 import type { Frame, MediaKind } from "../api";
+import type { SceneCfg } from "../lib/roomModel";
 import { hue, initials } from "../lib/util";
 
 const VrmViewer = lazy(() => import("./VrmViewer"));
@@ -23,6 +24,8 @@ interface Props {
   talk?: Talk;
   /** The character's outfits: adds the wardrobe button to the 3D viewer. */
   wardrobe?: Wardrobe;
+  /** An imported 3D room for the viewer to stand in (3D characters only). */
+  scene?: SceneCfg | null;
 }
 
 /**
@@ -67,22 +70,22 @@ function VideoArt({ url, full, bg, name, frame }: { url: string; full: boolean; 
 }
 
 /** The small live 3D panel, with a button that opens the big viewer. */
-function VrmStage({ url, name, bg, attentive, speech, talk, wardrobe }: { url: string; name: string; bg: string; attentive?: boolean; speech?: Speech | null; talk?: Talk; wardrobe?: Wardrobe }) {
+function VrmStage({ url, name, bg, attentive, speech, talk, wardrobe, scene }: { url: string; name: string; bg: string; attentive?: boolean; speech?: Speech | null; talk?: Talk; wardrobe?: Wardrobe; scene?: SceneCfg | null }) {
   const [big, setBig] = useState(false);
   return (
     <div className="media" data-big={big ? "1" : "0"} style={{ background: bg }}>
-      <Suspense fallback={<span className="ph">…</span>}>{!big && <VrmViewer url={url} attentive={attentive} speech={speech} wardrobe={wardrobe} onExpand={() => setBig(true)} />}</Suspense>
+      <Suspense fallback={<span className="ph">…</span>}>{!big && <VrmViewer url={url} attentive={attentive} speech={speech} wardrobe={wardrobe} scene={scene} onExpand={() => setBig(true)} />}</Suspense>
       {big && <span className="ph" style={{ fontSize: "1rem" }}>Open in the big viewer</span>}
       {big && (
         <ViewerWindow title={`${name || "3D model"}`} onClose={() => setBig(false)}>
-          <div className="vrm-big"><Suspense fallback={<span className="ph">…</span>}><VrmViewer url={url} large attentive={attentive} speech={speech} talk={talk} wardrobe={wardrobe} /></Suspense></div>
+          <div className="vrm-big"><Suspense fallback={<span className="ph">…</span>}><VrmViewer url={url} large attentive={attentive} speech={speech} talk={talk} wardrobe={wardrobe} scene={scene} /></Suspense></div>
         </ViewerWindow>
       )}
     </div>
   );
 }
 
-export default function Art({ kind, url, name, frame, mode = "thumb", attentive, speech, talk, wardrobe }: Props) {
+export default function Art({ kind, url, name, frame, mode = "thumb", attentive, speech, talk, wardrobe, scene }: Props) {
   const bg = `linear-gradient(135deg, hsl(${hue(name)} 45% 35%), hsl(${(hue(name) + 50) % 360} 50% 22%))`;
 
   if (!url || !kind) {
@@ -93,7 +96,7 @@ export default function Art({ kind, url, name, frame, mode = "thumb", attentive,
     );
   }
   if (kind === "vrm") {
-    if (mode === "full") return <VrmStage url={url} name={name} bg={bg} attentive={attentive} speech={speech} talk={talk} wardrobe={wardrobe} />;
+    if (mode === "full") return <VrmStage url={url} name={name} bg={bg} attentive={attentive} speech={speech} talk={talk} wardrobe={wardrobe} scene={scene} />;
     return (
       <div className="media" style={{ background: bg }}>
         <span className="ph">{initials(name)}</span>
