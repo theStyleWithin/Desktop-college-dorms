@@ -5,7 +5,7 @@ The owner publishes releases themselves (GitHub Releases UI) and wants to be tol
 
 ## What is on this branch (on top of PR #13, v0.5.1)
 - Mouse as the virtual hands (Shift/right button = left hand, left+right click = pinch), keys 1-4 pick gestures, tickle tool, gamepad `tickle` binding.
-- Camera height (Q/E), free roam (C, arrow keys, not WASD), shrink ray + shrink meter.
+- Camera height (Q/E), free roam (C, arrow keys, not WASD).
 - Cross-device profile import (staged base64 chunks, no file-picker filter, cloud-provider fallback when no local engine). **Not tested on a real phone.**
 - Realistic holds: phone palm-up with screen toward her eyes; mug held by the handle with fingers through it (`PHONE_OFF`, `MUG_OFF`, `tightR` in `src/lib/npc.ts`).
 - Character cards: drag to reorder ("My order" sort), `order` field; folders can borrow a character's picture (`cover_char`).
@@ -16,7 +16,7 @@ CI job `e2e-linux` failed on a8fe5b2 (and will on later commits): check **"the c
 
 ## Still to do
 1. Fix the e2e failure above, get CI green on the current head.
-2. e2e tests for: mouse hand/Shift/chord, keys 1-4 + tickle tool, roam/height keys, shrink ray (`data-size`), gamepad tickle binding, staged import round trip. (Card reorder, folder picture and 3D-room import/sharing/export tests were already added to tests/e2e/e2e.py but have not yet run green in CI.)
+2. e2e tests for: mouse hand/Shift/chord, keys 1-4 + tickle tool, roam/height keys, gamepad tickle binding, staged import round trip. (Card reorder, folder picture and 3D-room import/sharing/export tests were already added to tests/e2e/e2e.py but have not yet run green in CI.)
 3. Version bump (e.g. 0.6.0): package.json, package-lock.json, tauri.conf.json, both Cargo.toml, Cargo.lock, metainfo.xml. Release notes (see v0.5.0 style). Update SPEC.
 4. Mark PR #14 ready for review when green; then ask the owner before merging #13 and #14. Offer Flatpak/AUR version+hash bump after they publish; PRs #10/#7 are open but their content already shipped (ask before closing). Android still uses a throwaway signing key.
 5. Be honest in reports: cross-device import, real controllers, real Booth assets and the phone were never tried on real hardware.

@@ -1,13 +1,10 @@
-## v0.6.0: use the mouse as your hands, shrink, walk around, and bring your own 3D rooms
+## v0.6.0: use the mouse as your hands, walk around, and bring your own 3D rooms
 
 ### 🖱 Your mouse is your hand
 Press on her to lay your hand on her and stroke her head. Shift or the right button uses the left hand; left and right click together is a pinch (pick her up). Number keys **1 open hand, 2 poke, 3 pick up, 4 tickle**.
 
 ### 🎥 Look around and walk
 **Q / E** change the camera height, **C** is free roam (walk with the **arrow keys**, drag to look, Shift to run).
-
-### 🔬 Shrink ray
-A new shrink ray button and a shrink meter make you smaller, down to lollipop size. She looks down at you and reacts, and the room towers over you.
 
 ### 🏠 Bring your own 3D rooms
 Import a house or room model (`.glb`, `.gltf` or `.fbx`, for example from Booth) in a room's settings. The app finds the floor, centres it, and she walks around the model and steps around its furniture. Set the size, turn and height if needed.
