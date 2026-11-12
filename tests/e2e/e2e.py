@@ -321,7 +321,10 @@ try:
             vev("tickle", {"region": "ear", "seconds": 3}); time.sleep(2.6)
             check("tickling somewhere ticklish makes her laugh", int(vds("tickle") or 0) > 30, str(vds("tickle")))
             check("it counts as one tickle, not one per frame", vds("tickles") == "1", str(vds("tickles")))
-            time.sleep(4.5)
+            # the laugh fades with the animation clock, which runs slower than the wall clock on a slow machine: wait for it (up to 30 s) rather than a fixed time
+            for _ in range(60):
+                time.sleep(0.5)
+                if int(vds("tickle") or 0) < 10: break
             check("the laugh dies down when it stops", int(vds("tickle") or 0) < 10, str(vds("tickle")))
             # tickled in the middle of a stretch: caught off guard, the stretch ends at once and she bursts out laughing
             vev("npc", "stretch"); time.sleep(2.8)
