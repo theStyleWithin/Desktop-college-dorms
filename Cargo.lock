@@ -685,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-college-dorms"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "argon2",
  "base64 0.22.1",
@@ -805,7 +805,7 @@ dependencies = [
 
 [[package]]
 name = "dorms-core"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "base64 0.22.1",
  "crc32fast",
