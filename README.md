@@ -76,6 +76,9 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
 - **Rooms**: make a place (a living room, a rooftop, a character's bedroom) with a name, a description and a backdrop (your own
   image or a built-in scene), set a dorm in it, and the characters know where they are while the chat shows the room behind it.
   Make the room first and the dorm after ("Create & enter"), or add a room to a dorm you already have.
+- **Your own 3D rooms**: in a room's settings, import a house or room model (`.glb`, `.gltf` or `.fbx`, for example one bought on Booth; export it from Unity or Blender if you only have a `.unitypackage`). It replaces the built-in 3D room in chats set in that room.
+  The app finds the floor, centres the model and works out where she can walk: she wanders, uses her phone and stretches there, and steps around the furniture (a bed, desk or window are only in the built-in room). Set the size, turn and height if it doesn't sit right.
+  Each model has a sharing mark, **Not allowed to share** (the default) or **May be shared**. Only a model you mark as shareable goes into an exported profile file; the room itself is always exported, and the export tells you which models it left out. The mark is your own declaration, the app can't check a seller's licence. Unity shaders and baked lighting are not carried over, so rooms look flatter than in VRChat.
 - **Background music**: pick an MP3 (or another audio file) from your computer for a room or a dorm. It plays quietly on a loop while you
   are in a chat there, with pause, mute and volume. A dorm's own music is used instead of its room's.
 - **Mechanics** (🧩 in a chat): optional story layers you switch on or off per chat. Import a `.bundle.json` pack (an affection and trust

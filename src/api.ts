@@ -100,6 +100,8 @@ export interface Room {
   backdrop_path?: string | null;
   /** background music: the file's original name, and where it is (use musicUrl()) */
   music?: string; music_name?: string; music_path?: string | null;
+  /** An imported 3D scene that replaces the built-in room: its file name, where it is (use roomModelUrl()), how it is set, and whether its owner allowed sharing it. */
+  model?: string; model_name?: string; model_path?: string | null; model_scale?: number; model_rot?: number; model_y?: number; model_share?: boolean;
 }
 
 export interface Note { id: string; title: string; body: string; pinned: boolean; created_at: number; updated_at: number }
@@ -202,7 +204,7 @@ export interface SessionState {
   /** Characters, dorms and chats already in the guest space. */
   guest_items: number;
 }
-export interface ExportInfo { token: string; file_name: string; size: number; characters: number; dorms: number; chats: number; messages: number; media: number }
+export interface ExportInfo { token: string; file_name: string; size: number; characters: number; dorms: number; chats: number; messages: number; media: number; /** rooms whose 3D model was left out because it isn't marked as shareable */ withheld_rooms: string[] }
 export interface ImportPreview {
   handle: string; display_name: string; guest: boolean; app_version: string; exported_at: number;
   characters: number; dorms: number; chats: number; messages: number; media: number;
@@ -309,6 +311,12 @@ export const api = {
     return bin("set_room_music", new Uint8Array(await file.arrayBuffer()), { "x-room-id": String(id), "x-file-name": enc(file.name) });
   },
   clearRoomMusic: (id: number) => invoke<Room>("clear_room_music", { id }),
+  // an imported 3D scene for the room
+  async setRoomModel(id: number, file: File): Promise<Room> {
+    return bin("set_room_model", new Uint8Array(await file.arrayBuffer()), { "x-room-id": String(id), "x-file-name": enc(file.name) });
+  },
+  clearRoomModel: (id: number) => invoke<Room>("clear_room_model", { id }),
+  setRoomModelCfg: (id: number, scale: number, rot: number, y: number, share: boolean) => invoke<Room>("set_room_model_cfg", { id, scale, rot, y, share }),
   async setDormMusic(id: number, file: File): Promise<Dorm> {
     return bin("set_dorm_music", new Uint8Array(await file.arrayBuffer()), { "x-dorm-id": String(id), "x-file-name": enc(file.name) });
   },
@@ -433,6 +441,7 @@ export function folderArt(f: Folder, characters: Character[]): { url: string | n
   const u = c && (c.media?.kind === "image" || c.media?.kind === "gif") ? mediaUrl(c) : null;
   return u ? { url: u, frame: c!.frame ?? null, own: false } : { url: null, frame: null, own: false };
 }
+export const roomModelUrl = (r: { model_path?: string | null }) => (r.model_path ? convertFileSrc(r.model_path) : null);
 export const musicUrl = (x: { music_path?: string | null }) => (x.music_path ? convertFileSrc(x.music_path) : null);
 export const roomBackdrop = (r: { backdrop_path?: string | null }) => (r.backdrop_path ? convertFileSrc(r.backdrop_path) : null);
 export const mediaUrl = (c: { media_path: string | null }) => (c.media_path ? convertFileSrc(c.media_path) : null);

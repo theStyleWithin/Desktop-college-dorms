@@ -124,7 +124,24 @@ pub struct Room {
     pub music: String,
     #[serde(default)]
     pub music_name: String,
+    /// An imported 3D scene (a .glb, .gltf or .fbx inside the data folder) that replaces the built-in 3D room, and its original file name.
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub model_name: String,
+    /// How the model is set in the room: size multiplier, turn (degrees), height shift (metres).
+    #[serde(default = "one")]
+    pub model_scale: f64,
+    #[serde(default)]
+    pub model_rot: f64,
+    #[serde(default)]
+    pub model_y: f64,
+    /// The owner marked this model as allowed to be shared. Only then does it go into an exported profile.
+    #[serde(default)]
+    pub model_share: bool,
 }
+
+fn one() -> f64 { 1.0 }
 
 /// Someone the player can be: a name, who they are, and how they like to roleplay. The active one is described to the AI
 /// before the chat begins (it replaces the plain name and "about you" text).
@@ -415,6 +432,12 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
     ensure_column(&conn, "dorms", "music_name", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "rooms", "music", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "rooms", "music_name", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "rooms", "model", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "rooms", "model_name", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "rooms", "model_scale", "REAL NOT NULL DEFAULT 1")?;
+    ensure_column(&conn, "rooms", "model_rot", "REAL NOT NULL DEFAULT 0")?;
+    ensure_column(&conn, "rooms", "model_y", "REAL NOT NULL DEFAULT 0")?;
+    ensure_column(&conn, "rooms", "model_share", "INTEGER NOT NULL DEFAULT 0")?;
     ensure_column(&conn, "chats", "style", "TEXT NOT NULL DEFAULT 'chat'")?;
     for t in ["rooms", "mechanics", "notes", "folders", "lorebooks", "personas"] {
         conn.execute_batch(&format!("CREATE INDEX IF NOT EXISTS idx_{t}_profile ON {t}(profile_id);"))?;
@@ -520,9 +543,9 @@ pub fn get_dorm(c: &Connection, id: i64, owner: &Owner) -> R<Option<Dorm>> {
 // ----- rooms -----
 
 fn row_room(r: &rusqlite::Row) -> R<Room> {
-    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)? })
+    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)?, model: r.get(10)?, model_name: r.get(11)?, model_scale: r.get(12)?, model_rot: r.get(13)?, model_y: r.get(14)?, model_share: r.get::<_, i64>(15)? != 0 })
 }
-const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name";
+const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share";
 
 pub fn list_rooms(c: &Connection, owner: &Owner) -> R<Vec<Room>> {
     let mut s = c.prepare(&format!("SELECT {ROOM_COLS} FROM rooms WHERE profile_id IS ?1 ORDER BY id DESC"))?;
@@ -536,16 +559,16 @@ pub fn get_room(c: &Connection, id: i64, owner: &Owner) -> R<Option<Room>> {
 
 pub fn create_room(c: &Connection, r: &Room, owner: &Owner) -> R<Room> {
     c.execute(
-        "INSERT INTO rooms(profile_id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
-        params![owner, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, now(), r.music, r.music_name],
+        "INSERT INTO rooms(profile_id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
+        params![owner, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, now(), r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64],
     )?;
     Ok(get_room(c, c.last_insert_rowid(), owner)?.expect("just inserted"))
 }
 
 pub fn update_room(c: &Connection, r: &Room, owner: &Owner) -> R<()> {
     c.execute(
-        "UPDATE rooms SET name=?2,kind=?3,description=?4,owner_kind=?5,character_id=?6,backdrop=?7,music=?9,music_name=?10 WHERE id=?1 AND profile_id IS ?8",
-        params![r.id, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, owner, r.music, r.music_name],
+        "UPDATE rooms SET name=?2,kind=?3,description=?4,owner_kind=?5,character_id=?6,backdrop=?7,music=?9,music_name=?10,model=?11,model_name=?12,model_scale=?13,model_rot=?14,model_y=?15,model_share=?16 WHERE id=?1 AND profile_id IS ?8",
+        params![r.id, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, owner, r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64],
     )?;
     Ok(())
 }
@@ -1131,7 +1154,7 @@ mod tests {
     fn rooms_and_packs_belong_to_their_owner_and_dorms_can_only_use_their_own_rooms() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new() };
+        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false };
         let ra = create_room(&c, &room("A's kitchen"), &a).unwrap();
         let rb = create_room(&c, &room("B's kitchen"), &b).unwrap();
         assert_eq!(list_rooms(&c, &a).unwrap().len(), 1);

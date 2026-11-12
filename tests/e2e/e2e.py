@@ -1458,6 +1458,40 @@ try:
     reload_ui()
     check("with profiles present and none open, the picker shows (no silent sign-in after sign-out)", text_present("Welcome to the dorms"))
 
+    # -- an imported 3D room: import, defaults, sharing mark, export rules
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import mkroom
+    glb = os.path.join(WORK, "house.glb"); open(glb, "wb").write(mkroom.room_glb())
+    bad = os.path.join(WORK, "notamodel.glb"); open(bad, "wb").write(b"this is just text, not a 3D model")
+    invoke("create_profile", {"handle": "Roomer", "displayName": "Roomer", "passcode": None})
+    mk = lambda n: invoke("create_room", {"room": {"id": 0, "name": n, "kind": "living_room", "description": "", "owner_kind": "self", "character_id": None, "backdrop": "", "created_at": 0}})
+    pub, priv = mk("Shared house"), mk("Private house")
+    check("a new room has no 3D model", not pub.get("model") and pub.get("model_share") is False and pub.get("model_scale") == 1.0)
+    check("a model has to be a .glb, .gltf or .fbx", "glb" in (inv_err_file("set_room_model", glb, {"x-room-id": str(pub["id"]), "x-file-name": "house.unitypackage"}) or ""))
+    check("a file that only has a model's name is refused", "valid 3D model" in (inv_err_file("set_room_model", bad, {"x-room-id": str(pub["id"]), "x-file-name": "house.glb"}) or ""))
+    pub = invoke_file("set_room_model", glb, {"x-room-id": str(pub["id"]), "x-file-name": "My house.glb"})
+    priv = invoke_file("set_room_model", glb, {"x-room-id": str(priv["id"]), "x-file-name": "Booth house.glb"})
+    check("an imported model is saved with its name, and is NOT marked shareable by default", pub["model"].startswith("media/roommodel-") and pub["model_name"] == "My house.glb" and os.path.exists(pub["model_path"]) and pub["model_share"] is False, str(pub))
+    pub = invoke("set_room_model_cfg", {"id": pub["id"], "scale": 1.25, "rot": 90.0, "y": 0.1, "share": True})
+    check("size, turn, height and the sharing mark are saved", (pub["model_scale"], pub["model_rot"], pub["model_y"], pub["model_share"]) == (1.25, 90.0, 0.1, True), str(pub))
+    pub2 = invoke("update_room", {"room": dict(pub, name="Shared house", model="media/evil.glb", model_share=False, model_scale=9)})
+    check("saving the room's text can't swap the model or the sharing mark", pub2["model"] == pub["model"] and pub2["model_share"] is True and pub2["model_scale"] == 1.25, str(pub2))
+    check("the room list shows the model", {r["name"]: bool(r["model"]) for r in invoke("list_rooms")} == {"Shared house": True, "Private house": True})
+    info = invoke("prepare_export")
+    check("the export names the room whose model is not shareable and leaves it out", info["withheld_rooms"] == ["Private house"] and info["media"] == 1, str(info))
+    xp = os.path.join(WORK, "roomer.dorms"); invoke("save_export", {"token": info["token"], "path": xp})
+    files_before = len(os.listdir(media_dir))
+    invoke("eject_profile", {"token": info["token"]})
+    check("eject removes both model files from the device", len(os.listdir(media_dir)) == files_before - 2, f"{files_before} -> {len(os.listdir(media_dir))}")
+    invoke_file("import_profile", xp, {"x-mode": "import", "x-handle": "Roomer2", "x-passcode": ""})
+    rr = {r["name"]: r for r in invoke("list_rooms")}
+    check("both rooms came back", set(rr) == {"Shared house", "Private house"}, str(list(rr)))
+    check("the shareable room came back with its model, settings and mark", rr["Shared house"]["model"] and os.path.exists(rr["Shared house"]["model_path"]) and rr["Shared house"]["model_name"] == "My house.glb" and (rr["Shared house"]["model_scale"], rr["Shared house"]["model_rot"], rr["Shared house"]["model_y"], rr["Shared house"]["model_share"]) == (1.25, 90.0, 0.1, True), str(rr["Shared house"]))
+    check("the other came back without its model and is not marked shareable", not rr["Private house"]["model"] and rr["Private house"]["model_share"] is False and rr["Private house"]["model_name"] == "", str(rr["Private house"]))
+    check("a model can be removed again", not invoke("clear_room_model", {"id": rr["Shared house"]["id"]})["model"] and len(os.listdir(media_dir)) == files_before - 2)
+    info2 = invoke("prepare_export")
+    check("with no models left nothing is withheld", info2["withheld_rooms"] == [])
+
 finally:
     try: d.quit()
     except Exception: pass

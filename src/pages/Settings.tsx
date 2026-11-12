@@ -656,6 +656,12 @@ function ExportFlow({ eject, label, onClose, onEjected }: { eject: boolean; labe
         <div style={{ display: "grid", gap: 10 }}>
           <p style={{ margin: 0 }}><b>{info?.file_name}</b> was saved to <span style={{ wordBreak: "break-all" }}>{saved.path}</span>.</p>
           {info && <p className="hint" style={{ margin: 0 }}>{summary(info)}</p>}
+          {info && info.withheld_rooms.length > 0 && (
+            <p className="hint" role="note" data-testid="withheld-rooms" style={{ margin: 0, color: eject ? "var(--danger)" : undefined }}>
+              The 3D model of {info.withheld_rooms.map((n) => `“${n}”`).join(", ")} is not marked as shareable, so it is <b>not in this file</b>
+              {eject ? <> and it <b>will be removed from this device</b> if you eject. Keep your own copy of the original file; you can import it again into the room.</> : ". The rooms themselves are in the file. Mark a model as shareable in its room's settings if the seller allows it."}
+            </p>
+          )}
           {saved.verified
             ? <p className="hint" style={{ margin: 0 }}>✓ The saved file was read back and matches.</p>
             : <p className="hint" style={{ margin: 0, color: eject ? "var(--danger)" : undefined }}>This location couldn't be double-checked. {eject ? "Nothing will be removed. Save it somewhere else." : "Look for the file to be sure it's there."}</p>}

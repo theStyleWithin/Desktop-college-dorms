@@ -5,7 +5,8 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { VRMLoaderPlugin, VRMUtils, type VRM } from "@pixiv/three-vrm";
 import { api } from "../api";
 import { createIdle } from "../lib/idle";
-import { buildRoom } from "../lib/room";
+import { applyLayout, buildRoom, type Room as BuiltRoom } from "../lib/room";
+import { loadRoomModel, type SceneCfg } from "../lib/roomModel";
 import { createHands } from "../lib/hands";
 import { createPoker, REGIONS, type Region } from "../lib/poke";
 import { createCarry } from "../lib/carry";
@@ -15,7 +16,7 @@ export const SHRINK_MIN = 0.07;
 const USER_CM = 170;
 const NOTCHES = [1, 0.6, 0.35, 0.18, SHRINK_MIN];
 import { activePad, bindingText, getBindings, padKind, type PadKind } from "../lib/gamepad";
-import { createNpc, type PlanName } from "../lib/npc";
+import { createNpc, rebuildGrid, type PlanName } from "../lib/npc";
 import SpeechBubble, { type Speech } from "./SpeechBubble";
 import TalkBar, { type Talk } from "./TalkBar";
 import WardrobePanel, { type Wardrobe } from "./WardrobePanel";
@@ -41,13 +42,17 @@ interface Props {
   wardrobe?: Wardrobe;
   /** Shows an expand button that opens the big viewer. */
   onExpand?: () => void;
+  /** An imported 3D room to stand in instead of the built-in one. */
+  scene?: SceneCfg | null;
 }
 
 /**
  * A 3D viewer for VRM / VRoid models: the character stands idle in a furnished room, with soft shadows, orbit
  * camera controls (drag to turn, scroll or pinch to zoom, double-click to reset) and eyes that follow the camera.
  */
-export default function VrmViewer({ url, large, attentive, speech, talk, wardrobe, onExpand }: Props) {
+export default function VrmViewer({ url, large, attentive, speech, talk, wardrobe, onExpand, scene: sceneCfg }: Props) {
+  const sceneKey = sceneCfg ? JSON.stringify(sceneCfg) : "";
+  const [sceneNote, setSceneNote] = useState("");
   const host = useRef<HTMLDivElement>(null);
   const resetView = useRef<() => void>(() => {});
   const idleRef = useRef<ReturnType<typeof createIdle> | null>(null);
@@ -157,7 +162,7 @@ export default function VrmViewer({ url, large, attentive, speech, talk, wardrob
       scene.add(cool);
       const keyBase = new THREE.Vector3();
 
-      const room = buildRoom();
+      let room: BuiltRoom = buildRoom();
       scene.add(room.group);
 
       const controls = new OrbitControls(camera, renderer.domElement);
@@ -267,11 +272,28 @@ export default function VrmViewer({ url, large, attentive, speech, talk, wardrob
       };
       renderer.domElement.addEventListener("dblclick", onDbl);
 
+      // an imported 3D room replaces the built-in one before she is placed (her walking area comes from it); if it can't be loaded the built-in room stays
+      setSceneNote("");
+      const roomReady: Promise<void> = sceneCfg
+        ? loadRoomModel(sceneCfg).then((r) => {
+            if (disposed) { r.dispose(); return; }
+            scene.remove(room.group); room.dispose();
+            room = r; scene.add(room.group);
+            applyLayout(r.layout); rebuildGrid();
+            controls.minAzimuthAngle = -Infinity; controls.maxAzimuthAngle = Infinity; // an imported room can be looked at from any side
+            el.dataset.scene = "custom"; el.dataset.walk = String(r.stats.walkable); el.dataset.floorFound = r.stats.floorFound ? "1" : "0";
+            if (!r.stats.floorFound) setSceneNote("No floor was found in this model, so she can walk anywhere. Try changing its height in the room's settings.");
+          }).catch((err) => {
+            console.warn("3D room failed to load", err);
+            applyLayout(null); rebuildGrid();
+            el.dataset.scene = "failed";
+            if (!disposed) setSceneNote(`The 3D room couldn't be loaded (${err instanceof Error ? err.message : String(err)}), so the built-in room is shown.`);
+          })
+        : (applyLayout(null), rebuildGrid(), Promise.resolve());
       const loader = new GLTFLoader();
       loader.register((p) => new VRMLoaderPlugin(p));
-      loader
-        .loadAsync(url)
-        .then((gltf) => {
+      Promise.all([loader.loadAsync(url), roomReady])
+        .then(([gltf]) => {
           if (disposed) return;
           const v = gltf.userData.vrm as VRM | undefined;
           if (!v) throw new Error("This file isn't a VRM model.");
@@ -491,10 +513,10 @@ export default function VrmViewer({ url, large, attentive, speech, talk, wardrob
         renderer.dispose();
         renderer.domElement.remove();
         idleRef.current = null;
-        delete el.dataset.npc; delete el.dataset.npcx; delete el.dataset.npcz; delete el.dataset.frozen; delete el.dataset.plan; delete el.dataset.petting; delete el.dataset.near; delete el.dataset.hands; delete el.dataset.poke; delete el.dataset.pokes; delete el.dataset.tickle; delete el.dataset.tickles; delete el.dataset.hand; delete el.dataset.cam; delete el.dataset.roam; delete el.dataset.tool; delete el.dataset.pointing; delete el.dataset.pinching; delete el.dataset.carry; delete el.dataset.carryY; delete el.dataset.panic; delete el.dataset.calm; delete el.dataset.ready; delete el.dataset.facing; delete el.dataset.pose; delete el.dataset.vrm;
+        delete el.dataset.npc; delete el.dataset.npcx; delete el.dataset.npcz; delete el.dataset.frozen; delete el.dataset.plan; delete el.dataset.petting; delete el.dataset.near; delete el.dataset.hands; delete el.dataset.poke; delete el.dataset.pokes; delete el.dataset.tickle; delete el.dataset.tickles; delete el.dataset.hand; delete el.dataset.cam; delete el.dataset.roam; delete el.dataset.tool; delete el.dataset.pointing; delete el.dataset.pinching; delete el.dataset.carry; delete el.dataset.carryY; delete el.dataset.panic; delete el.dataset.calm; delete el.dataset.ready; delete el.dataset.facing; delete el.dataset.pose; delete el.dataset.vrm; delete el.dataset.scene; delete el.dataset.walk; delete el.dataset.floorFound;
       };
     }
-  }, [url, attempt, large]);
+  }, [url, attempt, large, sceneKey]);
 
   useEffect(() => {
     idleRef.current?.setPhysics(physics);
@@ -680,6 +702,7 @@ export default function VrmViewer({ url, large, attentive, speech, talk, wardrob
             : "Drag to turn · scroll or pinch to zoom · double-click to reset · 🖐 for your hands"}
         </div>
       )}
+      {sceneNote && state === "ready" && <div role="status" data-testid="scene-note" style={{ position: "absolute", left: 10, top: 10, maxWidth: "70%", padding: "6px 10px", borderRadius: 8, background: "rgba(20,16,36,.8)", color: "#fff", fontSize: 12 }}>{sceneNote}</div>}
       {state !== "ready" && (
         <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: 16, textAlign: "center", color: "var(--muted)", gap: 8, alignContent: "center" }}>
           {state === "loading" && "Loading model…"}

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { VRM } from "@pixiv/three-vrm";
-import { BED, DESK, FLOOR, OBSTACLES } from "./room";
+import { BED, DESK, FLOOR, LAYOUT, OBSTACLES } from "./room";
 import type { createIdle } from "./idle";
 
 /**
@@ -23,14 +23,30 @@ const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)];
 
 // ---------------------------------------------------------------- path finding
-const CELL = 0.2;
-const NX = Math.ceil((FLOOR.x1 - FLOOR.x0) / CELL), NZ = Math.ceil((FLOOR.z1 - FLOOR.z0) / CELL);
+let CELL = 0.2;
+let NX = 1, NZ = 1;
 const PAD = 0.24; // body radius
-const blocked = new Uint8Array(NX * NZ);
+let blocked = new Uint8Array(1);
 const inObstacle = (x: number, z: number, pad: number) => OBSTACLES.some(([x0, z0, x1, z1]) => x > x0 - pad && x < x1 + pad && z > z0 - pad && z < z1 + pad);
-for (let i = 0; i < NX; i++) for (let j = 0; j < NZ; j++) {
-  const x = FLOOR.x0 + (i + 0.5) * CELL, z = FLOOR.z0 + (j + 0.5) * CELL;
-  blocked[i * NZ + j] = x < FLOOR.x0 + 0.25 || x > FLOOR.x1 - 0.25 || z < FLOOR.z0 + 0.25 || z > FLOOR.z1 - 0.1 || inObstacle(x, z, PAD) ? 1 : 0;
+/** (Re)build the walkable grid from `FLOOR` and `OBSTACLES`: call it whenever the room's layout changes (an imported 3D room). */
+export function rebuildGrid() {
+  const span = Math.max(FLOOR.x1 - FLOOR.x0, FLOOR.z1 - FLOOR.z0);
+  CELL = Math.max(0.2, span / 90); // a big house gets coarser cells so finding a way stays quick
+  NX = Math.max(1, Math.ceil((FLOOR.x1 - FLOOR.x0) / CELL)); NZ = Math.max(1, Math.ceil((FLOOR.z1 - FLOOR.z0) / CELL));
+  blocked = new Uint8Array(NX * NZ);
+  for (let i = 0; i < NX; i++) for (let j = 0; j < NZ; j++) {
+    const x = FLOOR.x0 + (i + 0.5) * CELL, z = FLOOR.z0 + (j + 0.5) * CELL;
+    blocked[i * NZ + j] = x < FLOOR.x0 + 0.25 || x > FLOOR.x1 - 0.25 || z < FLOOR.z0 + 0.25 || z > FLOOR.z1 - 0.1 || inObstacle(x, z, PAD) ? 1 : 0;
+  }
+}
+rebuildGrid();
+/** A random place she can stand (an imported room has no fixed spots, so she picks from its walkable floor). */
+export function randomSpot(): [number, number] {
+  for (let k = 0; k < 40; k++) {
+    const x = rand(FLOOR.x0, FLOOR.x1), z = rand(FLOOR.z0, FLOOR.z1);
+    if (free(x, z)) return [x, z];
+  }
+  return [...LAYOUT.spawn];
 }
 const cellOf = (x: number, z: number): [number, number] => [clamp(Math.floor((x - FLOOR.x0) / CELL), 0, NX - 1), clamp(Math.floor((z - FLOOR.z0) / CELL), 0, NZ - 1)];
 const free = (x: number, z: number) => { const [i, j] = cellOf(x, z); return !blocked[i * NZ + j]; };
@@ -227,7 +243,7 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
   };
 
   // ---- locomotion state (room units)
-  const me = { x: 0, z: 0, yaw: 0 };
+  const me = { x: LAYOUT.spawn[0], z: LAYOUT.spawn[1], yaw: 0 };
   let path: [number, number][] = [];
   let walking = false;
   let walkPhase = 0;
@@ -318,7 +334,7 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
     *wander() {
       label = "wander";
       for (let n = rand(2, 4); n > 0; n--) {
-        const [x, z] = [rand(-3.4, 3.2), rand(-2.2, 2.2)];
+        const [x, z] = LAYOUT.custom ? randomSpot() : [rand(-3.4, 3.2), rand(-2.2, 2.2)];
         yield* walkTo(x, z);
         if (Math.random() < 0.4) { gazeMode = "window"; yield* wait(rand(1.5, 3)); gazeMode = "camera"; }
         yield* wait(rand(1.2, 3.5));
@@ -326,7 +342,7 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
     },
     *phone() {
       label = "phone";
-      yield* walkTo(rand(-2.5, 2.5), rand(-1.5, 1.8));
+      yield* (LAYOUT.custom ? walkTo(...randomSpot()) : walkTo(rand(-2.5, 2.5), rand(-1.5, 1.8)));
       yield* scroll(rand(10, 22), true);
       yield* wait(1);
     },
@@ -394,20 +410,20 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
       label = "greet";
       yield* standUpFromBed();
       moodGoal.closed = 0;
-      yield* walkTo(0, 1.1, toCamera());
+      yield* walkTo(LAYOUT.spawn[0], LAYOUT.spawn[1] + 1.1, toCamera());
       arms("wave"); moodGoal.happy = 0.6; yield* wait(2); arms("none"); moodGoal.happy = 0.2;
       label = "attentive";
       yield () => false; // stay put until she's released
     },
     // test/demo plans: take the phone out and have this exact reaction right away
-    *"react-angry"() { label = "phone"; yield* walkTo(0.4, 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("angry"); yield* wait(1); arms("none"); holdPhone(false); },
-    *"react-laugh"() { label = "phone"; yield* walkTo(0.4, 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("laugh"); yield* wait(1); arms("none"); holdPhone(false); },
-    *"react-sad"() { label = "phone"; yield* walkTo(0.4, 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("sad"); yield* wait(1); arms("none"); holdPhone(false); },
-    *"react-shock"() { label = "phone"; yield* walkTo(0.4, 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("shock"); yield* wait(1); arms("none"); holdPhone(false); },
+    *"react-angry"() { label = "phone"; yield* walkTo(LAYOUT.spawn[0] + 0.4, LAYOUT.spawn[1] + 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("angry"); yield* wait(1); arms("none"); holdPhone(false); },
+    *"react-laugh"() { label = "phone"; yield* walkTo(LAYOUT.spawn[0] + 0.4, LAYOUT.spawn[1] + 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("laugh"); yield* wait(1); arms("none"); holdPhone(false); },
+    *"react-sad"() { label = "phone"; yield* walkTo(LAYOUT.spawn[0] + 0.4, LAYOUT.spawn[1] + 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("sad"); yield* wait(1); arms("none"); holdPhone(false); },
+    *"react-shock"() { label = "phone"; yield* walkTo(LAYOUT.spawn[0] + 0.4, LAYOUT.spawn[1] + 0.4); gazeMode = "hands"; arms("phone"); holdPhone(true); yield* wait(1); yield* react("shock"); yield* wait(1); arms("none"); holdPhone(false); },
     *home() {
       label = "idle";
       yield* standUpFromBed(); arms("none"); holdPhone(false); if (mugHeld) holdMug(false);
-      yield* walkTo(0, 0, toCamera());
+      yield* walkTo(LAYOUT.spawn[0], LAYOUT.spawn[1], toCamera());
       yield () => false;
     },
   };
@@ -415,10 +431,13 @@ export function createNpc(opts: { vrm: VRM; idle: Idle; camera: THREE.Camera; sc
   const hour = () => new Date().getHours();
   function nextPlan(): PlanName {
     const night = hour() >= 23 || hour() < 6, late = hour() >= 21 || hour() < 8;
-    const table: [PlanName, number][] = [
-      ["wander", 22], ["phone", 14], ["phoneBed", late ? 24 : 14], ["coffee", night ? 4 : 16],
-      ["sit", 10], ["window", 10], ["stretch", 8], ["sleep", night ? 46 : late ? 10 : 4],
-    ];
+    // an imported room has no bed, desk or window to use: she wanders, uses her phone and stretches
+    const table: [PlanName, number][] = LAYOUT.custom
+      ? [["wander", 40], ["phone", 30], ["stretch", 10]]
+      : [
+        ["wander", 22], ["phone", 14], ["phoneBed", late ? 24 : 14], ["coffee", night ? 4 : 16],
+        ["sit", 10], ["window", 10], ["stretch", 8], ["sleep", night ? 46 : late ? 10 : 4],
+      ];
     const total = table.reduce((a, [, w]) => a + w, 0);
     let r = Math.random() * total;
     for (const [n, w] of table) { if ((r -= w) <= 0) return n; }

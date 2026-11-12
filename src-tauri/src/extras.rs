@@ -29,12 +29,15 @@ pub struct RoomOut {
     backdrop_path: Option<String>,
     /// Absolute path of the room's background music, when it has some.
     music_path: Option<String>,
+    /// Absolute path of the imported 3D scene, when it has one.
+    model_path: Option<String>,
 }
 
 fn room_out(st: &AppState, room: Room) -> RoomOut {
     let backdrop_path = room.backdrop.strip_prefix("file:").map(|f| st.data_dir.join(f).to_string_lossy().to_string());
     let music_path = Some(room.music.as_str()).filter(|m| !m.is_empty()).map(|m| st.data_dir.join(m).to_string_lossy().to_string());
-    RoomOut { room, backdrop_path, music_path }
+    let model_path = Some(room.model.as_str()).filter(|m| !m.is_empty()).map(|m| st.data_dir.join(m).to_string_lossy().to_string());
+    RoomOut { room, backdrop_path, music_path, model_path }
 }
 
 const KINDS: [&str; 13] = [
@@ -85,6 +88,9 @@ pub fn create_room(state: State<'_, Shared>, room: Room) -> R<RoomOut> {
     }
     r.music.clear();
     r.music_name.clear();
+    r.model.clear(); // a 3D scene only comes through set_room_model
+    r.model_name.clear();
+    r.model_scale = 1.0; r.model_rot = 0.0; r.model_y = 0.0; r.model_share = false;
     let r = db::create_room(&db, &r, &o).map_err(e)?;
     Ok(room_out(&state, r))
 }
@@ -100,6 +106,9 @@ pub fn update_room(state: State<'_, Shared>, room: Room) -> R<RoomOut> {
     }
     r.music = old.music.clone(); // music, too, only changes through its own commands
     r.music_name = old.music_name.clone();
+    // the 3D scene, how it is set and whether it may be shared change only through their own commands, too
+    r.model = old.model.clone(); r.model_name = old.model_name.clone();
+    r.model_scale = old.model_scale; r.model_rot = old.model_rot; r.model_y = old.model_y; r.model_share = old.model_share;
     if old.backdrop.starts_with("file:") && r.backdrop != old.backdrop {
         let _ = std::fs::remove_file(state.data_dir.join(old.backdrop.trim_start_matches("file:")));
     }
@@ -117,6 +126,9 @@ pub fn delete_room(state: State<'_, Shared>, id: i64) -> R<()> {
         }
         if !r.music.is_empty() {
             let _ = std::fs::remove_file(state.data_dir.join(&r.music));
+        }
+        if !r.model.is_empty() {
+            let _ = std::fs::remove_file(state.data_dir.join(&r.model));
         }
     }
     db::delete_room(&db, id, &o).map_err(e)
@@ -193,6 +205,82 @@ pub fn clear_room_music(state: State<'_, Shared>, id: i64) -> R<RoomOut> {
     }
     r.music.clear();
     r.music_name.clear();
+    db::update_room(&db, &r, &o).map_err(e)?;
+    Ok(room_out(&state, r))
+}
+
+const MODEL_EXTS: [&str; 3] = ["glb", "gltf", "fbx"];
+const MAX_MODEL_BYTES: usize = 300 * 1024 * 1024;
+
+/// Body: raw model bytes (.glb, .gltf with everything inside it, or .fbx). Headers: `x-room-id`, `x-file-name` (percent-encoded).
+/// A newly imported model is **not** marked as shareable.
+#[tauri::command]
+pub fn set_room_model(request: Request<'_>, state: State<'_, Shared>) -> R<RoomOut> {
+    let id: i64 = header(&request, "x-room-id").parse().map_err(|_| "Save the room first")?;
+    let name = header(&request, "x-file-name");
+    let bytes = raw_body(&request)?;
+    if bytes.len() > MAX_MODEL_BYTES {
+        return Err("That 3D file is too large (300 MB at most).".into());
+    }
+    let ext = std::path::Path::new(&name).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+    if !MODEL_EXTS.contains(&ext.as_str()) {
+        return Err("A 3D room has to be a .glb, .gltf or .fbx file. (A .unitypackage isn't supported yet: open it and export the model as .fbx or .glb.)".into());
+    }
+    // look at the start of the file so a renamed picture or archive is not saved as a "model"
+    let head = &bytes[..bytes.len().min(64)];
+    let ok = match ext.as_str() {
+        "glb" => head.starts_with(b"glTF"),
+        "fbx" => head.starts_with(b"Kaydara FBX Binary") || head.iter().take(40).all(|b| b.is_ascii()),
+        _ => head.iter().skip_while(|b| b.is_ascii_whitespace()).next() == Some(&b'{'),
+    };
+    if !ok {
+        return Err("That file doesn't look like a valid 3D model.".into());
+    }
+    let shown: String = std::path::Path::new(&name).file_name().and_then(|n| n.to_str()).unwrap_or("room").chars().filter(|c| !c.is_control()).take(120).collect();
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut r = db::get_room(&db, id, &o).map_err(e)?.ok_or("Save the room first")?;
+    let rel = format!("media/roommodel-{id}-{}.{ext}", db::now());
+    std::fs::write(state.data_dir.join(&rel), &*bytes).map_err(e)?;
+    if !r.model.is_empty() {
+        let _ = std::fs::remove_file(state.data_dir.join(&r.model));
+    }
+    r.model = rel;
+    r.model_name = shown;
+    r.model_scale = 1.0; r.model_rot = 0.0; r.model_y = 0.0;
+    r.model_share = false; // the owner has to say so
+    db::update_room(&db, &r, &o).map_err(e)?;
+    Ok(room_out(&state, r))
+}
+
+#[tauri::command]
+pub fn clear_room_model(state: State<'_, Shared>, id: i64) -> R<RoomOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut r = db::get_room(&db, id, &o).map_err(e)?.ok_or("Room not found")?;
+    if !r.model.is_empty() {
+        let _ = std::fs::remove_file(state.data_dir.join(&r.model));
+    }
+    r.model.clear(); r.model_name.clear();
+    r.model_scale = 1.0; r.model_rot = 0.0; r.model_y = 0.0; r.model_share = false;
+    db::update_room(&db, &r, &o).map_err(e)?;
+    Ok(room_out(&state, r))
+}
+
+/// How the 3D scene is set (size multiplier, turn in degrees, height shift in metres) and whether it may be shared.
+#[tauri::command]
+pub fn set_room_model_cfg(state: State<'_, Shared>, id: i64, scale: f64, rot: f64, y: f64, share: bool) -> R<RoomOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut r = db::get_room(&db, id, &o).map_err(e)?.ok_or("Room not found")?;
+    if r.model.is_empty() {
+        return Err("This room has no 3D model.".into());
+    }
+    let fin = |v: f64, d: f64| if v.is_finite() { v } else { d };
+    r.model_scale = fin(scale, 1.0).clamp(0.01, 100.0);
+    r.model_rot = fin(rot, 0.0).rem_euclid(360.0);
+    r.model_y = fin(y, 0.0).clamp(-50.0, 50.0);
+    r.model_share = share;
     db::update_room(&db, &r, &o).map_err(e)?;
     Ok(room_out(&state, r))
 }

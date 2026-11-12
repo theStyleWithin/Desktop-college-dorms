@@ -579,6 +579,8 @@ pub struct ExportInfo {
     chats: usize,
     messages: usize,
     media: usize,
+    /// Names of rooms whose 3D model was left out because it isn't marked as shareable.
+    withheld_rooms: Vec<String>,
 }
 
 fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
@@ -708,6 +710,12 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     }
     if profile_avatar.as_ref().map(|(f, _)| f.is_empty()).unwrap_or(false) { profile_avatar = None; }
     for r in rooms.iter_mut() { pack_music(&mut r.music, &mut zip)?; if r.music.is_empty() { r.music_name.clear(); } }
+    // a 3D room goes along only when its owner marked it as allowed to be shared; otherwise the room travels without it
+    let withheld_rooms: Vec<String> = rooms.iter().filter(|r| !r.model.is_empty() && !r.model_share).map(|r| r.name.clone()).collect();
+    for r in rooms.iter_mut() {
+        if r.model_share { pack_music(&mut r.model, &mut zip)?; } else { r.model.clear(); }
+        if r.model.is_empty() { r.model_name.clear(); r.model_share = false; r.model_scale = 1.0; r.model_rot = 0.0; r.model_y = 0.0; }
+    }
     for d in dorms.iter_mut() { pack_music(&mut d.music, &mut zip)?; if d.music.is_empty() { d.music_name.clear(); } }
     // room backdrops travel with their rooms
     for r in rooms.iter_mut() {
@@ -761,6 +769,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
         chats: counts.chats,
         messages: counts.messages,
         media: counts.media,
+        withheld_rooms,
     };
     Ok((bytes, info, file_name))
 }
@@ -839,7 +848,7 @@ fn remove_owner_data(st: &AppState, o: &Owner) -> R<()> {
         files.extend(db::list_folders(&db, o).map_err(e)?.into_iter().filter_map(|f| f.cover));
         files.extend(db::list_personas(&db, o).map_err(e)?.into_iter().filter_map(|p| p.avatar));
         if let Some(pid) = o { files.extend(db::get_profile_avatar(&db, pid).map(|(f, _)| f)); }
-        files.extend(db::list_rooms(&db, o).map_err(e)?.into_iter().flat_map(|r| r.backdrop.strip_prefix("file:").map(str::to_string).into_iter().chain(Some(r.music).filter(|m| !m.is_empty()))));
+        files.extend(db::list_rooms(&db, o).map_err(e)?.into_iter().flat_map(|r| r.backdrop.strip_prefix("file:").map(str::to_string).into_iter().chain(Some(r.music).filter(|m| !m.is_empty())).chain(Some(r.model).filter(|m| !m.is_empty()))));
         files.extend(db::list_dorms(&db, o).map_err(e)?.into_iter().filter(|d| !d.music.is_empty()).map(|d| d.music));
         (settings, files)
     };
@@ -1098,11 +1107,27 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             if had_file { room.backdrop.clear(); }
             let music = std::mem::take(&mut room.music);
             let music_name = std::mem::take(&mut room.music_name);
+            let model = std::mem::take(&mut room.model);
+            let model_name = std::mem::take(&mut room.model_name);
             let mut nr = db::create_room(&db, &room, &o).map_err(e)?;
             if let Some(rel) = restore_music(&music, format!("room{}", nr.id), &mut written)? {
                 nr.music = rel;
                 nr.music_name = music_name;
                 db::update_room(&db, &nr, &o).map_err(e)?;
+            }
+            // a shared 3D room (only ever packed when its owner allowed it): a 3D file, a safe name, written under a fresh name
+            if let Some(base) = model.strip_prefix("media/").filter(|b| safe_media_name(b) && r.model_share) {
+                let ext = std::path::Path::new(base).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+                if let (true, Some(bytes)) = (["glb", "gltf", "fbx"].contains(&ext.as_str()), parsed.media.get(base)) {
+                    let rel = format!("media/roommodel-{}-{}.{ext}", nr.id, db::now());
+                    let abs = st.data_dir.join(&rel);
+                    std::fs::write(&abs, bytes).map_err(e)?;
+                    written.push(abs);
+                    nr.model = rel; nr.model_name = model_name;
+                    nr.model_scale = r.model_scale.clamp(0.01, 100.0); nr.model_rot = r.model_rot.rem_euclid(360.0); nr.model_y = r.model_y.clamp(-50.0, 50.0);
+                    nr.model_share = true;
+                    db::update_room(&db, &nr, &o).map_err(e)?;
+                }
             }
             if let Some(base) = r.backdrop.strip_prefix("file:media/").filter(|b| had_file && safe_media_name(b)) {
                 if let Some(bytes) = parsed.media.get(base) {

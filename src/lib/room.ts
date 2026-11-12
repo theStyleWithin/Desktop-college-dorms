@@ -19,6 +19,21 @@ export const OBSTACLES: [number, number, number, number][] = [
 ];
 export const FLOOR = { x0: -4.5, x1: 4.5, z0: -4.1, z1: 2.9 };
 
+/**
+ * The walkable layout. It is the built-in room's, until an imported 3D room is put in: then `FLOOR` and `OBSTACLES` hold that
+ * room's floor and furniture (in the same units), `custom` is on (there is no desk or bed to use) and `spawn` is where she starts.
+ */
+const BUILTIN = { floor: { ...FLOOR }, obstacles: OBSTACLES.map((r) => [...r] as [number, number, number, number]) };
+export const LAYOUT: { custom: boolean; spawn: [number, number] } = { custom: false, spawn: [0, 0] };
+export interface CustomLayout { floor: { x0: number; x1: number; z0: number; z1: number }; rects: [number, number, number, number][]; spawn: [number, number] }
+export function applyLayout(l: CustomLayout | null) {
+  Object.assign(FLOOR, l ? l.floor : BUILTIN.floor);
+  OBSTACLES.length = 0;
+  OBSTACLES.push(...(l ? l.rects : BUILTIN.obstacles));
+  LAYOUT.custom = !!l;
+  LAYOUT.spawn = l ? l.spawn : [0, 0];
+}
+
 function canvasTex(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void, repeat?: [number, number]) {
   const c = document.createElement("canvas");
   c.width = w; c.height = h;

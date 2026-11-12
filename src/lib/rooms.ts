@@ -1,4 +1,5 @@
-import { roomBackdrop, type Room, type RoomKind } from "../api";
+import { roomBackdrop, roomModelUrl, type Room, type RoomKind } from "../api";
+import type { SceneCfg } from "./roomModel";
 
 export const ROOM_KINDS: { id: RoomKind; label: string }[] = [
   { id: "living_room", label: "Living Room" }, { id: "bedroom", label: "Bedroom" }, { id: "kitchen", label: "Kitchen" },
@@ -50,4 +51,12 @@ export function textBubbles(t: string): string[] {
 /** Hides the model's hidden `[variable: add 3]` lines while a reply is still being written. */
 export function hideDirectives(t: string): string {
   return t.replace(/\[[A-Za-z0-9_.-]+:\s*(?:set|add|subtract|sub|push|append|remove|delete|unset)\b[^\]]*\]?/g, "").replace(/\[[A-Za-z0-9_.-]+:\s*(?:s|se|a|ad|su|sub|subt|p|pu|pus|r|re|rem|d|de|del)?$/, "");
+}
+
+/** The imported 3D scene of a room, as the viewer wants it (null when the room has none: the built-in room is used). */
+export function roomScene(r?: Room | null): SceneCfg | null {
+  const url = r ? roomModelUrl(r) : null;
+  if (!r || !r.model || !url) return null;
+  const ext = r.model.split(".").pop()?.toLowerCase() ?? "glb";
+  return { url, ext, scale: r.model_scale ?? 1, rot: r.model_rot ?? 0, y: r.model_y ?? 0 };
 }
