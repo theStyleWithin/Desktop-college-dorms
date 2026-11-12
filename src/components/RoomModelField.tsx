@@ -1,4 +1,6 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import { api } from "../api";
+import { fmtBytes as sizeText } from "../lib/util";
 
 export interface ModelDraft { file?: File; remove?: boolean; scale: number; rot: number; y: number; share: boolean }
 
@@ -8,6 +10,8 @@ export interface ModelDraft { file?: File; remove?: boolean; scale: number; rot:
  */
 export default function RoomModelField({ name, draft, onChange }: { name: string; draft: ModelDraft; onChange: (d: ModelDraft) => void }) {
   const ref = useRef<HTMLInputElement>(null);
+  const [problem, setProblem] = useState("");
+  const [caution, setCaution] = useState("");
   const has = !!name && !draft.remove;
   return (
     <div className="field" data-testid="room-model">
@@ -18,8 +22,33 @@ export default function RoomModelField({ name, draft, onChange }: { name: string
         {has && <button type="button" className="btn ghost" onClick={() => onChange({ ...draft, file: undefined, remove: true })}>Remove</button>}
         {/* no `accept` filter: some pickers hide .fbx and .glb; the app checks the file itself */}
         <input ref={ref} type="file" hidden aria-label="3D room model"
-          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) onChange({ file: f, scale: 1, rot: 0, y: 0, share: false }); }} />
+          onChange={(e) => {
+            const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+            const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+            // say so now rather than when saving: these can't be used yet
+            if (!["glb", "gltf", "fbx"].includes(ext)) {
+              setProblem(ext === "unitypackage"
+                ? "A .unitypackage can't be opened yet. Open it in Unity or Blender, export the room as a .fbx or .glb file, and import that."
+                : "A 3D room has to be a .glb, .gltf or .fbx file.");
+              return;
+            }
+            setProblem(""); setCaution("");
+            // is there room for it on this device? (refuse if it can't fit, warn if it would leave very little)
+            void api.diskSpace().then(({ free, total }) => {
+              const spare = 200 * 1024 * 1024;
+              if (free > 0 && free < f.size + spare) {
+                setProblem(`There isn't enough free space for this file: it is ${sizeText(f.size)} and this device has ${sizeText(free)} free. Free some space, or try a smaller room.`);
+                return;
+              }
+              if (free > 0 && (free - f.size < 2 * 1024 ** 3 || (total > 0 && (free - f.size) / total < 0.05))) {
+                setCaution(`This file is ${sizeText(f.size)} and would leave only ${sizeText(free - f.size)} free on this device. You may want to free some space, or pick a smaller room.`);
+              }
+              onChange({ file: f, scale: 1, rot: 0, y: 0, share: false });
+            }).catch(() => onChange({ file: f, scale: 1, rot: 0, y: 0, share: false }));
+          }} />
       </div>
+      {caution && !problem && <div className="hint" role="status" data-testid="model-caution" style={{ color: "var(--warn, #e0a030)" }}>{caution}</div>}
+      {problem && <div className="hint" role="alert" data-testid="model-problem" style={{ color: "var(--danger)" }}>{problem}</div>}
       <div className="hint">A house or room model as a <b>.glb</b>, <b>.gltf</b> or <b>.fbx</b> file (for example from Booth or other shops; export it from Unity or Blender if you only have a .unitypackage). It replaces the built-in room when you are in a chat set in this room. She walks around the floor it has and steps around its furniture. Models stay on this device.</div>
       {has && (
         <div style={{ display: "grid", gap: 10, marginTop: 10 }}>

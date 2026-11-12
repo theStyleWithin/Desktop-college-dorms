@@ -312,9 +312,27 @@ export const api = {
   },
   clearRoomMusic: (id: number) => invoke<Room>("clear_room_music", { id }),
   // an imported 3D scene for the room
-  async setRoomModel(id: number, file: File): Promise<Room> {
-    return bin("set_room_model", new Uint8Array(await file.arrayBuffer()), { "x-room-id": String(id), "x-file-name": enc(file.name) });
+  /** Sent in pieces that go straight to disk, so a big model never has to fit in memory (no size limit to speak of). */
+  async setRoomModel(id: number, file: File, onProgress?: (fraction: number) => void): Promise<Room> {
+    const token = await invoke<string>("room_model_begin", { size: file.size });
+    const CH = 1_500_000;
+    try {
+      for (let at = 0; at < file.size; at += CH) {
+        const piece = file.slice(at, Math.min(file.size, at + CH));
+        const b64 = await new Promise<string>((res, rej) => {
+          const fr = new FileReader();
+          fr.onload = () => res(String(fr.result).split(",")[1] ?? "");
+          fr.onerror = () => rej(new Error("Couldn't read that file."));
+          fr.readAsDataURL(piece);
+        });
+        await invoke("room_model_chunk", { token, data: b64 });
+        onProgress?.(Math.min(1, (at + CH) / Math.max(1, file.size)));
+      }
+      return await invoke<Room>("room_model_finish", { id, token, fileName: file.name });
+    } catch (e) { await invoke("room_model_cancel", { token }).catch(() => {}); throw e; }
   },
+  /** Free and total space (bytes) on the drive that holds the app's data; free is 0 when it can't be found out. */
+  diskSpace: () => invoke<{ free: number; total: number }>("disk_space"),
   clearRoomModel: (id: number) => invoke<Room>("clear_room_model", { id }),
   setRoomModelCfg: (id: number, scale: number, rot: number, y: number, share: boolean) => invoke<Room>("set_room_model_cfg", { id, scale, rot, y, share }),
   async setDormMusic(id: number, file: File): Promise<Dorm> {

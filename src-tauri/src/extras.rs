@@ -210,24 +210,20 @@ pub fn clear_room_music(state: State<'_, Shared>, id: i64) -> R<RoomOut> {
 }
 
 const MODEL_EXTS: [&str; 3] = ["glb", "gltf", "fbx"];
+/// The one-piece upload (`set_room_model`) holds the whole file in memory, so it stays small; the chunked upload below goes straight to disk.
 const MAX_MODEL_BYTES: usize = 300 * 1024 * 1024;
+/// A sanity limit for the chunked upload, so a wrong file can't fill the disk.
+const MAX_MODEL_UPLOAD: u64 = 8 * 1024 * 1024 * 1024;
 
-/// Body: raw model bytes (.glb, .gltf with everything inside it, or .fbx). Headers: `x-room-id`, `x-file-name` (percent-encoded).
-/// A newly imported model is **not** marked as shareable.
-#[tauri::command]
-pub fn set_room_model(request: Request<'_>, state: State<'_, Shared>) -> R<RoomOut> {
-    let id: i64 = header(&request, "x-room-id").parse().map_err(|_| "Save the room first")?;
-    let name = header(&request, "x-file-name");
-    let bytes = raw_body(&request)?;
-    if bytes.len() > MAX_MODEL_BYTES {
-        return Err("That 3D file is too large (300 MB at most).".into());
+/// Is this a 3D model the app can use? Checks the name's extension and the first bytes, so a renamed picture or archive is not saved as a "model".
+fn check_model(name: &str, head: &[u8]) -> R<String> {
+    let ext = std::path::Path::new(name).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+    if ext == "unitypackage" {
+        return Err("A .unitypackage can't be opened yet. Open it in Unity or Blender and export the room as a .fbx or .glb file, then import that.".into());
     }
-    let ext = std::path::Path::new(&name).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
     if !MODEL_EXTS.contains(&ext.as_str()) {
         return Err("A 3D room has to be a .glb, .gltf or .fbx file. (A .unitypackage isn't supported yet: open it and export the model as .fbx or .glb.)".into());
     }
-    // look at the start of the file so a renamed picture or archive is not saved as a "model"
-    let head = &bytes[..bytes.len().min(64)];
     let ok = match ext.as_str() {
         "glb" => head.starts_with(b"glTF"),
         "fbx" => head.starts_with(b"Kaydara FBX Binary") || head.iter().take(40).all(|b| b.is_ascii()),
@@ -236,21 +232,147 @@ pub fn set_room_model(request: Request<'_>, state: State<'_, Shared>) -> R<RoomO
     if !ok {
         return Err("That file doesn't look like a valid 3D model.".into());
     }
-    let shown: String = std::path::Path::new(&name).file_name().and_then(|n| n.to_str()).unwrap_or("room").chars().filter(|c| !c.is_control()).take(120).collect();
-    let o = owner(&state)?;
-    let db = state.db.lock().unwrap();
-    let mut r = db::get_room(&db, id, &o).map_err(e)?.ok_or("Save the room first")?;
-    let rel = format!("media/roommodel-{id}-{}.{ext}", db::now());
-    std::fs::write(state.data_dir.join(&rel), &*bytes).map_err(e)?;
+    Ok(ext)
+}
+
+fn shown_name(name: &str) -> String {
+    std::path::Path::new(name).file_name().and_then(|n| n.to_str()).unwrap_or("room").chars().filter(|c| !c.is_control()).take(120).collect()
+}
+
+/// Make `rel` (a file already in the data folder) the room's model. A newly imported model is **not** marked as shareable.
+fn install_model(st: &AppState, id: i64, rel: String, shown: String) -> R<RoomOut> {
+    let o = owner(st)?;
+    let db = st.db.lock().unwrap();
+    let mut r = match db::get_room(&db, id, &o).map_err(e)? {
+        Some(r) => r,
+        None => {
+            let _ = std::fs::remove_file(st.data_dir.join(&rel));
+            return Err("Save the room first".into());
+        }
+    };
     if !r.model.is_empty() {
-        let _ = std::fs::remove_file(state.data_dir.join(&r.model));
+        let _ = std::fs::remove_file(st.data_dir.join(&r.model));
     }
     r.model = rel;
     r.model_name = shown;
     r.model_scale = 1.0; r.model_rot = 0.0; r.model_y = 0.0;
     r.model_share = false; // the owner has to say so
     db::update_room(&db, &r, &o).map_err(e)?;
-    Ok(room_out(&state, r))
+    Ok(room_out(st, r))
+}
+
+/// Body: raw model bytes (.glb, .gltf with everything inside it, or .fbx). Headers: `x-room-id`, `x-file-name` (percent-encoded).
+/// For small files; the app itself uses the chunked upload (`room_model_begin` / `room_model_chunk` / `room_model_finish`), which has no such limit.
+#[tauri::command]
+pub fn set_room_model(request: Request<'_>, state: State<'_, Shared>) -> R<RoomOut> {
+    let id: i64 = header(&request, "x-room-id").parse().map_err(|_| "Save the room first")?;
+    let name = header(&request, "x-file-name");
+    let bytes = raw_body(&request)?;
+    if bytes.len() > MAX_MODEL_BYTES {
+        return Err("That file is too big for a single upload.".into());
+    }
+    let ext = check_model(&name, &bytes[..bytes.len().min(64)])?;
+    let rel = format!("media/roommodel-{id}-{}.{ext}", db::now());
+    std::fs::write(state.data_dir.join(&rel), &*bytes).map_err(e)?;
+    install_model(&state, id, rel, shown_name(&name))
+}
+
+fn upload_path(st: &AppState, token: &str) -> R<std::path::PathBuf> {
+    let safe: String = token.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+    if safe.is_empty() || safe.len() > 64 || safe != token {
+        return Err("The file transfer was cancelled.".into());
+    }
+    Ok(st.data_dir.join("media").join(format!(".roomup-{safe}")))
+}
+
+fn human(b: u64) -> String {
+    let g = b as f64 / 1_073_741_824.0;
+    if g >= 1.0 { format!("{g:.1} GB") } else { format!("{:.0} MB", b as f64 / 1_048_576.0) }
+}
+
+#[derive(Serialize)]
+pub struct DiskSpace {
+    /// Free space where the app keeps its data, in bytes (0 when it can't be found out).
+    free: u64,
+    total: u64,
+}
+
+/// How much room there is on the drive that holds the app's data.
+#[tauri::command]
+pub fn disk_space(state: State<'_, Shared>) -> DiskSpace {
+    DiskSpace { free: fs4::available_space(&state.data_dir).unwrap_or(0), total: fs4::total_space(&state.data_dir).unwrap_or(0) }
+}
+
+/// Start a chunked upload of a room model: the pieces are written straight to a file on disk, so a model of any size works,
+/// as long as the drive has the room (`size` is the file's size: a file that clearly won't fit is refused before anything is copied).
+#[tauri::command]
+pub fn room_model_begin(state: State<'_, Shared>, size: Option<u64>) -> R<String> {
+    if let (Some(size), Ok(free)) = (size, fs4::available_space(&state.data_dir)) {
+        // a little spare room is kept, so the drive isn't filled to the brim
+        let need = size + 200 * 1024 * 1024;
+        if free < need {
+            return Err(format!("There isn't enough free space for this 3D file: it is {} and this device has {} free (about {} is needed). Free some space, or try a smaller room.", human(size), human(free), human(need)));
+        }
+    }
+    // leftovers of uploads that never finished (an hour old or more)
+    if let Ok(rd) = std::fs::read_dir(state.data_dir.join("media")) {
+        for f in rd.flatten() {
+            if f.file_name().to_string_lossy().starts_with(".roomup-") {
+                let old = f.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).map(|d| d.as_secs() > 3600).unwrap_or(true);
+                if old { let _ = std::fs::remove_file(f.path()); }
+            }
+        }
+    }
+    let token = uid();
+    std::fs::write(upload_path(&state, &token)?, b"").map_err(e)?;
+    Ok(token)
+}
+
+/// One piece (base64) of the file. Returns how many bytes there are so far.
+#[tauri::command]
+pub fn room_model_chunk(state: State<'_, Shared>, token: String, data: String) -> R<u64> {
+    use base64::Engine;
+    use std::io::Write;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.trim()).map_err(|_| "That piece of the file was damaged on the way in.".to_string())?;
+    let path = upload_path(&state, &token)?;
+    let have = std::fs::metadata(&path).map_err(|_| "The file transfer was cancelled.".to_string())?.len();
+    if have + bytes.len() as u64 > MAX_MODEL_UPLOAD {
+        let _ = std::fs::remove_file(&path);
+        return Err("That file is far too large to be a 3D room (8 GB at most).".into());
+    }
+    let mut f = std::fs::OpenOptions::new().append(true).open(&path).map_err(|_| "The file transfer was cancelled.".to_string())?;
+    f.write_all(&bytes).map_err(|err| {
+        let _ = std::fs::remove_file(&path);
+        format!("Couldn't save the file (is the disk full?): {err}")
+    })?;
+    Ok(have + bytes.len() as u64)
+}
+
+/// The whole file is there: check it and make it the room's model.
+#[tauri::command]
+pub fn room_model_finish(state: State<'_, Shared>, id: i64, token: String, file_name: String) -> R<RoomOut> {
+    use std::io::Read;
+    let path = upload_path(&state, &token)?;
+    let fail = |m: &str| -> R<RoomOut> { let _ = std::fs::remove_file(&path); Err(m.to_string()) };
+    let mut head = [0u8; 64];
+    let n = match std::fs::File::open(&path).and_then(|mut f| f.read(&mut head)) {
+        Ok(n) => n,
+        Err(_) => return Err("The file transfer was cancelled.".into()),
+    };
+    let ext = match check_model(&file_name, &head[..n]) {
+        Ok(x) => x,
+        Err(m) => return fail(&m),
+    };
+    let rel = format!("media/roommodel-{id}-{}.{ext}", db::now());
+    if let Err(err) = std::fs::rename(&path, state.data_dir.join(&rel)) {
+        return fail(&format!("Couldn't save the file: {err}"));
+    }
+    install_model(&state, id, rel, shown_name(&file_name))
+}
+
+#[tauri::command]
+pub fn room_model_cancel(state: State<'_, Shared>, token: String) {
+    if let Ok(p) = upload_path(&state, &token) { let _ = std::fs::remove_file(p); }
 }
 
 #[tauri::command]
