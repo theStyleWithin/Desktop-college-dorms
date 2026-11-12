@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { api, folderCover, type Folder } from "../api";
+import { api, displayName, folderArt, mediaUrl, type Character, type Folder } from "../api";
 import { frameStyle } from "./Art";
 import FrameEditor from "./FrameEditor";
 import { Modal, useToast } from "./ui";
@@ -33,9 +33,9 @@ export const draggedIds = (e: React.DragEvent): string[] => {
 export const isCharDrag = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes(DRAG_TYPE);
 
 /** A folder in the grid: its picture (or a colour), its name, how many characters are inside. A character can be dropped on it. */
-export function FolderTile({ f, count, sub, onOpen, onDropIds, onDropFolder }: { f: Folder; count: number; /** folders directly inside */ sub: number; onOpen: () => void; onDropIds: (ids: string[]) => void; onDropFolder: (id: string) => void }) {
+export function FolderTile({ f, characters, count, sub, onOpen, onDropIds, onDropFolder }: { f: Folder; characters: Character[]; count: number; /** folders directly inside */ sub: number; onOpen: () => void; onDropIds: (ids: string[]) => void; onDropFolder: (id: string) => void }) {
   const [over, setOver] = useState(false);
-  const cover = folderCover(f);
+  const art = folderArt(f, characters);
   const bg = `linear-gradient(135deg, hsl(${hue(f.name)} 40% 32%), hsl(${(hue(f.name) + 50) % 360} 45% 20%))`;
   return (
     <button className={`ftile${over ? " over" : ""}`} data-folder={f.name} onClick={onOpen} draggable
@@ -48,7 +48,7 @@ export function FolderTile({ f, count, sub, onOpen, onDropIds, onDropFolder }: {
         if (!isCharDrag(e)) return; e.preventDefault(); e.stopPropagation(); setOver(false); onDropIds(draggedIds(e));
       }}>
       <div className="fcover" style={{ background: bg }}>
-        {cover ? <img src={cover} alt="" draggable={false} style={frameStyle(f.frame)} /> : <span className="fglyph" aria-hidden>📁</span>}
+        {art.url ? <img src={art.url} alt="" draggable={false} style={frameStyle(art.frame)} /> : <span className="fglyph" aria-hidden>📁</span>}
       </div>
       <div className="fname"><b>{f.name}</b><span className="hint">{count} character{count === 1 ? "" : "s"}{sub ? ` · ${sub} folder${sub === 1 ? "" : "s"}` : ""}</span></div>
     </button>
@@ -56,17 +56,19 @@ export function FolderTile({ f, count, sub, onOpen, onDropIds, onDropFolder }: {
 }
 
 /** Name, picture and delete for the folder that is open. */
-export function FolderBar({ f, count, onClose, onChanged, onMove }: { f: Folder; count: number; onClose: () => void; onChanged: () => Promise<void>; onMove: () => void }) {
+export function FolderBar({ f, characters, inside, count, onClose, onChanged, onMove }: { f: Folder; characters: Character[]; /** ids of this folder and every folder inside it */ inside: Set<string>; count: number; onClose: () => void; onChanged: () => Promise<void>; onMove: () => void }) {
   const toast = useToast();
   const [name, setName] = useState<string | null>(null);
   const [framing, setFraming] = useState<{ file?: File; url: string } | null>(null);
   const file = useRef<HTMLInputElement>(null);
-  const cover = folderCover(f);
+  const art = folderArt(f, characters);
+  const cover = art.own ? art.url : null;
+  const [picking, setPicking] = useState(false);
   const run = async (p: Promise<unknown>) => { try { await p; await onChanged(); } catch (e) { toast(errText(e), "err"); } };
   return (
     <div className="fbar">
       <div className="fbar-art" style={{ background: `linear-gradient(135deg, hsl(${hue(f.name)} 40% 32%), hsl(${(hue(f.name) + 50) % 360} 45% 20%))` }}>
-        {cover ? <img src={cover} alt="" draggable={false} style={frameStyle(f.frame)} /> : <span aria-hidden>📁</span>}
+        {art.url ? <img src={art.url} alt="" draggable={false} style={frameStyle(art.frame)} /> : <span aria-hidden>📁</span>}
       </div>
       <div className="grow">
         {name === null ? (
@@ -82,17 +84,41 @@ export function FolderBar({ f, count, onClose, onChanged, onMove }: { f: Folder;
         <button className="btn sm" onClick={() => setName(f.name)}>✎ Rename</button>
         <button className="btn sm" onClick={onMove}>📂 Move folder…</button>
         <button className="btn sm" onClick={() => file.current?.click()}>🖼 {cover ? "Change picture" : "Add picture"}</button>
+        <button className="btn sm" onClick={() => setPicking(true)}>🧑 {f.cover_char ? "Change character picture" : "Use a character's picture"}</button>
         {cover && <button className="btn sm" onClick={() => setFraming({ url: cover })}>⤧ Position</button>}
         {cover && <button className="btn sm" onClick={() => void run(api.clearFolderCover(f.id))}>Remove picture</button>}
         <button className="btn sm danger" onClick={() => { if (window.confirm(`Delete the folder "${f.name}"? Its characters and subfolders are kept and move up one level.`)) { void api.deleteFolder(f.id).then(onClose).then(onChanged).catch((e) => toast(errText(e), "err")); } }}>🗑 Delete folder</button>
         <input ref={file} type="file" hidden accept="image/*" aria-label="Folder picture" onChange={(e) => { const x = e.target.files?.[0]; e.target.value = ""; if (x) setFraming({ file: x, url: URL.createObjectURL(x) }); }} />
       </div>
+      {picking && <PickCover characters={characters.filter((c) => c.folder && inside.has(c.folder))} current={f.cover_char ?? null} hasOwn={!!cover}
+        onClose={() => setPicking(false)} onPick={(id) => { setPicking(false); void run(api.setFolderCoverChar(f.id, id)); }} />}
       {framing && (
         <FrameEditor title="Position the folder picture" src={framing.url} initial={framing.file ? null : f.frame}
           onClose={() => { if (framing.file) URL.revokeObjectURL(framing.url); setFraming(null); }}
           onSave={(fr) => { const cur = framing; setFraming(null); void run((async () => { if (cur.file) { await api.setFolderCover(f.id, cur.file); URL.revokeObjectURL(cur.url); } await api.setFolderFrame(f.id, fr); })()); }} />
       )}
     </div>
+  );
+}
+
+/** Choose which character's picture the folder shows (characters inside the folder, at any depth, that have a still picture). */
+function PickCover({ characters, current, hasOwn, onPick, onClose }: { characters: Character[]; current: string | null; hasOwn: boolean; onPick: (id: string | null) => void; onClose: () => void }) {
+  const list = characters.filter((c) => (c.media?.kind === "image" || c.media?.kind === "gif") && mediaUrl(c));
+  return (
+    <Modal title="Folder picture from a character" onClose={onClose}>
+      {hasOwn && <p className="hint">This folder has a picture of its own, and that one is shown first. Remove it to see the character's picture.</p>}
+      {list.length === 0 ? <p className="hint">None of the characters in this folder has a picture to use (3D models and videos can't be used). File a character with a picture in this folder first.</p> : (
+        <div className="who-list" style={{ maxHeight: 360, overflow: "auto" }}>
+          {list.map((c) => (
+            <button key={c.id} className={current === c.id ? "on" : ""} data-pick={displayName(c)} onClick={() => onPick(c.id)}>
+              <img src={mediaUrl(c)!} alt="" draggable={false} style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />
+              <span className="grow">{displayName(c)}</span>{current === c.id && <span>✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+      {current && <div className="row" style={{ marginTop: 12 }}><button className="btn sm" onClick={() => onPick(null)}>Stop using a character's picture</button></div>}
+    </Modal>
   );
 }
 

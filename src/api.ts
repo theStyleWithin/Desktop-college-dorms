@@ -60,7 +60,7 @@ export interface CardData {
 export interface Frame { x: number; y: number; zoom: number }
 export const DEFAULT_FRAME: Frame = { x: 0.5, y: 0.5, zoom: 1 };
 export interface Lorebook { id: string; name: string; book: CharacterBook; created_at: number; updated_at: number }
-export interface Folder { id: string; name: string; cover: string | null; frame: Frame | null; created_at: number; cover_path?: string | null; /** the folder this one sits inside (null = top level) */ parent?: string | null }
+export interface Folder { id: string; name: string; cover: string | null; frame: Frame | null; created_at: number; cover_path?: string | null; /** the folder this one sits inside (null = top level) */ parent?: string | null; /** a character whose picture stands in when the folder has none */ cover_char?: string | null }
 
 export interface Character {
   id: string;
@@ -76,6 +76,8 @@ export interface Character {
   frame?: Frame | null;
   /** The folder this character is filed in (null = top level). */
   folder?: string | null;
+  /** Place in "my order" (lower first); missing = not placed yet, goes last. */
+  order?: number | null;
   /** Library lorebooks attached to this character (besides the book inside the card). */
   lorebooks?: string[];
   favorite: boolean;
@@ -276,6 +278,8 @@ export const api = {
   setFolderFrame: (id: string, frame: Frame | null) => invoke<Folder>("set_folder_frame", { id, frame }),
   clearFolderCover: (id: string) => invoke<Folder>("clear_folder_cover", { id }),
   moveCharacters: (ids: string[], folder: string | null) => invoke<void>("move_characters", { ids, folder }),
+  reorderCharacters: (ids: string[]) => invoke<void>("reorder_characters", { ids }),
+  setFolderCoverChar: (id: string, character: string | null) => invoke<Folder>("set_folder_cover_char", { id, character }),
   // personas (who you are in chats) and the profile picture
   listPersonas: () => invoke<Persona[]>("list_personas"),
   savePersona: (p: { id?: string; name: string; description: string; style: string }) =>
@@ -421,6 +425,14 @@ export const onAutoStopped = (cb: (e: { chat_id: number; reason: string }) => vo
 export const personaAvatar = (p: { avatar_path?: string | null }) => (p.avatar_path ? convertFileSrc(p.avatar_path) : null);
 export const profileAvatar = (p: { avatar?: string | null } | null | undefined) => (p?.avatar ? convertFileSrc(p.avatar) : null);
 export const folderCover = (f: { cover_path?: string | null }) => (f.cover_path ? convertFileSrc(f.cover_path) : null);
+/** The picture a folder shows: its own, else the picture of the character chosen for it (only a still picture or a GIF can be used). */
+export function folderArt(f: Folder, characters: Character[]): { url: string | null; frame: Frame | null; own: boolean } {
+  const own = folderCover(f);
+  if (own) return { url: own, frame: f.frame, own: true };
+  const c = f.cover_char ? characters.find((x) => x.id === f.cover_char) : undefined;
+  const u = c && (c.media?.kind === "image" || c.media?.kind === "gif") ? mediaUrl(c) : null;
+  return u ? { url: u, frame: c!.frame ?? null, own: false } : { url: null, frame: null, own: false };
+}
 export const musicUrl = (x: { music_path?: string | null }) => (x.music_path ? convertFileSrc(x.music_path) : null);
 export const roomBackdrop = (r: { backdrop_path?: string | null }) => (r.backdrop_path ? convertFileSrc(r.backdrop_path) : null);
 export const mediaUrl = (c: { media_path: string | null }) => (c.media_path ? convertFileSrc(c.media_path) : null);

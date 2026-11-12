@@ -66,6 +66,9 @@ pub struct Character {
     /// The folder this character is filed in (an id from `folders`); `None` is the top level.
     #[serde(default)]
     pub folder: Option<String>,
+    /// Where this card sits when the library is in "my order" (lower comes first); `None` = not placed yet, goes last.
+    #[serde(default)]
+    pub order: Option<i64>,
     /// Shared lorebooks (ids from `lorebooks`) attached to this character, besides the book inside the card.
     #[serde(default)]
     pub lorebooks: Vec<String>,
@@ -162,6 +165,9 @@ pub struct Folder {
     /// The folder this one sits inside (None = the top level). Folders nest, a few levels deep at most.
     #[serde(default)]
     pub parent: Option<String>,
+    /// A character (id) whose picture stands in for the folder's own picture, when it has none.
+    #[serde(default)]
+    pub cover_char: Option<String>,
 }
 
 /// How many folders may sit inside one another.
@@ -403,6 +409,7 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
             enabled INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL DEFAULT '{}', PRIMARY KEY(chat_id, mech_id));",
     )?;
     ensure_column(&conn, "folders", "parent", "TEXT")?;
+    ensure_column(&conn, "folders", "cover_char", "TEXT")?;
     ensure_column(&conn, "dorms", "room_id", "INTEGER")?;
     ensure_column(&conn, "dorms", "music", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "dorms", "music_name", "TEXT NOT NULL DEFAULT ''")?;
@@ -640,25 +647,25 @@ pub fn delete_lorebook(c: &Connection, id: &str, owner: &Owner) -> R<()> {
 
 fn row_folder(r: &rusqlite::Row) -> R<Folder> {
     let fr: Option<String> = r.get(3)?;
-    Ok(Folder { id: r.get(0)?, name: r.get(1)?, cover: r.get(2)?, frame: fr.and_then(|j| serde_json::from_str(&j).ok()), created_at: r.get(4)?, parent: r.get(5)? })
+    Ok(Folder { id: r.get(0)?, name: r.get(1)?, cover: r.get(2)?, frame: fr.and_then(|j| serde_json::from_str(&j).ok()), created_at: r.get(4)?, parent: r.get(5)?, cover_char: r.get(6)? })
 }
 
 pub fn list_folders(c: &Connection, owner: &Owner) -> R<Vec<Folder>> {
-    let mut s = c.prepare("SELECT id,name,cover,frame,created_at,parent FROM folders WHERE profile_id IS ?1 ORDER BY name COLLATE NOCASE")?;
+    let mut s = c.prepare("SELECT id,name,cover,frame,created_at,parent,cover_char FROM folders WHERE profile_id IS ?1 ORDER BY name COLLATE NOCASE")?;
     let rows = s.query_map([owner], row_folder)?;
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
 pub fn get_folder(c: &Connection, id: &str, owner: &Owner) -> R<Option<Folder>> {
-    c.query_row("SELECT id,name,cover,frame,created_at,parent FROM folders WHERE id=?1 AND profile_id IS ?2", params![id, owner], row_folder).optional()
+    c.query_row("SELECT id,name,cover,frame,created_at,parent,cover_char FROM folders WHERE id=?1 AND profile_id IS ?2", params![id, owner], row_folder).optional()
 }
 
 pub fn save_folder(c: &Connection, f: &Folder, owner: &Owner) -> R<()> {
     let fr = f.frame.and_then(|x| serde_json::to_string(&x).ok());
     c.execute(
-        "INSERT INTO folders(id,profile_id,name,cover,frame,created_at,parent) VALUES(?1,?2,?3,?4,?5,?6,?7)
-         ON CONFLICT(id) DO UPDATE SET name=excluded.name, cover=excluded.cover, frame=excluded.frame, parent=excluded.parent WHERE profile_id IS ?2",
-        params![f.id, owner, f.name, f.cover, fr, f.created_at, f.parent],
+        "INSERT INTO folders(id,profile_id,name,cover,frame,created_at,parent,cover_char) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, cover=excluded.cover, frame=excluded.frame, parent=excluded.parent, cover_char=excluded.cover_char WHERE profile_id IS ?2",
+        params![f.id, owner, f.name, f.cover, fr, f.created_at, f.parent, f.cover_char],
     )?;
     Ok(())
 }
@@ -1110,6 +1117,7 @@ mod tests {
             outfit: None,
             frame: None,
             folder: None,
+            order: None,
             lorebooks: vec![],
             favorite: false,
             created_at: 1,
@@ -1162,7 +1170,7 @@ mod tests {
     fn folders_lorebooks_and_notes_are_private_and_cleaned_up() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let f = Folder { id: "f1".into(), name: "Crew".into(), cover: None, frame: None, created_at: 1, parent: None };
+        let f = Folder { id: "f1".into(), name: "Crew".into(), cover: None, frame: None, created_at: 1, parent: None, cover_char: None };
         save_folder(&c, &f, &a).unwrap();
         assert!(list_folders(&c, &b).unwrap().is_empty() && get_folder(&c, "f1", &b).unwrap().is_none());
         // B can't take over A's folder by saving with the same id
@@ -1210,10 +1218,24 @@ mod tests {
     }
 
     #[test]
+    fn card_order_and_folder_picture_character_survive_a_save() {
+        let c = fresh();
+        let a = me("a");
+        let mut x = ch("x", "X"); x.order = Some(2); save_character(&c, &x, &a).unwrap();
+        let mut y = ch("y", "Y"); y.order = Some(0); save_character(&c, &y, &a).unwrap();
+        let got = list_characters(&c, &a).unwrap();
+        assert_eq!(got.iter().find(|c| c.id == "x").unwrap().order, Some(2));
+        assert_eq!(got.iter().find(|c| c.id == "y").unwrap().order, Some(0));
+        let f = Folder { id: "f".into(), name: "F".into(), cover: None, frame: None, created_at: 1, parent: None, cover_char: Some("x".into()) };
+        save_folder(&c, &f, &a).unwrap();
+        assert_eq!(get_folder(&c, "f", &a).unwrap().unwrap().cover_char.as_deref(), Some("x"));
+    }
+
+    #[test]
     fn folders_nest_without_loops_and_deleting_moves_things_up() {
         let c = fresh();
         let a = me("a");
-        let mk = |id: &str, parent: Option<&str>| Folder { id: id.into(), name: id.into(), cover: None, frame: None, created_at: 1, parent: parent.map(String::from) };
+        let mk = |id: &str, parent: Option<&str>| Folder { id: id.into(), name: id.into(), cover: None, frame: None, created_at: 1, parent: parent.map(String::from), cover_char: None };
         for f in [mk("canon", None), mk("series", Some("canon")), mk("sub", Some("series"))] { save_folder(&c, &f, &a).unwrap(); }
         let all = list_folders(&c, &a).unwrap();
         assert_eq!(folder_chain(&all, "sub"), vec!["sub", "series", "canon"]);

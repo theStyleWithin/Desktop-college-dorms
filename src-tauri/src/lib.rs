@@ -148,6 +148,8 @@ pub fn run() {
             extras::set_folder_frame,
             extras::clear_folder_cover,
             extras::move_characters,
+            extras::reorder_characters,
+            extras::set_folder_cover_char,
             extras::list_notes,
             extras::save_note,
             extras::delete_note,

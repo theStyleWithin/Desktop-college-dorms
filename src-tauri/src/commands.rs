@@ -389,6 +389,7 @@ pub fn import_card(request: Request<'_>, state: State<'_, Shared>) -> R<ImportOu
         outfit: None,
         frame: None,
         folder: None,
+        order: None,
         lorebooks: vec![],
         favorite: false,
         created_at: now,

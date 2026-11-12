@@ -990,7 +990,7 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
         for (i, f) in parsed.data.folders.iter().enumerate() {
             // the parent has to exist in the file and must not lead back to this folder (a hand-edited file could loop)
             let parent = f.parent.as_ref().filter(|p| folder_map.contains_key(*p) && !db::folder_chain(&parsed.data.folders, p).contains(&f.id)).and_then(|p| folder_map.get(p).cloned());
-            let mut nf = db::Folder { id: folder_map[&f.id].clone(), name: f.name.clone(), cover: None, frame: f.frame.and_then(|x| x.clean()), created_at: f.created_at, parent };
+            let mut nf = db::Folder { id: folder_map[&f.id].clone(), name: f.name.clone(), cover: None, frame: f.frame.and_then(|x| x.clean()), created_at: f.created_at, parent, cover_char: None };
             if let Some(base) = f.cover.as_ref().and_then(|c| c.strip_prefix("media/")).filter(|b| safe_media_name(b)) {
                 if let Some(bytes) = parsed.media.get(base) {
                     let ext = std::path::Path::new(base).extension().and_then(|x| x.to_str()).unwrap_or("png").to_lowercase();
@@ -1078,6 +1078,14 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             if let Some(cur) = &c.outfit { if !c.outfits.iter().any(|x| &x.id == cur) { c.outfit = None; } }
             c.last_used = c.last_used.max(0);
             db::save_character(&db, &c, &o).map_err(e)?;
+        }
+        // a folder that borrows a character's picture (the characters have their new ids now)
+        for f in &parsed.data.folders {
+            let Some(new_char) = f.cover_char.as_ref().and_then(|c| char_map.get(c)) else { continue };
+            if let Some(mut nf) = db::get_folder(&db, &folder_map[&f.id], &o).map_err(e)? {
+                nf.cover_char = Some(new_char.clone());
+                db::save_folder(&db, &nf, &o).map_err(e)?;
+            }
         }
 
         // rooms (after the characters, since a room can belong to one) and the dorms' place in them

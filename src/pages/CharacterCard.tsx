@@ -1,14 +1,18 @@
+import { useState } from "react";
 import { api, displayName, mediaUrl, tagline, type Character } from "../api";
 import Art from "../components/Art";
 import { Kebab, useToast } from "../components/ui";
 import { errText, timeAgo, tokens } from "../lib/util";
 import { useStore } from "../store";
-import { DRAG_TYPE } from "../components/Folders";
+import { DRAG_TYPE, draggedIds, isCharDrag } from "../components/Folders";
 
 export const cardTokens = (c: Character) =>
   tokens(c.card.description) + tokens(c.card.personality) + tokens(c.card.scenario) + tokens(c.card.first_mes) + tokens(c.card.mes_example);
 
-export default function CharacterCard({ c, onMove }: { c: Character; onMove?: () => void }) {
+/** `onReorder`: cards can be dragged to a new place (dropped on the left or right half of this card); `onNudge` does the same from the menu. */
+export default function CharacterCard({ c, onMove, onReorder, onNudge }: { c: Character; onMove?: () => void; onReorder?: (dragged: string, side: "before" | "after") => void; onNudge?: (by: -1 | 1) => void }) {
+  const [mark, setMark] = useState<"before" | "after" | null>(null);
+  const sideOf = (e: React.DragEvent): "before" | "after" => { const r = e.currentTarget.getBoundingClientRect(); return e.clientX < r.left + r.width / 2 ? "before" : "after"; };
   const { go, refresh } = useStore();
   const toast = useToast();
 
@@ -31,8 +35,12 @@ export default function CharacterCard({ c, onMove }: { c: Character; onMove?: ()
   };
 
   return (
-    <div className="ccard" data-char={displayName(c)} draggable onClick={() => go({ page: "editor", id: c.id })}
-      onDragStart={(e) => { e.dataTransfer.setData(DRAG_TYPE, JSON.stringify([c.id])); e.dataTransfer.effectAllowed = "move"; }}>
+    <div className={`ccard${mark ? ` drop-${mark}` : ""}`} data-char={displayName(c)} draggable onClick={() => go({ page: "editor", id: c.id })}
+      onDragStart={(e) => { e.dataTransfer.setData(DRAG_TYPE, JSON.stringify([c.id])); e.dataTransfer.effectAllowed = "move"; }}
+      onDragEnd={() => setMark(null)}
+      onDragOver={onReorder ? (e) => { if (isCharDrag(e)) { e.preventDefault(); setMark(sideOf(e)); } } : undefined}
+      onDragLeave={onReorder ? () => setMark(null) : undefined}
+      onDrop={onReorder ? (e) => { if (!isCharDrag(e)) return; e.preventDefault(); e.stopPropagation(); const side = sideOf(e); setMark(null); const id = draggedIds(e)[0]; if (id && id !== c.id) onReorder(id, side); } : undefined}>
       <Art kind={c.media?.kind ?? null} url={mediaUrl(c)} name={displayName(c)} frame={c.frame} />
       <button className="iconbtn fav" aria-label={c.favorite ? "Unfavorite" : "Favorite"}
         onClick={(e) => { e.stopPropagation(); api.setFavorite(c.id, !c.favorite).then(refresh); }}>
@@ -42,6 +50,7 @@ export default function CharacterCard({ c, onMove }: { c: Character; onMove?: ()
         { label: "Chat", onClick: startChat },
         { label: "Edit", onClick: () => go({ page: "editor", id: c.id }) },
         ...(onMove ? [{ label: "Move to folder…", onClick: onMove }] : []),
+        ...(onNudge ? [{ label: "Move earlier", onClick: () => onNudge(-1) }, { label: "Move later", onClick: () => onNudge(1) }] : []),
         { label: "Export as PNG card", onClick: () => exp("png") },
         { label: "Export JSON (V2, most compatible)", onClick: () => exp("json_v2") },
         { label: "Export JSON (V3)", onClick: () => exp("json_v3") },

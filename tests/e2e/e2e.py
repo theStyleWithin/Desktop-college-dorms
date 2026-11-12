@@ -919,6 +919,42 @@ try:
     for f in sorted(invoke("list_folders"), key=lambda f: 1 if f.get("parent") else 0, reverse=True): invoke("delete_folder", {"id": f["id"]})
     reload_ui(); nav("Characters"); time.sleep(0.6)
 
+    # -- your own order: drag a card to where you want it; and a folder can borrow a character's picture
+    names0 = d.execute_script("return [...document.querySelectorAll('.grid .ccard')].map(c=>c.dataset.char)")
+    check("the library has several cards to rearrange and sorts by 'My order' by default", len(names0) >= 2 and d.execute_script("return document.querySelector('select[aria-label=Sort]').value") == "custom", str(names0))
+    res = d.execute_script("""
+      try {
+        const cards = [...document.querySelectorAll('.grid .ccard')]; const a = cards[0], b = cards[cards.length - 1];
+        const r = b.getBoundingClientRect(); const dt = new DataTransfer();
+        a.dispatchEvent(new DragEvent('dragstart', {bubbles: true, dataTransfer: dt}));
+        b.dispatchEvent(new DragEvent('dragover', {bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.right - 2, clientY: r.top + 5}));
+        b.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.right - 2, clientY: r.top + 5}));
+        return 'ok';
+      } catch (e) { return String(e); }""")
+    time.sleep(1.0)
+    names1 = d.execute_script("return [...document.querySelectorAll('.grid .ccard')].map(c=>c.dataset.char)")
+    check("dropping a card on the right half of another puts it after that card", res == "ok" and names1 == names0[1:] + names0[:1], f"{res} {names0} -> {names1}")
+    reload_ui(); nav("Characters"); time.sleep(0.8)
+    check("the new order is remembered", d.execute_script("return [...document.querySelectorAll('.grid .ccard')].map(c=>c.dataset.char)") == names1)
+    # a folder borrows a character's picture
+    pic = [c for c in invoke("list_characters") if (c.get("media") or {}).get("kind") in ("image", "gif")]
+    check("a character with a still picture exists for the folder test", len(pic) >= 1)
+    if pic:
+        fo2 = invoke("create_folder", {"name": "Picture test", "parent": None}); invoke("move_characters", {"ids": [pic[0]["id"]], "folder": fo2["id"]})
+        fo2 = invoke("set_folder_cover_char", {"id": fo2["id"], "character": pic[0]["id"]})
+        check("a folder remembers which character's picture it uses", fo2.get("cover_char") == pic[0]["id"] and not fo2.get("cover_path"))
+        reload_ui(); nav("Characters"); time.sleep(0.8)
+        check("the folder tile shows that character's picture", d.execute_script("return !!document.querySelector('.ftile[data-folder*=Picture] .fcover img')"))
+        d.execute_script("document.querySelector('.ftile[data-folder=\"Picture test\"]').click()"); time.sleep(0.7)
+        check("so does the open folder's header, and it offers to pick another", d.execute_script("return !!document.querySelector('.fbar-art img')") and click_text(".fbar button", "Change character picture"))
+        time.sleep(0.5)
+        check("the picker lists the folder's characters", d.execute_script("return !!document.querySelector('.modal [data-pick]')"))
+        d.execute_script("document.querySelector('.modal [data-pick]').click()"); time.sleep(0.8)
+        click_text(".fbar button", "Change character picture"); time.sleep(0.4); click_text(".modal button", "Stop using a character's picture"); time.sleep(0.9)
+        check("it can be turned off again", not invoke("list_folders")[0].get("cover_char") and not d.execute_script("return !!document.querySelector('.fbar-art img')"))
+        for f in invoke("list_folders"): invoke("delete_folder", {"id": f["id"]})
+        reload_ui(); nav("Characters"); time.sleep(0.6)
+
     # -- lorebooks: import a SillyTavern world info file, attach it, delete it
     nav("Lorebooks"); time.sleep(0.6)
     inp = d.find_element(By.CSS_SELECTOR, "input[aria-label='Import lorebooks']"); inp.send_keys(os.path.join(FIX, "worldinfo_st.json")); time.sleep(1.5)

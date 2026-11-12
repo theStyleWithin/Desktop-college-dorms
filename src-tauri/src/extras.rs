@@ -554,7 +554,7 @@ pub fn create_folder(state: State<'_, Shared>, name: String, parent: Option<Stri
     if db::list_folders(&db, &o).map_err(e)?.len() >= 500 {
         return Err("That's a lot of folders. Delete some first.".into());
     }
-    let f = db::Folder { id: uid(), name, cover: None, frame: None, created_at: db::now(), parent };
+    let f = db::Folder { id: uid(), name, cover: None, frame: None, created_at: db::now(), parent, cover_char: None };
     db::save_folder(&db, &f, &o).map_err(e)?;
     Ok(folder_out(&state, f))
 }
@@ -661,10 +661,39 @@ pub fn move_characters(state: State<'_, Shared>, ids: Vec<String>, folder: Optio
     for id in ids {
         if let Some(mut c) = db::get_character(&db, &id, &o).map_err(e)? {
             c.folder = folder.clone();
+            c.order = None; // lands at the end of its new folder
             db::save_character(&db, &c, &o).map_err(e)?;
         }
     }
     Ok(())
+}
+
+/// Put characters in the order given (the order of the cards on screen). Cards not named keep their place after these.
+#[tauri::command]
+pub fn reorder_characters(state: State<'_, Shared>, ids: Vec<String>) -> R<()> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    for (i, id) in ids.iter().enumerate() {
+        if let Some(mut c) = db::get_character(&db, id, &o).map_err(e)? {
+            c.order = Some(i as i64);
+            db::save_character(&db, &c, &o).map_err(e)?;
+        }
+    }
+    Ok(())
+}
+
+/// Use a character's picture as the folder's picture (`None` goes back to the folder's own picture or the plain folder).
+#[tauri::command]
+pub fn set_folder_cover_char(state: State<'_, Shared>, id: String, character: Option<String>) -> R<FolderOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut f = db::get_folder(&db, &id, &o).map_err(e)?.ok_or("Folder not found")?;
+    if let Some(c) = &character {
+        db::get_character(&db, c, &o).map_err(e)?.ok_or("That character doesn't exist any more.")?;
+    }
+    f.cover_char = character.filter(|c| !c.is_empty());
+    db::save_folder(&db, &f, &o).map_err(e)?;
+    Ok(folder_out(&state, f))
 }
 
 // ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ import { useStore } from "../store";
 import CharacterCard from "./CharacterCard";
 import { FolderBar, FolderTile, MoveTo, NewFolder, draggedFolder, draggedIds, insideOf, isCharDrag, isFolderDrag } from "../components/Folders";
 
-type Sort = "name" | "recent" | "created";
+type Sort = "custom" | "name" | "recent" | "created";
 
 export default function Library() {
   const { characters, folders, go, refresh } = useStore();
@@ -14,7 +14,7 @@ export default function Library() {
   const [q, setQ] = useState("");
   const [tag, setTag] = useState<string | null>(null);
   const [favOnly, setFavOnly] = useState(false);
-  const [sort, setSort] = useState<Sort>("name");
+  const [sort, setSort] = useState<Sort>("custom");
   const [report, setReport] = useState<{ name: string; warnings: string[] }[] | null>(null);
   const file = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
@@ -35,8 +35,10 @@ export default function Library() {
     let list = characters.filter((c) =>
       (!favOnly || c.favorite) && (!tag || c.card.tags.includes(tag)) &&
       (!s || `${displayName(c)} ${c.card.name} ${c.card.tags.join(" ")} ${c.card.description}`.toLowerCase().includes(s)));
+    const byName = (a: (typeof list)[number], b: (typeof list)[number]) => displayName(a).localeCompare(displayName(b));
     list = [...list].sort((a, b) =>
-      sort === "name" ? displayName(a).localeCompare(displayName(b))
+      sort === "custom" ? (a.order ?? Infinity) - (b.order ?? Infinity) || byName(a, b)
+      : sort === "name" ? displayName(a).localeCompare(displayName(b))
       : sort === "recent" ? b.last_used - a.last_used || b.updated_at - a.updated_at
       : b.created_at - a.created_at);
     return list;
@@ -58,6 +60,21 @@ export default function Library() {
   const moveFolder = async (id: string, to: string | null) => {
     if (id === to) return;
     try { await api.moveFolder(id, to); await refresh(); } catch (e) { toast(errText(e), "err"); }
+  };
+  // dragging cards into your own order works while nothing filters the list and the sort is "My order"
+  const canReorder = sort === "custom" && !filtering;
+  const reorder = async (dragged: string, target: string, side: "before" | "after") => {
+    const ids = visible.map((c) => c.id);
+    if (!ids.includes(dragged) || !ids.includes(target) || dragged === target) return;
+    const rest = ids.filter((i) => i !== dragged);
+    rest.splice(rest.indexOf(target) + (side === "after" ? 1 : 0), 0, dragged);
+    try { await api.reorderCharacters(rest); await refresh(); } catch (e) { toast(errText(e), "err"); }
+  };
+  const nudge = async (id: string, by: -1 | 1) => {
+    const ids = visible.map((c) => c.id); const i = ids.indexOf(id); const j = i + by;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    try { await api.reorderCharacters(ids); await refresh(); } catch (e) { toast(errText(e), "err"); }
   };
   const moveIds = async (ids: string[], to: string | null) => {
     const mine = ids.filter((i) => characters.some((c) => c.id === i));
@@ -115,7 +132,7 @@ export default function Library() {
       <div className="row" style={{ marginBottom: 12 }}>
         <input type="search" placeholder="Search names, tags, descriptions…" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 380 }} />
         <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} style={{ width: "auto" }} aria-label="Sort">
-          <option value="name">A–Z</option><option value="recent">Recently chatted</option><option value="created">Newest</option>
+          <option value="custom">My order</option><option value="name">A–Z</option><option value="recent">Recently chatted</option><option value="created">Newest</option>
         </select>
         <button className={`chip ${favOnly ? "on" : ""}`} onClick={() => setFavOnly(!favOnly)}>★ Favorites</button>
       </div>
@@ -142,12 +159,12 @@ export default function Library() {
             ))}
             <b>{open.name}</b>
           </div>
-          <FolderBar f={open} count={countIn(open.id)} onClose={() => setOpenId(parentOf(open))} onChanged={refresh} onMove={() => setMovingFolder(open.id)} />
+          <FolderBar f={open} characters={characters} inside={new Set([open.id, ...insideOf(folders, open.id)])} count={countIn(open.id)} onClose={() => setOpenId(parentOf(open))} onChanged={refresh} onMove={() => setMovingFolder(open.id)} />
         </>
       )}
       {!filtering && childrenOf(open ? open.id : null).length > 0 && (
         <div className="ftiles">
-          {childrenOf(open ? open.id : null).map((f) => <FolderTile key={f.id} f={f} count={countIn(f.id)} sub={childrenOf(f.id).length} onOpen={() => setOpenId(f.id)} onDropIds={(ids) => void moveIds(ids, f.id)} onDropFolder={(id) => void moveFolder(id, f.id)} />)}
+          {childrenOf(open ? open.id : null).map((f) => <FolderTile key={f.id} f={f} characters={characters} count={countIn(f.id)} sub={childrenOf(f.id).length} onOpen={() => setOpenId(f.id)} onDropIds={(ids) => void moveIds(ids, f.id)} onDropFolder={(id) => void moveFolder(id, f.id)} />)}
         </div>
       )}
       {drag && <div className="banner">Drop PNG or JSON character cards to import them</div>}
@@ -161,7 +178,7 @@ export default function Library() {
       ) : visible.length === 0 ? (
         childrenOf(open ? open.id : null).length > 0 ? null : <div className="empty">{open ? "This folder is empty. Drag characters onto its tile, or use ⋮ → Move to folder." : "Everything is filed in folders. Open one above."}</div>
       ) : (
-        <div className="grid">{visible.map((c) => <CharacterCard key={c.id} c={c} onMove={() => setMoving(c.id)} />)}</div>
+        <div className="grid">{visible.map((c) => <CharacterCard key={c.id} c={c} onMove={() => setMoving(c.id)} onReorder={canReorder ? (d, side) => void reorder(d, c.id, side) : undefined} onNudge={canReorder ? (by) => void nudge(c.id, by) : undefined} />)}</div>
       )}
       {newFolder && <NewFolder parent={open?.id ?? null} parentName={open?.name} onClose={() => setNewFolder(false)} onCreated={async (f) => { setNewFolder(false); await refresh(); setOpenId(f.id); }} />}
       {movingFolder && (() => { const mf = folders.find((f) => f.id === movingFolder); return mf ? <MoveTo title={`Move “${mf.name}” into…`} folders={folders} current={parentOf(mf)} exclude={new Set([mf.id, ...insideOf(folders, mf.id)])} onClose={() => setMovingFolder(null)} onPick={async (id) => { setMovingFolder(null); await moveFolder(mf.id, id); }} /> : null; })()}
