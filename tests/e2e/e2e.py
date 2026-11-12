@@ -1039,12 +1039,14 @@ try:
         invoke("clear_dorm_music", {"id": dd["id"]}); invoke("clear_room_music", {"id": rr2[0]["id"]})
     if not SKIP3D:
         # ---- talking from inside the 3D scene: the see-through message bar and the manga-style speech balloon ----------------
+        # an earlier 3D screen that was left within its first couple of seconds leaves the crash marker behind (by design), and the next start would then show the safe placeholder: clear it
+        invoke("vrm_guard_end")
         reload_ui(); nav("Dorms")
         d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'cloud')]").click(); time.sleep(1.5)
         for _ in range(60):
             if d.execute_script("const e=document.querySelector('.stage .vrm-box');return !!e&&e.dataset.ready==='1'"): break
             time.sleep(0.5)
-        check("the chat's side panel shows the live 3D character", d.execute_script("return !!document.querySelector('.stage .vrm-box[data-ready=\"1\"]')"))
+        check("the chat's side panel shows the live 3D character", d.execute_script("return !!document.querySelector('.stage .vrm-box[data-ready=\"1\"]')"), d.execute_script("const s=document.querySelector('.stage');return s?s.innerText.slice(0,160)+' | '+JSON.stringify((s.querySelector('.vrm-box')||{}).dataset||{}).slice(0,200):'no .stage'"))
         eb = d.find_element(By.CSS_SELECTOR, ".stage [aria-label='Open big viewer']")
         d.execute_script("arguments[0].scrollIntoView({block:'center'})", eb); time.sleep(0.3)
         ActionChains(d).move_to_element(eb).click().perform(); time.sleep(1.5)
