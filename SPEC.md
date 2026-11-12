@@ -137,9 +137,21 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   its own state. The model writes hidden `[variable: set|add|subtract|push|remove value]` lines, applied with the pack's min/max and per-change limits and
   stripped from the reply. Reactions (keywords, every N turns, crossing a threshold) run on the player's and the character's messages. Pack UI code is never executed.
 - **Phone mode** is a per-chat style (`chat` | `phone`): a texting view and a texting instruction in the prompt.
-- **Folders** are one level deep; filing is backend-owned (editing a card never moves it). **Framing** (x, y, zoom) is stored beside the picture and
+- **Folders** nest (up to 12 levels); filing is backend-owned (editing a card never moves it). A folder shows its own picture, else the picture of a chosen character inside it (`cover_char`). Cards keep a user order (`order`, lower first; unplaced cards go last) that is set by dragging, per folder; moving a card to another folder resets it. **Framing** (x, y, zoom) is stored beside the picture and
   applied with CSS, so the original image is untouched.
 - **Notes** and **lorebooks** are per profile. Backups carry all of it (rooms, music, packs and their per-chat state, notes, folders, lorebooks, framing).
+
+## Imported 3D rooms (v0.6)
+
+- A room may carry a 3D model (`.glb`, `.gltf` with everything inside it, or `.fbx`, 300 MB at most, checked by its first bytes) that replaces the built-in 3D room in chats set in that room.
+  Size, turn and height are stored on the room. The file is saved by the app itself (`media/roommodel-*`); the web view never names a path.
+- The loader finds the floor (the lowest large flat surface), puts it at height 0 and the middle of the floor at the origin, and treats FBX files that are clearly in centimetres as such.
+  Walkability is worked out once from the triangles: floor is an upward-facing surface near height 0; anything standing between 0.22 m and 1.6 m (walls, furniture) blocks; the result becomes the
+  same floor rectangle and obstacle rectangles the built-in room uses, so path finding, carrying and the camera limits need no special case. With no floor found she may walk anywhere that is not blocked.
+- Her plans in an imported room are wandering, using the phone standing up, and stretching (no bed, desk or window).
+- **Sharing.** Each model has a sharing mark, default *not allowed to share*. Only a model marked shareable is written into an exported profile (with its size, turn and height), and it comes back marked shareable.
+  An unshared model is left out, the export lists its room as withheld, and ejecting removes the file from the device (the dialog says so). The mark is the owner's own declaration; it is not verified.
+- Unity shaders, prefabs and baked lighting are not read. A `.unitypackage` is not opened.
 
 ## Hands: pet, poke, tickle, pick up
 
@@ -150,6 +162,7 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   the stretch plan ends the stretch and jumps straight to full laughter.
 - Pick-up: the scruff follows the fingertips (a spring), the body hangs from it as a damped pendulum driven by the hand's acceleration, then free-falls with cartoon
   gravity, squashes, and is placed on the floor (clamped to the room and out of the furniture). The NPC is paused while she is carried and resumes after.
+- The mouse is the hand: pressing lays it on her (open), Shift or the right button uses the left hand, left and right together pinch, keys 1-4 pick the gesture. Free roam (C) walks the camera with the arrow keys; Q/E change height; the shrink ray scales the viewer down to lollipop size (the hands and camera scale with it).
 - Controllers are read through the standard Gamepad layout (buttons by position). Bindings are per device in local storage; labels come from the pad's vendor (Xbox, PlayStation,
   Nintendo, Steam).
 
