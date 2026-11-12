@@ -7,6 +7,7 @@
 //! and only then (after the user confirms) take the profile off this device. It is not a delete: importing the
 //! file brings it all back, here or on another device, and never overwrites an existing profile.
 
+use std::sync::Arc;
 use std::collections::HashMap;
 use std::io::{Cursor, Read, Write};
 use std::time::{Duration, Instant};
@@ -1158,6 +1159,8 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
         }
 
         let mut settings = parsed.data.settings.clone();
+        // a profile from a computer that runs the built-in model, opened on a device that can't (a phone): use a cloud provider instead
+        if settings.provider == "local" && !crate::llama::engine_supported() { settings.provider = "openai".into(); }
         settings.active_persona = persona_map.get(&settings.active_persona).cloned().unwrap_or_default();
         settings.user_name = display;
         db::save_settings(&db, &settings, &o).map_err(e)?;
@@ -1179,6 +1182,65 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
     }
 }
 
+/// Largest profile file that can be staged (a profile with many 3D models and pictures can be a few hundred MB).
+const MAX_STAGED: usize = 2 * 1024 * 1024 * 1024;
+
+/// Start bringing a profile file in. The file comes across in small pieces (each a base64 string in an ordinary command),
+/// which works the same on every device, including phones where one huge message between the web view and the app does not.
+#[tauri::command]
+pub fn stage_begin(state: State<'_, Shared>) -> String {
+    let token = uid();
+    *state.staged.lock().unwrap() = Some((token.clone(), Arc::new(Vec::new())));
+    token
+}
+
+#[tauri::command]
+pub fn stage_chunk(state: State<'_, Shared>, token: String, data: String) -> R<usize> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.trim()).map_err(|_| "That piece of the file was damaged on the way in.".to_string())?;
+    let mut g = state.staged.lock().unwrap();
+    let (t, buf) = g.as_mut().ok_or("The file transfer was cancelled.")?;
+    if *t != token {
+        return Err("The file transfer was cancelled.".into());
+    }
+    let v = Arc::get_mut(buf).ok_or("The file transfer is busy.")?;
+    if v.len() + bytes.len() > MAX_STAGED {
+        return Err("That file is too large to be a profile.".into());
+    }
+    v.extend_from_slice(&bytes);
+    Ok(v.len())
+}
+
+#[tauri::command]
+pub fn stage_clear(state: State<'_, Shared>) {
+    *state.staged.lock().unwrap() = None;
+}
+
+fn staged_bytes(st: &AppState, token: &str) -> R<Arc<Vec<u8>>> {
+    match &*st.staged.lock().unwrap() {
+        Some((t, b)) if t == token && !b.is_empty() => Ok(b.clone()),
+        _ => Err("The file isn't here any more. Choose it again.".into()),
+    }
+}
+
+/// Look inside the staged profile file.
+#[tauri::command]
+pub async fn inspect_staged(state: State<'_, Shared>, token: String) -> R<serde_json::Value> {
+    let st: Shared = state.inner().clone();
+    let bytes = staged_bytes(&st, &token)?;
+    profile_op(st, bytes, "inspect", String::new(), String::new()).await
+}
+
+/// Import the staged profile file as a new profile.
+#[tauri::command]
+pub async fn import_staged(state: State<'_, Shared>, token: String, handle: String, passcode: String) -> R<serde_json::Value> {
+    let st: Shared = state.inner().clone();
+    let bytes = staged_bytes(&st, &token)?;
+    let out = profile_op(st.clone(), bytes, "import", handle, passcode).await?;
+    *st.staged.lock().unwrap() = None;
+    Ok(out)
+}
+
 /// Body: the profile file. Headers: `x-mode` = `inspect` | `import`; for import also `x-handle`, `x-passcode` (optional).
 #[tauri::command]
 pub async fn import_profile(request: Request<'_>, state: State<'_, Shared>) -> R<serde_json::Value> {
@@ -1187,9 +1249,13 @@ pub async fn import_profile(request: Request<'_>, state: State<'_, Shared>) -> R
     let handle = header(&request, "x-handle");
     let passcode = header(&request, "x-passcode");
     let bytes = match request.body() {
-        InvokeBody::Raw(b) => b.clone(),
+        InvokeBody::Raw(b) => Arc::new(b.clone()),
         _ => return Err("Expected a file.".into()),
     };
+    profile_op(st, bytes, &mode, handle, passcode).await
+}
+
+async fn profile_op(st: Shared, bytes: Arc<Vec<u8>>, mode: &str, handle: String, passcode: String) -> R<serde_json::Value> {
     let parsed = tauri::async_runtime::spawn_blocking(move || parse_profile_zip(&bytes)).await.map_err(e)??;
 
     if mode == "inspect" {

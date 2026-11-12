@@ -29,6 +29,8 @@ pub struct AppState {
     pub pending_export: Mutex<Option<crate::accounts::PendingExport>>,
     /// Wrong-passcode tracking per profile: (failures, locked until).
     pub login_fails: Mutex<HashMap<String, (u32, std::time::Instant)>>,
+    /// A profile file being brought in piece by piece (so a big file never has to cross into the app in one go, which phones can't do).
+    pub staged: Mutex<Option<(String, Arc<Vec<u8>>)>>,
 }
 
 pub type Shared = Arc<AppState>;
@@ -113,11 +115,17 @@ pub fn run() {
                 session: Default::default(),
                 pending_export: Default::default(),
                 login_fails: Default::default(),
+                staged: Default::default(),
             }));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            accounts::stage_begin,
+            accounts::stage_chunk,
+            accounts::stage_clear,
+            accounts::inspect_staged,
+            accounts::import_staged,
             extras::list_personas,
             extras::save_persona,
             extras::delete_persona,

@@ -394,3 +394,11 @@ button.chip { cursor: pointer; } button.chip.on { background: var(--accent); col
 .persona-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }
 .f2 { display: grid; gap: 4px; }
 .f2 > span { font-weight: 600; font-size: .9rem; }
+
+/* the mouse is the hand: no system cursor over the canvas while the hands are on */
+.vrm-box[data-hands="1"] canvas { cursor: none; }
+
+/* the shrink meter: how big you are */
+.shrink-meter { position: absolute; left: 12px; bottom: 34px; z-index: 5; display: flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; background: #0d0a1ab8; border: 1px solid var(--line); backdrop-filter: blur(6px); color: #fff; font-size: .78rem; }
+.shrink-meter input[type=range] { width: 130px; accent-color: var(--accent); }
+.shrink-meter .sm-cm { min-width: 52px; text-align: right; font-variant-numeric: tabular-nums; }

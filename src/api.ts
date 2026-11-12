@@ -361,14 +361,32 @@ export const api = {
   prepareExport: () => invoke<ExportInfo>("prepare_export"),
   ejectProfile: (token: string) => invoke<SessionState>("eject_profile", { token }),
   deleteProfile: (confirm: string) => invoke<SessionState>("delete_profile", { confirm }),
-  async inspectProfileFile(file: File): Promise<ImportPreview> {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    return bin("import_profile", bytes, { "x-mode": "inspect" });
+  /**
+   * Bring a profile file into the app in small pieces (base64 in ordinary commands). That works the same on a PC and a phone;
+   * one huge message between the web view and the app does not, on Android. Returns the token to inspect and import it with.
+   */
+  async stageProfileFile(file: File, onProgress?: (fraction: number) => void): Promise<string> {
+    const token = await invoke<string>("stage_begin");
+    const CH = 1_500_000;
+    try {
+      for (let at = 0; at < file.size || at === 0; at += CH) {
+        const piece = file.slice(at, Math.min(file.size, at + CH));
+        const b64 = await new Promise<string>((res, rej) => {
+          const fr = new FileReader();
+          fr.onload = () => res(String(fr.result).split(",")[1] ?? "");
+          fr.onerror = () => rej(new Error("Couldn't read that file."));
+          fr.readAsDataURL(piece);
+        });
+        await invoke("stage_chunk", { token, data: b64 });
+        onProgress?.(Math.min(1, (at + CH) / Math.max(1, file.size)));
+        if (file.size === 0) break;
+      }
+    } catch (e) { await invoke("stage_clear").catch(() => {}); throw e; }
+    return token;
   },
-  async importProfileFile(file: File, handle: string, passcode: string): Promise<SessionState> {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    return bin("import_profile", bytes, { "x-mode": "import", "x-handle": enc(handle), "x-passcode": enc(passcode) });
-  },
+  inspectStaged: (token: string) => invoke<ImportPreview>("inspect_staged", { token }),
+  importStaged: (token: string, handle: string, passcode: string) => invoke<SessionState>("import_staged", { token, handle, passcode }),
+  clearStage: () => invoke<void>("stage_clear"),
   // 3D crash guard
   vrmGuardBegin: () => invoke<boolean>("vrm_guard_begin"),
   vrmGuardEnd: () => invoke<void>("vrm_guard_end"),

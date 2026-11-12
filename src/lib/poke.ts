@@ -129,6 +129,19 @@ export function createPoker(opts: {
     scene.add(m); rings.push({ m, t: 0 });
   };
 
+  // ---- the shrink ray: the smaller you are, the more she looks down at you ----
+  let shrink = 0, shrinkTier = 0;
+  /** How tiny the user is, 0 (normal size) .. 1 (the size of a lollipop). She notices, looks down, and comments. */
+  const setShrink = (v: number) => {
+    shrink = Math.min(1, Math.max(0, v));
+    const tier = shrink > 0.75 ? 3 : shrink > 0.45 ? 2 : shrink > 0.12 ? 1 : 0;
+    if (tier !== shrinkTier) {
+      if (tier > shrinkTier) emote(tier === 3 ? "you're TINY!!" : tier === 2 ? "huh? where...?" : "hm?", "#9a3fc0", 2.2);
+      else if (tier === 0) emote("welcome back!", "#d4691f", 2);
+      shrinkTier = tier;
+    }
+  };
+
   // ---- reactions ----
   type Cur = { region: Region; side: number; t0: number; dur: number; annoyed: boolean; woke: boolean };
   let cur: Cur | null = null;
@@ -176,6 +189,12 @@ export function createPoker(opts: {
   /** Called after the idle and NPC poses are set for this frame: adds the reaction on top. */
   const apply = (t: number, dt: number) => {
     now = t;
+    if (shrink > 0.03) {         // looking down at someone small: chin down, eyes on you, a smile once she can see how small you are
+      const md = idle.mood;
+      add(B.head, 0.34 * shrink, 0, 0); add(B.neck, 0.12 * shrink, 0, 0); add(B.spine, 0.1 * shrink, 0, 0);
+      md.happy = Math.max(md.happy, 0.65 * Math.max(0, shrink - 0.4));
+      if (shrinkTier >= 2) md.surprised = Math.max(md.surprised, 0.25 * (0.5 + 0.5 * Math.sin(t * 2.5)));
+    }
     if (forced && t < forced.until) { tk.touching = true; tk.region = forced.region; tk.side = forced.side; tk.any = 0.12; tk.strength = 1; }   // tests
     // tickling: the laugh builds while a finger tickles somewhere ticklish, and fades when it stops
     const f = tk.touching && tk.any > 0 ? (TICKLISH[tk.region] ?? 0.1) : 0;
@@ -322,6 +341,7 @@ export function createPoker(opts: {
   return {
     pick, poke, react, apply,
     tickle,
+    setShrink,
     /** Tickle `region` for `seconds` without a finger (tests). */
     forceTickle(region: Region, seconds = 3, side = 0) { forced = { region, side, until: now + seconds }; },
     get tickling() { return tk.level; },

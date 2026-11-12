@@ -688,6 +688,7 @@ name = "desktop-college-dorms"
 version = "0.5.1"
 dependencies = [
  "argon2",
+ "base64 0.22.1",
  "dorms-core",
  "futures-util",
  "keyring",

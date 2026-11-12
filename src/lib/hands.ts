@@ -52,7 +52,7 @@ export function createHands(opts: {
   /** The pinch opened: put her down. */
   onDrop?: () => void;
   /** A controller button changed what the hands do. */
-  onTool?: (tool: "pet" | "point" | "pinch") => void;
+  onTool?: (tool: "pet" | "point" | "pinch" | "tickle") => void;
 }) {
   const { scene, camera, dom, head } = opts;
   const s = opts.scale;
@@ -118,19 +118,38 @@ export function createHands(opts: {
 
   // ---- input ----
   let enabled = false;
-  let pointing = false;                // pointing fingers for poking
+  let handScale = 1;
+  let pointing = false;                // pointing fingers for poking (and tickling)
+  let tickleOnly = false;              // the tickle gesture: the pointing fingers tickle at once when pressed, no poking
+  type Tool = "pet" | "point" | "pinch" | "tickle";
+  const TOOLS: Tool[] = ["pet", "point", "pinch", "tickle"];
+  const curTool = (): Tool => (pinching ? "pinch" : pointing ? (tickleOnly ? "tickle" : "point") : "pet");
+  const setTool = (t: Tool) => { pointing = t === "point" || t === "tickle"; tickleOnly = t === "tickle"; pinching = t === "pinch"; };
+  const nextTool = (d: number) => TOOLS[(TOOLS.indexOf(curTool()) + d + TOOLS.length) % TOOLS.length];
   let pinching = false;                // thumb and finger pinch, for picking her up
   const hold: { hand: H | null; depth: number } = { hand: null, depth: 3 };
-  const ptr = { x: 0, y: 0, down: false, active: false };
+  const ptr = { x: 0, y: 0, down: false, active: false, buttons: 0 };
   const rect = () => dom.getBoundingClientRect();
-  const onMove = (e: PointerEvent) => { const r = rect(); ptr.x = ((e.clientX - r.left) / r.width) * 2 - 1; ptr.y = -(((e.clientY - r.top) / r.height) * 2 - 1); ptr.active = true; };
+  const onMove = (e: PointerEvent) => { ptr.buttons = e.buttons; const r = rect(); ptr.x = ((e.clientX - r.left) / r.width) * 2 - 1; ptr.y = -(((e.clientY - r.top) / r.height) * 2 - 1); ptr.active = true; };
   const startJab = (h: H) => { if (h.jab < 0) h.jab = 0; };
   const HOLD = 320;                    // ms: a press shorter than this is a poke (on release), longer is tickling
   let downAt = 0;
-  const onDown = (e: PointerEvent) => { if (!enabled) return; onMove(e); ptr.down = true; downAt = performance.now(); dom.setPointerCapture?.(e.pointerId); };
-  const onUp = () => { ptr.down = false; };
+  let chordSaved: { pointing: boolean; pinching: boolean } | null = null;
+  let shiftHeld = false, rightDown = false, mouseHand: "left" | "right" = "right", downHand: H | null = null;
+  // left + right button together is a pinch (for lifting her), whatever the hands were doing; the right hand does it
+  const chord = () => (ptr.buttons & 3) === 3;
+  const leftWanted = () => shiftHeld || (rightDown && !chord());
+  const onDown = (e: PointerEvent) => {
+    if (!enabled) return;
+    // the other mouse buttons change gesture: middle or forward = the next one, back = the previous one
+    if (e.button === 1 || e.button === 3 || e.button === 4) { e.preventDefault(); setTool(nextTool(e.button === 3 ? -1 : 1)); opts.onTool?.(curTool()); return; }
+    onMove(e); if (e.button === 2) rightDown = true; ptr.down = true; downAt = performance.now(); downHand = hold.hand ?? (leftWanted() ? hl : hr); dom.setPointerCapture?.(e.pointerId); };
+  const onUp = () => { ptr.down = false; rightDown = false; ptr.buttons = 0; };
+  const onKey = (e: KeyboardEvent) => { if (e.key === "Shift") shiftHeld = e.type === "keydown"; };
+  const onMenu = (e: Event) => { if (enabled) e.preventDefault(); };
+  window.addEventListener("keydown", onKey); window.addEventListener("keyup", onKey); dom.addEventListener("contextmenu", onMenu);
   const onWheel = (e: WheelEvent) => { if (!hold.hand) return; e.preventDefault(); hold.depth = Math.min(9 * s, Math.max(1.2 * s, hold.depth * (e.deltaY < 0 ? 0.93 : 1.07))); };
-  const onRelease = (e: PointerEvent) => { if (enabled && pointing && ptr.down && e.button === 0 && performance.now() - downAt < HOLD) startJab(hr); onUp(); };
+  const onRelease = (e: PointerEvent) => { if (enabled && pointing && ptr.down && (e.button === 0 || e.button === 2) && !tickleOnly && performance.now() - downAt < HOLD) startJab(downHand ?? hr); onUp(); };
   dom.addEventListener("pointermove", onMove);
   dom.addEventListener("pointerdown", onDown);
   dom.addEventListener("pointerup", onRelease);
@@ -180,12 +199,13 @@ export function createHands(opts: {
       const a = (i: number) => dz(p.axes[i] ?? 0);
       // the buttons come from the person's own bindings (any controller: the layout is by position, see gamepad.ts)
       const bind = getBindings();
-      const before = pinching ? "pinch" : pointing ? "point" : "pet";
-      if (edgeOf(p, "cycle", bind.cycle)) { if (pointing) { pointing = false; pinching = true; } else if (pinching) pinching = false; else pointing = true; }
-      if (edgeOf(p, "pet", bind.pet)) { pointing = false; pinching = false; }
-      if (edgeOf(p, "point", bind.point)) { pointing = true; pinching = false; }
-      if (edgeOf(p, "pinch", bind.pinch)) { pointing = false; pinching = true; }
-      const after = pinching ? "pinch" : pointing ? "point" : "pet";
+      const before = curTool();
+      if (edgeOf(p, "cycle", bind.cycle)) setTool(nextTool(1));
+      if (edgeOf(p, "pet", bind.pet)) setTool("pet");
+      if (edgeOf(p, "point", bind.point)) setTool("point");
+      if (edgeOf(p, "pinch", bind.pinch)) setTool("pinch");
+      if (edgeOf(p, "tickle", bind.tickle)) setTool("tickle");
+      const after = curTool();
       if (after !== before) opts.onTool?.(after);
       // the action buttons: a tap pokes, holding tickles (or pinches)
       const nowMs = performance.now();
@@ -193,6 +213,7 @@ export function createHands(opts: {
         const down = anyDown(p, list);
         if (pinching) { h.pinchGoal = down ? 1 : 0; continue; }
         if (!pointing) { padHold[k] = null; h.ticklish = false; h.pinchGoal = 0; continue; }
+        if (tickleOnly) { h.ticklish = down; padHold[k] = null; continue; }
         if (down && padHold[k] === null) padHold[k] = nowMs;
         if (!down && padHold[k] !== null) { if (nowMs - padHold[k]! < HOLD) startJab(h); padHold[k] = null; }
         h.ticklish = down && padHold[k] !== null && nowMs - padHold[k]! >= HOLD;
@@ -204,35 +225,49 @@ export function createHands(opts: {
     // where the fingers point: along the camera, unless the mouse is aiming at her body
     camera.getWorldDirection(fwd);
     hl.aim.copy(fwd); hr.aim.copy(fwd); hl.tipGoal = null; hr.tipGoal = null;
-    if (!p) { hl.ticklish = false; hr.ticklish = pointing && ptr.active && ptr.down && performance.now() - downAt >= HOLD; hl.pinchGoal = 0; hr.pinchGoal = pinching && ptr.active && ptr.down ? 1 : 0; }
+    // the mouse IS a hand: the right hand by default, the left while Shift or the right button is held (and whichever one is carrying her)
+    // the chord: both mouse buttons at once pinch her, then lift; letting go of either puts the previous gesture back
+    const chordNow = !p && enabled && ptr.active && ptr.down && chord();
+    if (chordNow && !chordSaved) { chordSaved = { pointing, pinching }; pointing = false; pinching = true; }
+    else if (!chordNow && chordSaved) { pointing = chordSaved.pointing; pinching = chordSaved.pinching; chordSaved = null; }
+    const mh = hold.hand ?? (leftWanted() ? hl : hr);
+    mouseHand = mh === hl ? "left" : "right";
+    if (!p) {
+      hl.ticklish = false; hr.ticklish = false; hl.pinchGoal = 0; hr.pinchGoal = 0;
+      mh.ticklish = pointing && ptr.active && ptr.down && (tickleOnly || performance.now() - downAt >= HOLD);
+      mh.pinchGoal = pinching && ptr.active && ptr.down ? 1 : 0;
+    }
     if (ptr.active && !p) {
-      // the pointer places the right hand on a plane facing the camera, a little in front of the head; pressing reaches in
       camera.getWorldDirection(fwd);
       ray.setFromCamera(new THREE.Vector2(ptr.x, ptr.y), camera);
-      if (pinching && hold.hand === hr) {
+      if (pinching && hold.hand === mh) {
         // carrying: the fingertips follow the pointer on a plane facing the camera, at the depth she was picked up
         plane.setFromNormalAndCoplanarPoint(fwd.clone().negate(), tmp.copy(camera.position).addScaledVector(fwd, hold.depth));
-        if (ray.ray.intersectPlane(plane, hit)) hr.tipGoal = hit.clone();
-        hr.aim.copy(ray.ray.direction);
-        hr.grip += (0 - hr.grip) * Math.min(1, dt * 10);
+        if (ray.ray.intersectPlane(plane, hit)) mh.tipGoal = hit.clone();
+        mh.aim.copy(ray.ray.direction);
+        mh.grip += (0 - mh.grip) * Math.min(1, dt * 10);
       } else if (pointing || pinching) {
         // pointing: the fingertip rests on whatever you aim at (her body), a hair above it
         const hitBody = opts.pick?.(ray.ray.origin, ray.ray.direction, 50);
-        hr.aim.copy(ray.ray.direction);
-        if (hitBody) hr.tipGoal = hitBody.point.clone().addScaledVector(ray.ray.direction, -0.04 * s);
+        mh.aim.copy(ray.ray.direction);
+        if (hitBody) mh.tipGoal = hitBody.point.clone().addScaledVector(ray.ray.direction, -0.04 * s);
         else {
           plane.setFromNormalAndCoplanarPoint(fwd.clone().negate(), tmp.copy(head).addScaledVector(fwd, -0.3 * s));
-          if (ray.ray.intersectPlane(plane, hit)) { clampNear(hit); hr.tipGoal = hit.clone(); }
+          if (ray.ray.intersectPlane(plane, hit)) { clampNear(hit); mh.tipGoal = hit.clone(); }
         }
-        hr.grip += (0 - hr.grip) * Math.min(1, dt * 10);
+        mh.grip += (0 - mh.grip) * Math.min(1, dt * 10);
       } else {
-        const depth = ptr.down ? 0.1 * s : 0.3 * s;
-        plane.setFromNormalAndCoplanarPoint(fwd.clone().negate(), tmp.copy(head).addScaledVector(fwd, -depth));
-        if (ray.ray.intersectPlane(plane, hit)) {
+        // open hand: the palm hovers right over whatever the pointer is on (her head, her shoulder...), and pressing lays it on her
+        const hitBody = opts.pick?.(ray.ray.origin, ray.ray.direction, 50);
+        if (hitBody) {
+          hit.copy(hitBody.point).addScaledVector(ray.ray.direction, -(ptr.down ? 0.012 : 0.075) * s);
           clampNear(hit);
-          hr.pos.lerp(hit, Math.min(1, dt * 14));
+          mh.pos.lerp(hit, Math.min(1, dt * 16));
+        } else {
+          plane.setFromNormalAndCoplanarPoint(fwd.clone().negate(), tmp.copy(head).addScaledVector(fwd, -0.3 * s));
+          if (ray.ray.intersectPlane(plane, hit)) { clampNear(hit); mh.pos.lerp(hit, Math.min(1, dt * 14)); }
         }
-        hr.grip += ((ptr.down ? 0.25 : 0) - hr.grip) * Math.min(1, dt * 10);
+        mh.grip += ((ptr.down ? 0.25 : 0) - mh.grip) * Math.min(1, dt * 10);
       }
     }
 
@@ -244,7 +279,7 @@ export function createHands(opts: {
       h.point += ((pointing || pinching ? 1 : 0) - h.point) * Math.min(1, dt * 12);
       h.pinch += ((pinching ? h.pinchGoal : 0) - h.pinch) * Math.min(1, dt * 14);
       root.position.copy(h.pos);
-      root.scale.setScalar(1.3);                        // a touch larger than life, so they read at a distance
+      root.scale.setScalar(1.3 * handScale);            // a touch larger than life, so they read at a distance (and tiny when you have shrunk)
       root.quaternion.copy(camera.quaternion);
       root.rotateX(-0.35);                              // fingers tilt down toward the character
       root.rotateZ(h === hl ? 0.08 : -0.08);
@@ -346,11 +381,15 @@ export function createHands(opts: {
     get usingGamepad() { return padActive; },
     /** pointing fingers (poke) or open hands (pet) */
     get pointing() { return pointing; },
-    set pointing(v: boolean) { pointing = v; if (v) pinching = false; },
+    set pointing(v: boolean) { pointing = v; tickleOnly = false; if (v) pinching = false; },
     /** open hands (pet), pointing fingers (poke and tickle), or a pinch (pick her up) */
-    get tool(): "pet" | "point" | "pinch" { return pinching ? "pinch" : pointing ? "point" : "pet"; },
-    set tool(v: "pet" | "point" | "pinch") { pointing = v === "point"; pinching = v === "pinch"; },
+    get tool(): Tool { return curTool(); },
+    set tool(v: Tool) { setTool(v); },
     get holding() { return !!hold.hand; },
+    /** 1 = normal; the hands shrink with you */
+    set size(v: number) { handScale = Math.min(1, Math.max(0.1, v)); },
+    /** which hand the mouse is moving right now */
+    get hand() { return mouseHand; },
     /** Jab a finger now (tests, and the on-screen button). */
     jab(hand: "left" | "right" = "right") { if (pointing) startJab(hand === "left" ? hl : hr); },
     dispose() {
@@ -358,6 +397,7 @@ export function createHands(opts: {
       dom.removeEventListener("pointerdown", onDown);
       dom.removeEventListener("pointerup", onRelease);
       dom.removeEventListener("wheel", onWheel);
+      window.removeEventListener("keydown", onKey); window.removeEventListener("keyup", onKey); dom.removeEventListener("contextmenu", onMenu);
       dom.removeEventListener("pointercancel", onUp);
       scene.remove(group);
       group.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.geometry.dispose(); });

@@ -55,7 +55,8 @@ export function CreateProfileModal({ claim, onClose, onDone }: { claim?: boolean
 /** Pick a profile file made by Eject or Export, look inside it, then import it as a new profile. */
 export function ImportProfileModal({ onClose, onDone }: { onClose: () => void; onDone: (s: SessionState) => void }) {
   const file = useRef<HTMLInputElement>(null);
-  const [f, setF] = useState<File | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [reading, setReading] = useState<number | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [handle, setHandle] = useState("");
   const [pass, setPass] = useState("");
@@ -64,24 +65,29 @@ export function ImportProfileModal({ onClose, onDone }: { onClose: () => void; o
 
   const pick = async (picked: File | undefined) => {
     if (!picked) return;
-    setErr(""); setPreview(null); setF(picked);
+    setErr(""); setPreview(null); setToken(null); setReading(0);
     try {
-      const p = await api.inspectProfileFile(picked);
-      setPreview(p);
+      const t = await api.stageProfileFile(picked, setReading);
+      const p = await api.inspectStaged(t);
+      setToken(t); setPreview(p);
       setHandle(p.handle_taken ? `${p.handle.slice(0, 20)}_2` : p.handle);
-    } catch (e) { setErr(errText(e)); setF(null); }
+    } catch (e) { setErr(errText(e)); setToken(null); } finally { setReading(null); }
   };
   const run = async () => {
-    if (!f) return;
+    if (!token) return;
     setBusy(true); setErr("");
-    try { onDone(await api.importProfileFile(f, handle, pass)); } catch (e) { setErr(errText(e)); setBusy(false); }
+    try { onDone(await api.importStaged(token, handle, pass)); } catch (e) { setErr(errText(e)); setBusy(false); }
   };
+  const close = () => { void api.clearStage().catch(() => {}); onClose(); };
 
   return (
-    <Modal title="Import a profile file" onClose={onClose}>
+    <Modal title="Import a profile file" onClose={close}>
       <p className="sub" style={{ marginTop: 0 }}>Choose a <b>.dorms</b> file saved by Eject or Export. It comes back as a new profile; nothing already on this device is overwritten.</p>
-      <button className="btn" onClick={() => file.current?.click()}>⇪ Choose file…</button>
-      <input ref={file} type="file" hidden accept=".dorms,.zip,application/zip,application/octet-stream" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+      <button className="btn" disabled={reading !== null} onClick={() => file.current?.click()}>⇪ Choose file…</button>
+      {reading !== null && <span className="hint" role="status" style={{ marginLeft: 10 }}>Reading the file… {Math.round(reading * 100)}%</span>}
+      {/* No type filter on purpose: phone file pickers build their list from MIME types, and ".dorms" has none, so a filter can grey the file out.
+          Whatever is chosen is checked; a file that isn't a profile gets a clear message. */}
+      <input ref={file} type="file" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
       {preview && (
         <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
           <div className="card">

@@ -34,7 +34,7 @@ export interface Bindings {
   /** change what the hands do, one step at a time: open hands, point, pinch */
   cycle: number[];
   /** go straight to open hands / pointing / pinching */
-  pet: number[]; point: number[]; pinch: number[];
+  pet: number[]; point: number[]; pinch: number[]; tickle: number[];
   /** the action button of each hand: poke (tap), tickle (hold), pinch (hold), grip (open hands) */
   right: number[]; left: number[];
 }
@@ -44,6 +44,7 @@ export const DEFAULT_BINDINGS: Bindings = {
   pet: [14],             // D-pad left
   point: [12],           // D-pad up
   pinch: [15],           // D-pad right
+  tickle: [13],          // D-pad down
   right: [0, 11],        // bottom face button (A, Cross, B), or click the right stick
   left: [2, 10],         // left face button (X, Square, Y), or click the left stick
 };
@@ -55,6 +56,7 @@ export const ACTIONS: { key: keyof Bindings; label: string; help: string }[] = [
   { key: "pet", label: "Open hands", help: "Go straight to open hands (petting)" },
   { key: "point", label: "Pointing finger", help: "Go straight to the pointing finger (poke and tickle)" },
   { key: "pinch", label: "Pinch", help: "Go straight to the pinch (pick her up)" },
+  { key: "tickle", label: "Tickle", help: "Go straight to tickling fingers (hold the action button to tickle)" },
 ];
 
 const KEY = "dorms.pad.bindings";
@@ -66,7 +68,7 @@ export function getBindings(): Bindings {
   try { raw = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { /* storage unavailable */ }
   cache = {
     cycle: clean(raw.cycle, DEFAULT_BINDINGS.cycle), pet: clean(raw.pet, DEFAULT_BINDINGS.pet), point: clean(raw.point, DEFAULT_BINDINGS.point),
-    pinch: clean(raw.pinch, DEFAULT_BINDINGS.pinch), right: clean(raw.right, DEFAULT_BINDINGS.right), left: clean(raw.left, DEFAULT_BINDINGS.left),
+    pinch: clean(raw.pinch, DEFAULT_BINDINGS.pinch), tickle: clean(raw.tickle, DEFAULT_BINDINGS.tickle), right: clean(raw.right, DEFAULT_BINDINGS.right), left: clean(raw.left, DEFAULT_BINDINGS.left),
   };
   return cache;
 }
@@ -75,7 +77,7 @@ export function setBindings(b: Bindings) {
   try { localStorage.setItem(KEY, JSON.stringify(b)); } catch { /* storage unavailable */ }
   window.dispatchEvent(new Event("dorms-pad-bindings"));
 }
-export const resetBindings = () => setBindings({ ...DEFAULT_BINDINGS, cycle: [...DEFAULT_BINDINGS.cycle], pet: [...DEFAULT_BINDINGS.pet], point: [...DEFAULT_BINDINGS.point], pinch: [...DEFAULT_BINDINGS.pinch], right: [...DEFAULT_BINDINGS.right], left: [...DEFAULT_BINDINGS.left] });
+export const resetBindings = () => setBindings({ ...DEFAULT_BINDINGS, cycle: [...DEFAULT_BINDINGS.cycle], pet: [...DEFAULT_BINDINGS.pet], point: [...DEFAULT_BINDINGS.point], pinch: [...DEFAULT_BINDINGS.pinch], tickle: [...DEFAULT_BINDINGS.tickle], right: [...DEFAULT_BINDINGS.right], left: [...DEFAULT_BINDINGS.left] });
 
 export const activePad = (): Gamepad | null => { const g = navigator.getGamepads?.() ?? []; for (const p of g) if (p && p.connected) return p; return null; };
 export const isStandard = (p: Gamepad) => p.mapping === "standard";
