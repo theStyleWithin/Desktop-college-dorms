@@ -1,3 +1,4 @@
+import { applyTextScale } from "./lib/textScale";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type AppInfo, type Character, type Chat, type Dorm, type Folder, type Persona, type Room, type SessionState, type Settings } from "./api";
 import { StoreCtx, type Route, type Store } from "./store";
@@ -64,6 +65,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
 
   useEffect(() => { refresh(); api.appInfo().then(setInfo).catch(() => {}); }, [refresh]);
   useEffect(() => { document.documentElement.dataset.theme = settings.theme; }, [settings.theme]);
+  useEffect(() => { applyTextScale(); }, []);
 
   const setSettings = useCallback(async (s: Settings) => {
     setSettingsState(await api.saveSettings(s));

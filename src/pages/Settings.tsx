@@ -1,3 +1,4 @@
+import { useTextScale, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
 import { useEffect, useState } from "react";
 import { api, newProfile, profileAvatar, onModelProgress, saveExportFile, type ApiProfile, type EngineStatus, type ExportInfo, type Hardware, type ModelFile, type ModelProgress, type Settings } from "../api";
 import { CreateProfileModal, PASSCODE_NOTE, ProfileAvatar } from "../components/ProfileForms";
@@ -313,6 +314,26 @@ function Look({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void
           <button key={k} className={`chip ${s.theme === k ? "on" : ""}`} style={{ padding: "6px 14px", fontSize: ".9rem" }} onClick={() => { patch({ theme: k }); document.documentElement.dataset.theme = k; }}>{l}</button>
         ))}
       </div>
+      <h3 style={{ marginTop: 22 }}>Text size in chats</h3>
+      <TextSizeSetting />
+    </div>
+  );
+}
+
+/** The size of the text in chats, with a sample that changes as you move the slider. It is kept on this device. */
+function TextSizeSetting() {
+  const [v, set] = useTextScale();
+  return (
+    <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+      <div className="row">
+        <input type="range" aria-label="Text size" min={TEXT_SCALE_MIN * 100} max={TEXT_SCALE_MAX * 100} step={5} value={Math.round(v * 100)} onChange={(e) => set(Number(e.target.value) / 100)} style={{ maxWidth: 360 }} />
+        <b data-testid="text-size-value">{Math.round(v * 100)}%</b>
+        <button className="btn sm" disabled={v === 1} onClick={() => set(1)}>Reset</button>
+      </div>
+      <div className="msgs" data-testid="text-size-sample" style={{ flex: "none", padding: 12, border: "1px solid var(--line)", borderRadius: 10 }}>
+        <div className="msg"><div /><div><div className="who">Mira <small>sample</small></div><div className="txt">*She looks up from her book and smiles.* “There you are! I was just about to make some tea. Want some?”</div></div></div>
+      </div>
+      <div className="hint">This makes the text bigger (or smaller) in your chats. You can also change it from the chat itself, next to the other chat options. It only changes this device.</div>
     </div>
   );
 }

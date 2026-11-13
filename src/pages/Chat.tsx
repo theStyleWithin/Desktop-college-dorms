@@ -8,6 +8,7 @@ import MechanicsPanel from "../components/MechanicsPanel";
 import PhoneView from "../components/PhoneView";
 import MusicPlayer from "../components/MusicPlayer";
 import MusicField from "../components/MusicField";
+import { useTextScale, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
 import { hideDirectives, roomBackground, roomScene, kindLabel } from "../lib/rooms";
 import { makeWardrobe } from "../components/WardrobePanel";
 import type { Speech } from "../components/SpeechBubble";
@@ -229,6 +230,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               {music?.src && <MusicPlayer key={music.src} src={music.src} name={music.name} />}
               <button className="btn sm only-mobile" onClick={() => setOptsOpen((o) => !o)} aria-label="Chat options" aria-expanded={optsOpen}>⋯</button>
               <div className={`chatopts ${optsOpen ? "open" : ""}`}>
+              <TextSize />
               {chat.kind !== "dm" && (
                 <>
                   <label className="row" title="Let the characters keep talking without you (uses more power)">
@@ -505,5 +507,17 @@ function NewChat({ dormId, onClose, onCreated }: { dormId: number | null; onClos
       </div>
       <div className="row" style={{ marginTop: 14 }}><button className="btn primary" onClick={create}>Start chat</button></div>
     </Modal>
+  );
+}
+
+/** A small slider for the size of the text in chats: right in the chat, so it can be adjusted while reading. */
+function TextSize() {
+  const [v, set] = useTextScale();
+  return (
+    <label className="textsize" title={`Text size: ${Math.round(v * 100)}%`}>
+      <span className="aa small" aria-hidden>A</span>
+      <input type="range" aria-label="Text size" min={TEXT_SCALE_MIN * 100} max={TEXT_SCALE_MAX * 100} step={5} value={Math.round(v * 100)} onChange={(e) => set(Number(e.target.value) / 100)} />
+      <span className="aa big" aria-hidden>A</span>
+    </label>
   );
 }

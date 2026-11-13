@@ -158,6 +158,11 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   main texture and colour put back (pictures scaled to at most 2048 px) and written as one `.glb` (GLTFExporter), which then goes through the normal room-model path; a `.glb` is used as it is. The temporary files are
   always removed. Unity shaders, prefabs, scenes and baked lighting are not read.
 
+## Text size (v0.7.1)
+
+- The size of chat text is a multiplier (0.8 to 2, in steps of 0.05) stored on the device in local storage (it differs between a phone and a desktop, so it is not part of the profile or its backups) and exposed as the CSS variable
+  `--chat-scale`. Message text, the message editor, the composer and the texting-style bubbles scale with it; the rest of the interface does not. One slider is in the chat header, another (with a sample) in Settings → Appearance; they stay in step.
+
 ## Decorations (v0.7)
 
 - A per-profile library (`decor` table, files `media/decor-*.glb`) of 3D props. Items come from a Unity package (the same streaming scan and extraction as rooms, for several models in one pass, with more room allowed: 2 GB of models and pictures

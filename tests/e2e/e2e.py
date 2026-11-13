@@ -992,6 +992,22 @@ try:
     check("your messages show the persona's name and picture", d.execute_script("const u=document.querySelector('.msg.user');return !!u && u.querySelector('.who').textContent.includes('Kai') && !!u.querySelector('.avatar img')"))
     invoke("set_active_persona", {"id": None}); invoke("delete_persona", {"id": pe[0]["id"]})
 
+    # -- text size in chats: a slider that makes the roleplay text bigger, kept on this device
+    nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Appearance"); time.sleep(0.6)
+    px = lambda: float(d.execute_script("return parseFloat(getComputedStyle(document.querySelector('[data-testid=text-size-sample] .txt')).fontSize)"))
+    base_px = px()
+    check("Appearance has a text size slider, at 100% to start", text_present("Text size in chats") and d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "100%" and 14 <= base_px <= 20, str(base_px))
+    set_value("input[aria-label='Text size']", "150"); time.sleep(0.4)
+    check("moving it makes the sample text bigger right away", abs(px() / base_px - 1.5) < 0.02 and d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "150%", f"{base_px} -> {px()}")
+    check("the size is applied to the whole app (chats read it)", d.execute_script("return getComputedStyle(document.documentElement).getPropertyValue('--chat-scale').trim()") == "1.5")
+    reload_ui(); nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Appearance"); time.sleep(0.6)
+    check("it is remembered after a restart", d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "150%" and abs(px() / base_px - 1.5) < 0.02)
+    click_text("button", "Reset"); time.sleep(0.4)
+    check("Reset puts it back to normal", d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "100%" and abs(px() - base_px) < 0.5)
+    set_value("input[aria-label='Text size']", "300"); time.sleep(0.3)
+    check("it can't go past 200%", d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "200%")
+    click_text("button", "Reset"); time.sleep(0.3)
+
     # -- controllers: any pad, named the way the pad names its buttons, with bindings you can change
     fake_pad = """
       window.__fake = { id: arguments[0], index: 0, connected: true, mapping: 'standard', axes: [0,0,0,0], buttons: Array.from({length: 17}, () => ({pressed: false, value: 0})) };
