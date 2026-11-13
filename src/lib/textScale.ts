@@ -33,3 +33,30 @@ export function useTextScale(): [number, (v: number) => void] {
   }, []);
   return [v, setTextScale];
 }
+
+/**
+ * Change the size while someone is reading: the text you were reading stays where it is on the screen (or, if you were at the newest
+ * message, you stay at the newest message), instead of the page jumping as the lines get longer or shorter. Follows the change
+ * for a moment, since the size eases in.
+ */
+export function setTextScaleAnchored(v: number) {
+  const box = document.querySelector<HTMLElement>(".msgs");
+  let ref: HTMLElement | null = null, off = 0;
+  const atBottom = !!box && box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  if (box && !atBottom) {
+    const top = box.getBoundingClientRect().top;
+    for (const c of Array.from(box.children) as HTMLElement[]) {
+      const r = c.getBoundingClientRect();
+      if (r.bottom > top + 8) { ref = c; off = r.top - top; break; }
+    }
+  }
+  setTextScale(v);
+  if (!box) return;
+  const t0 = performance.now();
+  const step = () => {
+    if (atBottom) box.scrollTop = box.scrollHeight;
+    else if (ref && ref.isConnected) box.scrollTop += ref.getBoundingClientRect().top - box.getBoundingClientRect().top - off;
+    if (performance.now() - t0 < 300) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}

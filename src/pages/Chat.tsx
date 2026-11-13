@@ -8,7 +8,7 @@ import MechanicsPanel from "../components/MechanicsPanel";
 import PhoneView from "../components/PhoneView";
 import MusicPlayer from "../components/MusicPlayer";
 import MusicField from "../components/MusicField";
-import { useTextScale, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
+import { useTextScale, setTextScaleAnchored, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
 import { hideDirectives, roomBackground, roomScene, kindLabel } from "../lib/rooms";
 import { makeWardrobe } from "../components/WardrobePanel";
 import type { Speech } from "../components/SpeechBubble";
@@ -510,14 +510,20 @@ function NewChat({ dormId, onClose, onCreated }: { dormId: number | null; onClos
   );
 }
 
-/** A small slider for the size of the text in chats: right in the chat, so it can be adjusted while reading. */
+/** A small slider for the size of the text in chats: right in the chat, so it can be adjusted while reading. The text changes as you drag, and the size shows for a moment. */
 function TextSize() {
-  const [v, set] = useTextScale();
+  const [v] = useTextScale();
+  const [flash, setFlash] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
   return (
     <label className="textsize" title={`Text size: ${Math.round(v * 100)}%`}>
       <span className="aa small" aria-hidden>A</span>
-      <input type="range" aria-label="Text size" min={TEXT_SCALE_MIN * 100} max={TEXT_SCALE_MAX * 100} step={5} value={Math.round(v * 100)} onChange={(e) => set(Number(e.target.value) / 100)} />
+      <input type="range" aria-label="Text size" min={TEXT_SCALE_MIN * 100} max={TEXT_SCALE_MAX * 100} step={5} value={Math.round(v * 100)}
+        onChange={(e) => { setTextScaleAnchored(Number(e.target.value) / 100); setFlash(true); window.clearTimeout(timer.current); timer.current = window.setTimeout(() => setFlash(false), 1100); }} />
       <span className="aa big" aria-hidden>A</span>
+      <span className="pct" data-testid="text-size-pct">{Math.round(v * 100)}%</span>
+      {flash && <span className="size-flash" role="status" aria-live="polite">Text size {Math.round(v * 100)}%</span>}
     </label>
   );
 }

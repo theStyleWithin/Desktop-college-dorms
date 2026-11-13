@@ -1048,6 +1048,15 @@ try:
         check("a chat in a room with music shows the music player", d.execute_script("return !!document.querySelector('[data-testid=music]')") and "tone.wav" in d.execute_script("return document.querySelector('.music-name').textContent"))
         check("the music loops", wait(10).until(lambda x: x.execute_script("const a=document.querySelector('[data-testid=music] audio');return !!a&&a.loop===true&&a.src.startsWith('blob:')")))
         check("it has volume, mute and pause controls", d.execute_script("return !!document.querySelector('[aria-label=\"Music volume\"]') && !!document.querySelector('[aria-label=\"Mute music\"]') && !!document.querySelector('[aria-label=\"Pause music\"],[aria-label=\"Play music\"]')"))
+        # the text size slider inside a live chat: the text reacts as the slider moves, and the size is shown
+        msgs_px = lambda: float(d.execute_script("return parseFloat(getComputedStyle(document.querySelector('.msgs')).fontSize)"))
+        base_msgs = msgs_px()
+        check("the chat has its own text size slider", d.execute_script("return !!document.querySelector('.chathead .textsize input[aria-label=\\'Text size\\']')") and d.execute_script("return document.querySelector('[data-testid=text-size-pct]').textContent") == "100%")
+        set_value("input[aria-label='Text size']", "150"); time.sleep(0.7)
+        check("moving it makes the chat text bigger right away, and the size is shown", abs(msgs_px() / base_msgs - 1.5) < 0.03 and d.execute_script("return document.querySelector('[data-testid=text-size-pct]').textContent") == "150%" and d.execute_script("return !!document.querySelector('.size-flash')"), f"{base_msgs} -> {msgs_px()}")
+        set_value("input[aria-label='Text size']", "90"); time.sleep(0.7)
+        check("and smaller again just as quickly", abs(msgs_px() / base_msgs - 0.9) < 0.03, f"{base_msgs} -> {msgs_px()}")
+        set_value("input[aria-label='Text size']", "100"); time.sleep(0.5)
         dd = [x for x in invoke("list_dorms") if x["room_id"] == rr2[0]["id"]][0]
         invoke_file("set_dorm_music", os.path.join(FIX, "song.mp3"), {"x-dorm-id": str(dd["id"]), "x-file-name": "dorm theme.mp3"})
         reload_ui(); nav("Dorms"); time.sleep(1.0); click_text("button.it", "Rooftop hangout"); time.sleep(2.0)
