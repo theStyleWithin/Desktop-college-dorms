@@ -481,6 +481,9 @@ struct Data {
     /// Added in v0.6.3: only the decorations marked as shareable are in a file.
     #[serde(default)]
     decor: Vec<db::DecorItem>,
+    /// Added in v0.8: saved prompts.
+    #[serde(default)]
+    prompts: Vec<db::SavedPrompt>,
     /// The profile's own picture (file name inside the archive's media folder) and its framing.
     #[serde(default)]
     profile_avatar: Option<(String, Option<db::Frame>)>,
@@ -589,7 +592,7 @@ pub struct ExportInfo {
 }
 
 fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
-    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, profile_avatar) = {
+    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar) = {
         let db = st.db.lock().unwrap();
         let characters = db::list_characters(&db, o).map_err(e)?;
         let dorms = db::list_dorms(&db, o).map_err(e)?;
@@ -604,6 +607,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
         }
         let rooms = db::list_rooms(&db, o).map_err(e)?;
         let decor = db::list_decor(&db, o).map_err(e)?;
+        let prompts = db::list_prompts(&db, o).map_err(e)?;
         let mechanics = db::list_mechanics(&db, o).map_err(e)?;
         let notes = db::list_notes(&db, o).map_err(e)?;
         let folders = db::list_folders(&db, o).map_err(e)?;
@@ -615,7 +619,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
             Some(id) => db::get_profile(&db, id).map_err(e)?,
             None => None,
         };
-        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, profile_avatar)
+        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar)
     };
     let mut chats = chats;
     for c in chats.iter_mut() {
@@ -758,7 +762,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     // API keys, passcodes and per-device model choices are deliberately not part of the file.
     let mut exported_settings = settings;
     exported_settings.local_model = String::new();
-    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, profile_avatar };
+    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar };
     zip.start_file("manifest.json", deflated).map_err(e)?;
     zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(e)?).map_err(e)?;
     zip.start_file("data.json", deflated).map_err(e)?;
@@ -1212,6 +1216,10 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
 
         for n in &parsed.data.notes {
             db::save_note(&db, &db::Note { id: uid(), ..n.clone() }, &o).map_err(e)?;
+        }
+        for pr in &parsed.data.prompts {
+            if pr.title.trim().is_empty() || pr.body.trim().is_empty() { continue; }
+            db::save_prompt(&db, &db::SavedPrompt { id: uid(), title: pr.title.chars().take(100).collect(), tag: pr.tag.chars().take(30).collect(), ..pr.clone() }, &o).map_err(e)?;
         }
         for cm in &parsed.data.chat_mechanics {
             if let (Some(chat), Some(mid)) = (chat_map.get(&cm.chat_id), mech_map.get(&cm.mech_id)) {

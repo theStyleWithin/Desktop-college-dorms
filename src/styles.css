@@ -417,3 +417,25 @@ button.chip { cursor: pointer; } button.chip.on { background: var(--accent); col
 .size-flash { position: fixed; top: 74px; left: 50%; transform: translateX(-50%); z-index: 20; padding: 6px 16px; border-radius: 999px; background: #000b; color: #fff; font-size: .95rem; font-weight: 600; pointer-events: none; animation: size-flash .25s ease-out; }
 @keyframes size-flash { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @media (prefers-reduced-motion: reduce) { .msgs { transition: none; } .size-flash { animation: none; } }
+
+/* saved prompts: a drop-down in the side bar; drag one into the chat to send it */
+.prompts { display: contents; }
+.nav .caret { margin-left: auto; font-size: .8rem; opacity: .7; }
+.prompts-panel { display: grid; gap: 6px; padding: 6px 4px 8px; max-height: 42vh; overflow: auto; border-radius: 10px; background: var(--panel); margin: 0 2px 6px; }
+.prompts-panel input[type=search] { padding: 6px 10px; font-size: .85rem; min-height: 0; }
+.prompt-row { display: flex; align-items: center; gap: 6px; padding: 7px 8px; border-radius: 9px; background: var(--panel2); border: 1px solid var(--line); cursor: grab; position: relative; }
+.prompt-row:hover { border-color: var(--accent); }
+.prompt-row:active { cursor: grabbing; }
+.prompt-title { flex: 1; min-width: 0; font-size: .85rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prompt-row .chip { font-size: .66rem; padding: 0 7px; flex: none; }
+.prompt-acts { display: none; gap: 2px; flex: none; }
+.prompt-row:hover .prompt-acts, .prompt-row:focus-within .prompt-acts { display: flex; }
+.prompt-acts .iconbtn { padding: 1px 5px; font-size: .8rem; min-height: 0; }
+.chatmain.prompt-over { outline: 3px dashed var(--accent); outline-offset: -6px; }
+.prompt-drop { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); z-index: 25; padding: 8px 18px; border-radius: 999px; background: var(--accent); color: var(--accent-ink, #1b1305); font-weight: 700; pointer-events: none; box-shadow: 0 6px 20px #0006; }
+@media (max-width: 820px) {
+  .prompts { display: block; }
+  .prompts-panel { position: fixed; left: 8px; right: 8px; bottom: calc(64px + env(safe-area-inset-bottom)); z-index: 40; max-height: 55vh; margin: 0; box-shadow: 0 -8px 30px #0008; border: 1px solid var(--line); }
+  .prompt-acts { display: flex; }
+  .nav .caret { display: none; }
+}

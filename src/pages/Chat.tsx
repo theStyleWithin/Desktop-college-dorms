@@ -8,6 +8,7 @@ import MechanicsPanel from "../components/MechanicsPanel";
 import PhoneView from "../components/PhoneView";
 import MusicPlayer from "../components/MusicPlayer";
 import MusicField from "../components/MusicField";
+import { PROMPT_DRAG } from "../components/PromptsMenu";
 import { useTextScale, setTextScaleAnchored, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
 import { hideDirectives, roomBackground, roomScene, kindLabel } from "../lib/rooms";
 import { makeWardrobe } from "../components/WardrobePanel";
@@ -125,6 +126,27 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
     } catch (e) { toast(errText(e), "err"); }
   };
   const send = () => sendText(text);
+  // a saved prompt dragged in from the side bar: sent as a message straight away, unless there is already something typed (or she is busy replying), then it joins the message box
+  const [promptDrag, setPromptDrag] = useState(false);
+  const dropPrompt = (body: string) => {
+    if (!chat) return;
+    if (text.trim()) { setText(`${body}\n\n${text}`); toast("Added to your message. Press send when you're ready.", "ok"); return; }
+    if (busy) { setText(body); toast("She is replying, so the prompt is in your message box.", "ok"); return; }
+    void sendText(body);
+  };
+  const dropPromptRef = useRef(dropPrompt);
+  dropPromptRef.current = dropPrompt;
+  // a saved prompt clicked in the side bar goes into the message box of the chat that is open
+  useEffect(() => {
+    const f = (e: Event) => {
+      const d = (e as CustomEvent<{ body: string; handled: boolean }>).detail;
+      if (!chat) return;
+      d.handled = true;
+      setText((x) => (x.trim() ? `${d.body}\n\n${x}` : d.body));
+    };
+    window.addEventListener("dorms-prompt-insert", f);
+    return () => window.removeEventListener("dorms-prompt-insert", f);
+  }, [chat]);
   // voice: what was said is either sent straight away or dropped into the box to check first
   const heard = (said: string, autoSend: boolean) => {
     if (autoSend && !busy) void sendText(text.trim() ? `${text.trim()} ${said}` : said);
@@ -208,7 +230,15 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
         {!(grouped.get(null) ?? []).length && <div className="hint" style={{ padding: "0 10px" }}>Nothing here yet</div>}
       </aside>
 
-      <section className={`chatmain${roomBg ? " has-room" : ""}`}>
+      <section className={`chatmain${roomBg ? " has-room" : ""}${promptDrag ? " prompt-over" : ""}`}
+        onDragOver={(e) => { if (Array.from(e.dataTransfer.types).includes(PROMPT_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setPromptDrag(true); } }}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPromptDrag(false); }}
+        onDrop={(e) => {
+          if (!Array.from(e.dataTransfer.types).includes(PROMPT_DRAG)) return;
+          e.preventDefault(); setPromptDrag(false);
+          try { const p = JSON.parse(e.dataTransfer.getData(PROMPT_DRAG)) as { body?: string }; if (p.body) dropPromptRef.current(p.body); } catch { /* not ours */ }
+        }}>
+        {promptDrag && <div className="prompt-drop" aria-hidden>{text.trim() ? "Drop to add it to your message" : "Drop to send this prompt"}</div>}
         {roomBg && <div className="room-bg" style={{ background: roomBg }} aria-hidden="true" data-room={room?.name} />}
         {!chat ? (
           <div className="page" style={{ margin: "auto", textAlign: "center" }}>

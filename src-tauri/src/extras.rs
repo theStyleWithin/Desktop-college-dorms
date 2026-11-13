@@ -797,6 +797,54 @@ pub fn delete_note(state: State<'_, Shared>, id: String) -> R<()> {
 }
 
 // ---------------------------------------------------------------------------
+// Saved prompts: text kept to drop into a roleplay as a message
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn list_prompts(state: State<'_, Shared>) -> R<Vec<db::SavedPrompt>> {
+    let o = owner(&state)?;
+    db::list_prompts(&state.db.lock().unwrap(), &o).map_err(e)
+}
+
+/// Creates the prompt when `id` is empty. Returns it as saved.
+#[tauri::command]
+pub fn save_prompt(state: State<'_, Shared>, prompt: db::SavedPrompt) -> R<db::SavedPrompt> {
+    let title: String = prompt.title.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(100).collect();
+    if title.is_empty() {
+        return Err("Give the prompt a title.".into());
+    }
+    if prompt.body.trim().is_empty() {
+        return Err("The prompt has no text.".into());
+    }
+    if prompt.body.len() > 200_000 {
+        return Err("That prompt is too long (200,000 characters at most).".into());
+    }
+    let tag: String = prompt.tag.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(30).collect();
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let all = db::list_prompts(&db, &o).map_err(e)?;
+    let existing = if prompt.id.is_empty() { None } else { all.iter().find(|p| p.id == prompt.id).cloned() };
+    if existing.is_none() && all.len() >= 1000 {
+        return Err("That's a lot of prompts. Delete some first.".into());
+    }
+    let now = db::now();
+    let saved = db::SavedPrompt {
+        id: existing.as_ref().map(|p| p.id.clone()).unwrap_or_else(uid),
+        title, body: prompt.body, tag,
+        created_at: existing.map(|p| p.created_at).unwrap_or(now),
+        updated_at: now,
+    };
+    db::save_prompt(&db, &saved, &o).map_err(e)?;
+    Ok(saved)
+}
+
+#[tauri::command]
+pub fn delete_prompt(state: State<'_, Shared>, id: String) -> R<()> {
+    let o = owner(&state)?;
+    db::delete_prompt(&state.db.lock().unwrap(), &id, &o).map_err(e)
+}
+
+// ---------------------------------------------------------------------------
 // Folders
 // ---------------------------------------------------------------------------
 
