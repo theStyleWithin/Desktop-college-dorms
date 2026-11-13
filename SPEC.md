@@ -165,7 +165,7 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
 - Dropping on the chat: with an empty message box (and she is not replying) the text is sent as the user's message at once, exactly as if typed; with text already in the box, or while she is replying, the prompt goes into the message box (before what was typed) and nothing is sent.
   Clicking a row puts the text in the message box of the open chat (or copies it when no chat is open), which is also the way to use one on a touch screen.
 
-## Text size (v0.7.1)
+## Text size (v0.8)
 
 - The size of chat text is a multiplier (0.8 to 2, in steps of 0.05) stored on the device in local storage (it differs between a phone and a desktop, so it is not part of the profile or its backups) and exposed as the CSS variable
   `--chat-scale`. Message text, the message editor, the composer and the texting-style bubbles scale with it; the rest of the interface does not. One slider is in the chat header, another (with a sample) in Settings → Appearance; they stay in step.
