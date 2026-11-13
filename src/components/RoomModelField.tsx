@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
-import { api } from "../api";
+import { api, type PackageModel } from "../api";
+import { importUnityPackage } from "../lib/unityPackage";
+import { errText } from "../lib/util";
 import { fmtBytes as sizeText } from "../lib/util";
 
 export interface ModelDraft { file?: File; remove?: boolean; scale: number; rot: number; y: number; share: boolean }
@@ -12,24 +14,33 @@ export default function RoomModelField({ name, draft, onChange }: { name: string
   const ref = useRef<HTMLInputElement>(null);
   const [problem, setProblem] = useState("");
   const [caution, setCaution] = useState("");
+  const [working, setWorking] = useState("");   // what is happening while a Unity package is being opened
+  const [choices, setChoices] = useState<{ models: PackageModel[]; done: (m: PackageModel | null) => void } | null>(null);
   const has = !!name && !draft.remove;
   return (
     <div className="field" data-testid="room-model">
       <span>3D room model (optional)</span>
       <div className="row" style={{ gap: 8 }}>
         <span className="music-chip" data-testid="model-name">{has ? `🏠 ${name}` : "Built-in 3D room"}</span>
-        <button type="button" className="btn" onClick={() => ref.current?.click()}>{has ? "Change model" : "Import a 3D model"}</button>
+        <button type="button" className="btn" disabled={!!working} onClick={() => ref.current?.click()}>{has ? "Change model" : "Import a 3D model"}</button>
         {has && <button type="button" className="btn ghost" onClick={() => onChange({ ...draft, file: undefined, remove: true })}>Remove</button>}
         {/* no `accept` filter: some pickers hide .fbx and .glb; the app checks the file itself */}
         <input ref={ref} type="file" hidden aria-label="3D room model"
           onChange={(e) => {
             const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
             const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
-            // say so now rather than when saving: these can't be used yet
+            // say so now rather than when saving
+            if (ext === "unitypackage") {
+              // open the package and turn the room in it into a .glb the app can import
+              setProblem(""); setCaution(""); setWorking("Starting…");
+              void importUnityPackage(f, setWorking, (models) => new Promise((done) => setChoices({ models, done: (m) => { setChoices(null); done(m); } })))
+                .then((glb) => { if (glb) onChange({ file: glb, scale: 1, rot: 0, y: 0, share: false }); })
+                .catch((err) => setProblem(errText(err)))
+                .finally(() => setWorking(""));
+              return;
+            }
             if (!["glb", "gltf", "fbx"].includes(ext)) {
-              setProblem(ext === "unitypackage"
-                ? "A .unitypackage can't be opened yet. Open it in Unity or Blender, export the room as a .fbx or .glb file, and import that."
-                : "A 3D room has to be a .glb, .gltf or .fbx file.");
+              setProblem("A 3D room has to be a .glb, .gltf, .fbx or .unitypackage file.");
               return;
             }
             setProblem(""); setCaution("");
@@ -47,9 +58,24 @@ export default function RoomModelField({ name, draft, onChange }: { name: string
             }).catch(() => onChange({ file: f, scale: 1, rot: 0, y: 0, share: false }));
           }} />
       </div>
+      {working && <div className="hint" role="status" data-testid="package-status">{working} Big packages take a while, please stay on this page.</div>}
+      {choices && (
+        <div className="field" data-testid="package-choices" style={{ margin: "8px 0" }}>
+          <span>This package has several models. Which one is the room?</span>
+          <div className="who-list" style={{ maxHeight: 240, overflow: "auto" }}>
+            {choices.models.map((m, i) => (
+              <button key={m.guid} type="button" data-pick={m.name} className={i === 0 ? "on" : ""} onClick={() => choices.done(m)}>
+                <span className="grow">{m.name}<span className="hint"> · {m.path}</span></span><span>{sizeText(m.size)}</span>
+              </button>
+            ))}
+          </div>
+          <div className="row" style={{ marginTop: 8 }}><button type="button" className="btn ghost" onClick={() => choices.done(null)}>Cancel</button></div>
+          <div className="hint">Models are listed biggest first. A room is usually the biggest one; the others are often furniture and props.</div>
+        </div>
+      )}
       {caution && !problem && <div className="hint" role="status" data-testid="model-caution" style={{ color: "var(--warn, #e0a030)" }}>{caution}</div>}
       {problem && <div className="hint" role="alert" data-testid="model-problem" style={{ color: "var(--danger)" }}>{problem}</div>}
-      <div className="hint">A house or room model as a <b>.glb</b>, <b>.gltf</b> or <b>.fbx</b> file (for example from Booth or other shops; export it from Unity or Blender if you only have a .unitypackage). It replaces the built-in room when you are in a chat set in this room. She walks around the floor it has and steps around its furniture. Models stay on this device.</div>
+      <div className="hint">A house or room model as a <b>.glb</b>, <b>.gltf</b> or <b>.fbx</b> file, or a Unity package (<b>.unitypackage</b>, for example from Booth or other shops: the room model is taken out of it and its pictures put back on). A package that is too big, or has no single room model in it, is refused with the reason. It replaces the built-in room when you are in a chat set in this room. She walks around the floor it has and steps around its furniture. Models stay on this device.</div>
       {has && (
         <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
           <label className="field" style={{ margin: 0 }}><span>Size: ×{draft.scale.toFixed(2)}</span>

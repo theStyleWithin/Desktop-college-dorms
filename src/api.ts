@@ -204,6 +204,13 @@ export interface SessionState {
   /** Characters, dorms and chats already in the guest space. */
   guest_items: number;
 }
+export interface PackageModel { guid: string; path: string; name: string; size: number }
+export interface PackageReport { models: PackageModel[]; textures: number; materials: number }
+export interface PackageExtract {
+  model: string; model_ext: string; model_name: string;
+  materials: { name: string; tex: string | null; tex_ext: string | null; color: [number, number, number] | null }[];
+  notes: string[];
+}
 export interface ExportInfo { token: string; file_name: string; size: number; characters: number; dorms: number; chats: number; messages: number; media: number; /** rooms whose 3D model was left out because it isn't marked as shareable */ withheld_rooms: string[] }
 export interface ImportPreview {
   handle: string; display_name: string; guest: boolean; app_version: string; exported_at: number;
@@ -312,9 +319,9 @@ export const api = {
   },
   clearRoomMusic: (id: number) => invoke<Room>("clear_room_music", { id }),
   // an imported 3D scene for the room
-  /** Sent in pieces that go straight to disk, so a big model never has to fit in memory (no size limit to speak of). */
-  async setRoomModel(id: number, file: File, onProgress?: (fraction: number) => void): Promise<Room> {
-    const token = await invoke<string>("room_model_begin", { size: file.size });
+  /** Sent in pieces that go straight to disk, so a big file never has to fit in memory (no size limit to speak of). Returns the token that names it. */
+  async uploadRoomFile(file: File, onProgress?: (fraction: number) => void, spaceFactor = 1): Promise<string> {
+    const token = await invoke<string>("room_model_begin", { size: file.size * spaceFactor });
     const CH = 1_500_000;
     try {
       for (let at = 0; at < file.size; at += CH) {
@@ -328,9 +335,18 @@ export const api = {
         await invoke("room_model_chunk", { token, data: b64 });
         onProgress?.(Math.min(1, (at + CH) / Math.max(1, file.size)));
       }
-      return await invoke<Room>("room_model_finish", { id, token, fileName: file.name });
     } catch (e) { await invoke("room_model_cancel", { token }).catch(() => {}); throw e; }
+    return token;
   },
+  async setRoomModel(id: number, file: File, onProgress?: (fraction: number) => void): Promise<Room> {
+    const token = await api.uploadRoomFile(file, onProgress);
+    try { return await invoke<Room>("room_model_finish", { id, token, fileName: file.name }); }
+    catch (e) { await invoke("room_model_cancel", { token }).catch(() => {}); throw e; }
+  },
+  // opening a Unity package
+  roomPackageScan: (token: string) => invoke<PackageReport>("room_package_scan", { token }),
+  roomPackageExtract: (token: string, modelGuid: string) => invoke<PackageExtract>("room_package_extract", { token, modelGuid }),
+  roomPackageCleanup: (token: string) => invoke<void>("room_package_cleanup", { token }),
   /** Free and total space (bytes) on the drive that holds the app's data; free is 0 when it can't be found out. */
   diskSpace: () => invoke<{ free: number; total: number }>("disk_space"),
   clearRoomModel: (id: number) => invoke<Room>("clear_room_model", { id }),

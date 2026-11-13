@@ -5,6 +5,7 @@ mod extras;
 mod llama;
 mod llm;
 mod secrets;
+mod unitypkg;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -167,6 +168,9 @@ pub fn run() {
             extras::room_model_chunk,
             extras::room_model_finish,
             extras::room_model_cancel,
+            extras::room_package_scan,
+            extras::room_package_extract,
+            extras::room_package_cleanup,
             extras::clear_room_model,
             extras::set_room_model_cfg,
             extras::set_dorm_music,
