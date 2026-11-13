@@ -1537,8 +1537,8 @@ try:
         return t
     tk = upload(pk_two); rep = invoke("room_package_scan", {"token": tk})
     check("a package lists its models, biggest first", [m["name"] for m in rep["models"]] == ["Big Room.glb", "Small Prop.glb"] and rep["models"][0]["size"] > rep["models"][1]["size"], str(rep))
-    ex = invoke("room_package_extract", {"token": tk, "modelGuid": rep["models"][0]["guid"]})
-    check("the chosen model is unpacked into a file the app can read", ex["model_ext"] == "glb" and os.path.getsize(ex["model"]) == os.path.getsize(glb), str(ex))
+    ex = invoke("room_package_extract", {"token": tk, "modelGuids": [rep["models"][0]["guid"]]})
+    check("the chosen model is unpacked into a file the app can read", len(ex["models"]) == 1 and ex["models"][0]["ext"] == "glb" and os.path.getsize(ex["models"][0]["file"]) == os.path.getsize(glb), str(ex))
     invoke("room_package_cleanup", {"token": tk})
     check("cleaning up leaves nothing behind", not [f for f in os.listdir(media_dir) if f.startswith((".roomup-", "pkgtmp-"))], str(os.listdir(media_dir)))
     for label, path, want in [("with no 3D model in it", pk_none, "no 3D model"), ("whose models are in formats it can't read", pk_blend, ".blend"), ("that is only a Unity scene of separate pieces", pk_scene, "scene"), ("that isn't a package at all", pk_text, "isn't a Unity package")]:
