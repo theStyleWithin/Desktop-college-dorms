@@ -662,6 +662,12 @@ function ExportFlow({ eject, label, onClose, onEjected }: { eject: boolean; labe
               {eject ? <> and it <b>will be removed from this device</b> if you eject. Keep your own copy of the original file; you can import it again into the room.</> : ". The rooms themselves are in the file. Mark a model as shareable in its room's settings if the seller allows it."}
             </p>
           )}
+          {info && info.withheld_items.length > 0 && (
+            <p className="hint" role="note" data-testid="withheld-items" style={{ margin: 0, color: eject ? "var(--danger)" : undefined }}>
+              {info.withheld_items.length} decoration{info.withheld_items.length === 1 ? " is" : "s are"} not marked as shareable ({info.withheld_items.slice(0, 5).map((n) => `“${n}”`).join(", ")}{info.withheld_items.length > 5 ? ", …" : ""}), so {info.withheld_items.length === 1 ? "it is" : "they are"} <b>not in this file</b>
+              {eject ? <> and will be <b>removed from this device</b> if you eject. Keep your own copy of the originals; you can import them again.</> : ". Mark one as shareable on the Decorations page if the seller allows it."}
+            </p>
+          )}
           {saved.verified
             ? <p className="hint" style={{ margin: 0 }}>✓ The saved file was read back and matches.</p>
             : <p className="hint" style={{ margin: 0, color: eject ? "var(--danger)" : undefined }}>This location couldn't be double-checked. {eject ? "Nothing will be removed. Save it somewhere else." : "Look for the file to be sure it's there."}</p>}

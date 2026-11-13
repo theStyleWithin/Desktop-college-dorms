@@ -478,6 +478,9 @@ struct Data {
     lorebooks: Vec<db::Lorebook>,
     #[serde(default)]
     personas: Vec<db::Persona>,
+    /// Added in v0.6.3: only the decorations marked as shareable are in a file.
+    #[serde(default)]
+    decor: Vec<db::DecorItem>,
     /// The profile's own picture (file name inside the archive's media folder) and its framing.
     #[serde(default)]
     profile_avatar: Option<(String, Option<db::Frame>)>,
@@ -581,10 +584,12 @@ pub struct ExportInfo {
     media: usize,
     /// Names of rooms whose 3D model was left out because it isn't marked as shareable.
     withheld_rooms: Vec<String>,
+    /// Names of decorations left out because they aren't marked as shareable.
+    withheld_items: Vec<String>,
 }
 
 fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
-    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, profile_avatar) = {
+    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, profile_avatar) = {
         let db = st.db.lock().unwrap();
         let characters = db::list_characters(&db, o).map_err(e)?;
         let dorms = db::list_dorms(&db, o).map_err(e)?;
@@ -598,6 +603,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
             }
         }
         let rooms = db::list_rooms(&db, o).map_err(e)?;
+        let decor = db::list_decor(&db, o).map_err(e)?;
         let mechanics = db::list_mechanics(&db, o).map_err(e)?;
         let notes = db::list_notes(&db, o).map_err(e)?;
         let folders = db::list_folders(&db, o).map_err(e)?;
@@ -609,7 +615,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
             Some(id) => db::get_profile(&db, id).map_err(e)?,
             None => None,
         };
-        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, profile_avatar)
+        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, profile_avatar)
     };
     let mut chats = chats;
     for c in chats.iter_mut() {
@@ -717,6 +723,12 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
         if r.model.is_empty() { r.model_name.clear(); r.model_share = false; r.model_scale = 1.0; r.model_rot = 0.0; r.model_y = 0.0; }
     }
     for d in dorms.iter_mut() { pack_music(&mut d.music, &mut zip)?; if d.music.is_empty() { d.music_name.clear(); } }
+    // decorations go along only when their owner marked them as allowed to be shared; the others are left out
+    let withheld_items: Vec<String> = decor.iter().filter(|d| !d.share).map(|d| d.name.clone()).collect();
+    let mut decor = decor;
+    decor.retain(|d| d.share);
+    for d in decor.iter_mut() { pack_music(&mut d.file, &mut zip)?; }
+    decor.retain(|d| !d.file.is_empty());
     // room backdrops travel with their rooms
     for r in rooms.iter_mut() {
         if let Some(f) = r.backdrop.strip_prefix("file:") {
@@ -746,7 +758,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     // API keys, passcodes and per-device model choices are deliberately not part of the file.
     let mut exported_settings = settings;
     exported_settings.local_model = String::new();
-    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, profile_avatar };
+    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, profile_avatar };
     zip.start_file("manifest.json", deflated).map_err(e)?;
     zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(e)?).map_err(e)?;
     zip.start_file("data.json", deflated).map_err(e)?;
@@ -770,6 +782,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
         messages: counts.messages,
         media: counts.media,
         withheld_rooms,
+        withheld_items,
     };
     Ok((bytes, info, file_name))
 }
@@ -850,6 +863,7 @@ fn remove_owner_data(st: &AppState, o: &Owner) -> R<()> {
         if let Some(pid) = o { files.extend(db::get_profile_avatar(&db, pid).map(|(f, _)| f)); }
         files.extend(db::list_rooms(&db, o).map_err(e)?.into_iter().flat_map(|r| r.backdrop.strip_prefix("file:").map(str::to_string).into_iter().chain(Some(r.music).filter(|m| !m.is_empty())).chain(Some(r.model).filter(|m| !m.is_empty()))));
         files.extend(db::list_dorms(&db, o).map_err(e)?.into_iter().filter(|d| !d.music.is_empty()).map(|d| d.music));
+        files.extend(db::list_decor(&db, o).map_err(e)?.into_iter().map(|d| d.file));
         (settings, files)
     };
     end_session(st);
@@ -1147,6 +1161,20 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
                 db::update_room(&db, &nr, &o).map_err(e)?;
             }
             room_map.insert(r.id, nr.id);
+        }
+
+        // decorations (only shareable ones are ever packed): a .glb, a safe name, written under a fresh name
+        for d in &parsed.data.decor {
+            let Some(base) = d.file.strip_prefix("media/").filter(|b| safe_media_name(b) && b.to_lowercase().ends_with(".glb")) else { continue };
+            let Some(bytes) = parsed.media.get(base).filter(|b| b.starts_with(b"glTF")) else { continue };
+            let id = uid();
+            let rel = format!("media/decor-{id}.glb");
+            let abs = st.data_dir.join(&rel);
+            std::fs::write(&abs, bytes).map_err(e)?;
+            written.push(abs);
+            let name: String = d.name.chars().filter(|c| !c.is_control()).take(80).collect();
+            let item = db::DecorItem { id, name: if name.trim().is_empty() { "Decoration".into() } else { name }, file: rel, bytes: bytes.len() as i64, share: true, created_at: d.created_at };
+            db::save_decor(&db, &item, &o).map_err(e)?;
         }
         for d in &parsed.data.dorms {
             if let (Some(rid), Some(nd)) = (d.room_id.and_then(|r| room_map.get(&r)), dorm_map.get(&d.id)) {

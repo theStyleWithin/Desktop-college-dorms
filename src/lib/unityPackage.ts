@@ -41,10 +41,10 @@ async function loadTexture(url: string, ext: string): Promise<THREE.Texture | nu
 }
 
 /** Turn the unpacked FBX (with the pictures and colours from the Unity materials put back on it) into one .glb file. */
-export async function fbxToGlb(info: PackageExtract, onStep?: (m: string) => void, toUrl: (path: string) => string = convertFileSrc): Promise<File> {
-  const buf = await (await fetch(toUrl(info.model))).arrayBuffer();
+export async function fbxToGlb(model: { file: string; name: string }, materials: PackageExtract["materials"], onStep?: (m: string) => void, toUrl: (path: string) => string = convertFileSrc): Promise<File> {
+  const buf = await (await fetch(toUrl(model.file))).arrayBuffer();
   const obj = new FBXLoader().parse(buf, "");
-  const byName = new Map<string, Mat>(info.materials.map((m) => [m.name.toLowerCase(), m]));
+  const byName = new Map<string, Mat>(materials.map((m) => [m.name.toLowerCase(), m]));
   const cache = new Map<string, Promise<THREE.Texture | null>>();
   const meshes: THREE.Mesh[] = [];
   obj.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
@@ -71,7 +71,7 @@ export async function fbxToGlb(info: PackageExtract, onStep?: (m: string) => voi
   }
   onStep?.("Saving it as one 3D room file…");
   const glb = (await new GLTFExporter().parseAsync(obj, { binary: true, onlyVisible: true, maxTextureSize: MAX_TEXTURE })) as ArrayBuffer;
-  const base = info.model_name.replace(/\.[^.]+$/, "") || "room";
+  const base = model.name.replace(/\.[^.]+$/, "") || "room";
   return new File([glb], `${base}.glb`, { type: "model/gltf-binary" });
 }
 
@@ -89,13 +89,49 @@ export async function importUnityPackage(file: File, onStep: (message: string) =
     const model = report.models.length === 1 ? report.models[0] : await choose(report.models);
     if (!model) return null;
     onStep(`Unpacking ${model.name}…`);
-    const info = await api.roomPackageExtract(token, model.guid);
-    if (info.model_ext === "glb") {
-      const buf = await (await fetch(convertFileSrc(info.model))).arrayBuffer();
-      return new File([buf], info.model_name, { type: "model/gltf-binary" });
+    const info = await api.roomPackageExtract(token, [model.guid]);
+    const m = info.models[0];
+    if (m.ext === "glb") {
+      const buf = await (await fetch(convertFileSrc(m.file))).arrayBuffer();
+      return new File([buf], m.name, { type: "model/gltf-binary" });
     }
     onStep("Converting it to a 3D room…");
-    return await fbxToGlb(info, onStep);
+    return await fbxToGlb(m, info.materials, onStep);
+  } finally {
+    await api.roomPackageCleanup(token).catch(() => {});
+  }
+}
+
+/**
+ * Open a Unity package full of props and turn the models the owner picks into decorations: `chooseMany` is asked which of the
+ * models to take, and `onItem` is given each one as a .glb (one at a time, so a big pack never sits in memory all at once).
+ * Returns how many were taken. Refuses a package that is too big or has no usable model, with the reason.
+ */
+export async function importDecorPackage(
+  file: File,
+  onStep: (message: string) => void,
+  chooseMany: (models: PackageModel[]) => Promise<PackageModel[] | null>,
+  onItem: (glb: File, index: number, total: number) => Promise<void>,
+): Promise<number> {
+  if (file.size > MAX_PACKAGE) throw new Error(`That package is ${fmtBytes(file.size)}, which is too big (4 GB at most).`);
+  const token = await api.uploadRoomFile(file, (f) => onStep(`Sending the package to the app… ${Math.round(f * 100)}%`), 3);
+  try {
+    onStep("Looking inside the package…");
+    const report = await api.roomPackageScan(token);
+    const picked = await chooseMany(report.models);
+    if (!picked || !picked.length) return 0;
+    onStep(`Unpacking ${picked.length} model${picked.length === 1 ? "" : "s"}…`);
+    const info = await api.roomPackageExtract(token, picked.map((m) => m.guid), true);
+    let n = 0;
+    for (const m of info.models) {
+      n++;
+      onStep(`Adding ${n} of ${info.models.length}: ${m.name}`);
+      let glb: File;
+      if (m.ext === "glb") glb = new File([await (await fetch(convertFileSrc(m.file))).arrayBuffer()], m.name, { type: "model/gltf-binary" });
+      else glb = await fbxToGlb(m, info.materials, (t) => onStep(`Adding ${n} of ${info.models.length}: ${m.name}. ${t}`));
+      await onItem(glb, n, info.models.length);
+    }
+    return n;
   } finally {
     await api.roomPackageCleanup(token).catch(() => {});
   }

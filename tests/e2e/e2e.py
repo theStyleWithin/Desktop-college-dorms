@@ -1572,6 +1572,46 @@ try:
     check("the package's temporary files are gone", not [f for f in os.listdir(media_dir) if f.startswith((".roomup-", "pkgtmp-"))], str(os.listdir(media_dir)))
     for x in pr: invoke("delete_room", {"id": x["id"]})
 
+    # -- decorations: a library of props from a package, with a sharing mark on each
+    pk_pack = os.path.join(WORK, "props.unitypackage")
+    gb = open(glb, "rb").read()
+    mkpkg(pk_pack, [(g("1"), "Assets/Props/Lamp.glb", gb), (g("2"), "Assets/Props/Plant.glb", gb), (g("3"), "Assets/Props/Table.glb", gb), (g("4"), "Assets/Props/Cafe.blend", b"BLENDER")])
+    nav("Decorations"); time.sleep(0.6)
+    check("the Decorations page starts empty and explains itself", text_present("No decorations yet") and text_present("Import decorations"))
+    inp = d.find_element(By.CSS_SELECTOR, "input[aria-label='Import decorations']"); inp.send_keys(pk_none)
+    for _ in range(40):
+        time.sleep(0.5)
+        if d.execute_script("return !!document.querySelector('[data-testid=decor-problem]')"): break
+    check("a package with no model is refused on this page too, with the reason", "no 3D model" in d.execute_script("return (document.querySelector('[data-testid=decor-problem]')||{}).textContent||''"))
+    d.find_element(By.CSS_SELECTOR, "input[aria-label='Import decorations']").send_keys(pk_pack)
+    wait(40).until(lambda x: x.execute_script("return !!document.querySelector('[data-testid=decor-picker]')"))
+    check("a pack lists its models to tick (the unusable .blend isn't offered)", d.execute_script("return [...document.querySelectorAll('[data-testid=decor-picker] [data-pick]')].map(l=>l.dataset.pick).sort().join('|')") == "Lamp.glb|Plant.glb|Table.glb")
+    check("Add is off until something is ticked", d.execute_script("return document.querySelector('[data-act=add]').disabled") is True)
+    d.execute_script("document.querySelector('[data-act=all]').click()"); time.sleep(0.3)
+    d.execute_script("document.querySelector('[data-act=add]').click()")
+    wait(60).until(lambda x: x.execute_script("return document.querySelectorAll('[data-decor]').length") == 3)
+    items = {i["name"]: i for i in invoke("list_decor")}
+    check("each ticked model became a decoration, not shareable by default", set(items) == {"Lamp", "Plant", "Table"} and all(not i["share"] and os.path.exists(i["path"]) and i["bytes"] == len(gb) for i in items.values()), str(items)[:300])
+    check("the package's temporary files are gone", not [f for f in os.listdir(media_dir) if f.startswith((".roomup-", "pkgtmp-"))])
+    d.execute_script("document.querySelector('[data-decor=\"Lamp\"] [data-share=\"yes\"]').click()"); time.sleep(0.8)
+    check("the sharing mark can be switched on", {i["name"]: i["share"] for i in invoke("list_decor")}["Lamp"] is True)
+    d.execute_script("[...document.querySelectorAll('[data-decor=\"Plant\"] button')].find(b=>b.textContent.includes('Rename')).click()"); time.sleep(0.4)
+    ei = d.find_element(By.CSS_SELECTOR, "input[aria-label='Decoration name']"); ei.send_keys(Keys.CONTROL + "a"); ei.send_keys("Fern" + Keys.ENTER); time.sleep(0.8)
+    d.execute_script("window.confirm=()=>true; [...document.querySelectorAll('[data-decor=\"Table\"] button')].find(b=>b.textContent.includes('Delete')).click()"); time.sleep(0.9)
+    items = {i["name"]: i for i in invoke("list_decor")}
+    check("a decoration can be renamed and deleted (its file goes too)", set(items) == {"Lamp", "Fern"} and not any(f.endswith(".glb") and "decor-" in f and os.path.join(media_dir, f) not in [i["path"] for i in items.values()] for f in os.listdir(media_dir)), str(list(items)))
+    check("only a real .glb is accepted into the library", "valid 3D model" in (inv_err("decor_finish", {"token": upload(pk_text), "name": "Bad"}) or ""))
+    # export: only the shareable one goes along; eject removes the other with a warning
+    info = invoke("prepare_export")
+    check("the export names the decoration that isn't shareable and leaves it out", info["withheld_items"] == ["Fern"], str(info))
+    xp = os.path.join(WORK, "decor.dorms"); invoke("save_export", {"token": info["token"], "path": xp})
+    n_glb = len([f for f in os.listdir(media_dir) if f.startswith("decor-")])
+    invoke("eject_profile", {"token": info["token"]})
+    check("eject removes both decoration files from the device", len([f for f in os.listdir(media_dir) if f.startswith("decor-")]) == n_glb - 2)
+    invoke_file("import_profile", xp, {"x-mode": "import", "x-handle": "Roomer3", "x-passcode": ""})
+    back = invoke("list_decor")
+    check("the profile came back with only the shareable decoration, still marked shareable", [(i["name"], i["share"]) for i in back] == [("Lamp", True)] and os.path.exists(back[0]["path"]), str(back))
+
 finally:
     try: d.quit()
     except Exception: pass

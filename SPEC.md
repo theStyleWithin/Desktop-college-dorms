@@ -158,6 +158,14 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   main texture and colour put back (pictures scaled to at most 2048 px) and written as one `.glb` (GLTFExporter), which then goes through the normal room-model path; a `.glb` is used as it is. The temporary files are
   always removed. Unity shaders, prefabs, scenes and baked lighting are not read.
 
+## Decorations (v0.7)
+
+- A per-profile library (`decor` table, files `media/decor-*.glb`) of 3D props. Items come from a Unity package (the same streaming scan and extraction as rooms, for several models in one pass, with more room allowed: 2 GB of models and pictures
+  instead of 1 GB), or from one `.glb` / `.fbx` (an FBX is converted to a `.glb` in the web view). Every item is stored as a `.glb`, uploaded with the chunked upload and accepted only if it starts with `glTF`.
+- Each item has the same **sharing mark** as a room model, default *not allowed to share*. Only shareable items are written into an exported profile (and come back marked shareable); the export lists the withheld ones,
+  and ejecting removes every item's file from the device, which the dialog says. Items are private per profile, like every other row.
+- Placing items in a room (decorate mode, saved per room, with her walking around them) is the next step; for now the library only holds them.
+
 ## Hands: pet, poke, tickle, pick up
 
 - Three gestures share the virtual hands: open (pet), pointing finger (poke, hold to tickle) and pinch (pick up). Where a poke lands is found from simple body proxies

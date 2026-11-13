@@ -9,11 +9,8 @@ import { fbxToGlb } from "../lib/unityPackage";
   const base = q.get("base") ?? "";
   const out = document.getElementById("out")!;
   try {
-    const info = {
-      model: `${base}/test.fbx`, model_ext: "fbx", model_name: "Test Room.fbx", notes: [],
-      materials: [{ name: "Wall", tex: q.get("tex") === "0" ? null : `${base}/wall.png`, tex_ext: "png", color: [1, 0.5, 0.25] as [number, number, number] }],
-    };
-    const file = await fbxToGlb(info, undefined, (p) => p);
+    const materials = [{ name: "Wall", tex: q.get("tex") === "0" ? null : `${base}/wall.png`, tex_ext: "png", color: [1, 0.5, 0.25] as [number, number, number] }];
+    const file = await fbxToGlb({ file: `${base}/test.fbx`, name: "Test Room.fbx" }, materials, undefined, (p) => p);
     const gltf = await new GLTFLoader().parseAsync(await file.arrayBuffer(), "");
     let meshes = 0, mapped = 0, tris = 0; const colors: string[] = [];
     gltf.scene.traverse((o) => {

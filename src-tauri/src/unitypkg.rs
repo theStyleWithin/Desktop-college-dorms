@@ -16,6 +16,8 @@ type R<T> = Result<T, String>;
 pub const MAX_PACKAGE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 /// Largest room (model plus the textures it uses, as stored in the package) that the viewer is asked to show.
 pub const MAX_ROOM_BYTES: u64 = 1024 * 1024 * 1024;
+/// Largest set of props taken from one package at once.
+pub const MAX_DECOR_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// Unity's text assets (materials) are small; anything bigger is not read into memory.
 const MAX_YAML: u64 = 512 * 1024;
 
@@ -193,13 +195,20 @@ pub fn parse_material(y: &str) -> Mat {
 
 #[derive(Serialize)]
 pub struct Extracted {
-    /// where the model was written, and its type (`fbx` or `glb`)
-    pub model: String,
-    pub model_ext: String,
-    pub model_name: String,
+    /// the models that were unpacked
+    pub models: Vec<ExModel>,
     /// the materials of the package and where each one's picture was written (absolute path, type)
     pub materials: Vec<ExMat>,
     pub notes: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct ExModel {
+    pub guid: String,
+    /// where the model was written (absolute path), its type (`fbx` or `glb`) and its name in the package
+    pub file: String,
+    pub ext: String,
+    pub name: String,
 }
 
 #[derive(Serialize)]
@@ -210,12 +219,20 @@ pub struct ExMat {
     pub color: Option<[f32; 3]>,
 }
 
-/// Write the chosen model and the textures its materials use into `dir`, refusing a room that is too big for the viewer.
-pub fn extract(pkg: &Path, s: &Scan, model_guid: &str, dir: &Path, free: u64) -> R<Extracted> {
-    let mp = s.paths.get(model_guid).ok_or("That model isn't in the package.")?.clone();
-    let model_ext = ext_of(&mp);
-    if !MODEL_EXTS.contains(&model_ext.as_str()) {
-        return Err("That model can't be used.".into());
+/// Write the chosen models and the textures the package's materials use into `dir`, refusing a set that is bigger than `max_total` bytes
+/// (the viewer can't show a room over about 1 GB; a library of props gets more room) or that the free space can't hold.
+pub fn extract(pkg: &Path, s: &Scan, model_guids: &[String], dir: &Path, free: u64, max_total: u64) -> R<Extracted> {
+    if model_guids.is_empty() {
+        return Err("Choose at least one model.".into());
+    }
+    let mut chosen: Vec<(String, String, String)> = vec![]; // guid, path in the package, ext
+    for g in model_guids {
+        let mp = s.paths.get(g).ok_or("That model isn't in the package.")?.clone();
+        let ext = ext_of(&mp);
+        if !MODEL_EXTS.contains(&ext.as_str()) {
+            return Err("That model can't be used.".into());
+        }
+        if !chosen.iter().any(|c| &c.0 == g) { chosen.push((g.clone(), mp, ext)); }
     }
     let mats: Vec<Mat> = s.yaml.values().map(|y| parse_material(y)).filter(|m| !m.name.is_empty()).collect();
     // only the pictures that materials use, in formats that can be read
@@ -230,33 +247,35 @@ pub fn extract(pkg: &Path, s: &Scan, model_guid: &str, dir: &Path, free: u64) ->
             }
         }
     }
-    let msize = s.sizes.get(model_guid).copied().unwrap_or(0);
+    let msize: u64 = chosen.iter().map(|c| s.sizes.get(&c.0).copied().unwrap_or(0)).sum();
     let total = msize + want.keys().map(|g| s.sizes.get(g).copied().unwrap_or(0)).sum::<u64>();
-    if total > MAX_ROOM_BYTES {
-        return Err(format!("This room is too big for the 3D viewer: the model is {} and its pictures add {} (about {} at most is supported). Try a smaller room.", human(msize), human(total - msize), human(MAX_ROOM_BYTES)));
+    if total > max_total {
+        return Err(format!("This is too big: the models are {} and their pictures add {} (about {} at most is supported). Try a smaller selection.", human(msize), human(total - msize), human(max_total)));
     }
     if free > 0 && free < total + 200 * 1024 * 1024 {
-        return Err(format!("There isn't enough free space to unpack this room: it needs about {} and this device has {} free. Free some space, or try a smaller room.", human(total + 200 * 1024 * 1024), human(free)));
+        return Err(format!("There isn't enough free space to unpack this: it needs about {} and this device has {} free. Free some space, or choose less.", human(total + 200 * 1024 * 1024), human(free)));
     }
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    let model_file = dir.join(format!("model.{model_ext}"));
     let mut a = open(pkg)?;
-    let mut found_model = false;
+    let mut done: Vec<String> = vec![];
     for e in a.entries().map_err(|_| not_a_package())? {
         let mut e = e.map_err(|_| not_a_package())?;
         let p = e.path().map_err(|_| not_a_package())?.to_string_lossy().to_string();
         let Some((guid, name)) = split(&p) else { continue };
         if name != "asset" { continue; }
-        if guid == model_guid {
-            let mut f = std::fs::File::create(&model_file).map_err(|e| format!("Couldn't save the model (is the disk full?): {e}"))?;
+        if let Some((_, _, ext)) = chosen.iter().find(|c| c.0 == guid) {
+            let mut f = std::fs::File::create(dir.join(format!("model-{guid}.{ext}"))).map_err(|e| format!("Couldn't save the model (is the disk full?): {e}"))?;
             std::io::copy(&mut e, &mut f).map_err(|e| format!("Couldn't save the model (is the disk full?): {e}"))?;
-            found_model = true;
+            done.push(guid.to_string());
         } else if let Some(ext) = want.get(guid) {
             let mut f = std::fs::File::create(dir.join(format!("tex-{guid}.{ext}"))).map_err(|e| e.to_string())?;
             std::io::copy(&mut e, &mut f).map_err(|e| format!("Couldn't save a picture (is the disk full?): {e}"))?;
         }
     }
-    if !found_model {
+    let models: Vec<ExModel> = chosen.iter().filter(|c| done.contains(&c.0)).map(|(g, p, ext)| ExModel {
+        guid: g.clone(), file: dir.join(format!("model-{g}.{ext}")).to_string_lossy().to_string(), ext: ext.clone(), name: base_name(p),
+    }).collect();
+    if models.is_empty() {
         return Err("The model couldn't be found in the package.".into());
     }
     let materials = mats.into_iter().map(|m| {
@@ -266,7 +285,7 @@ pub fn extract(pkg: &Path, s: &Scan, model_guid: &str, dir: &Path, free: u64) ->
         };
         ExMat { name: m.name, tex, tex_ext, color: m.color }
     }).collect();
-    Ok(Extracted { model: model_file.to_string_lossy().to_string(), model_ext, model_name: base_name(&mp), materials, notes })
+    Ok(Extracted { models, materials, notes })
 }
 
 #[cfg(test)]
@@ -332,9 +351,10 @@ mod tests {
         assert_eq!(rep.models[0].name, "Lamp.fbx", "biggest first");
         assert_eq!((rep.textures, rep.materials), (2, 1));
         let out = d.join("out");
-        let ex = extract(&pkg, &s, &room, &out, 0).unwrap();
-        assert_eq!(ex.model_ext, "glb");
-        assert_eq!(std::fs::read(&ex.model).unwrap(), b"glTFroom");
+        let ex = extract(&pkg, &s, &[room.clone()], &out, 0, MAX_ROOM_BYTES).unwrap();
+        assert_eq!(ex.models.len(), 1);
+        assert_eq!(ex.models[0].ext, "glb");
+        assert_eq!(std::fs::read(&ex.models[0].file).unwrap(), b"glTFroom");
         assert_eq!(ex.materials.len(), 1);
         assert_eq!(ex.materials[0].name, "Floor");
         assert_eq!(ex.materials[0].color, Some([1.0, 0.5, 0.25]));
@@ -344,8 +364,14 @@ mod tests {
         // too big for the viewer, and not enough free space
         let mut huge = scan(&pkg).unwrap();
         huge.sizes.insert(room.clone(), 2 * 1024 * 1024 * 1024);
-        assert!(extract(&pkg, &huge, &room, &d.join("o2"), 0).err().unwrap().contains("too big"));
-        assert!(extract(&pkg, &s, &room, &d.join("o3"), 1024).err().unwrap().contains("enough free space"));
+        assert!(extract(&pkg, &huge, &[room.clone()], &d.join("o2"), 0, MAX_ROOM_BYTES).err().unwrap().contains("too big"));
+        assert!(extract(&pkg, &huge, &[room.clone()], &d.join("o2b"), 0, 4 * 1024 * 1024 * 1024).is_ok(), "a library of props is allowed more");
+        assert!(extract(&pkg, &s, &[room.clone()], &d.join("o3"), 1024, MAX_ROOM_BYTES).err().unwrap().contains("enough free space"));
+        // several models in one pass
+        let both = extract(&pkg, &s, &[room.clone(), "e".repeat(32)], &d.join("o4"), 0, MAX_ROOM_BYTES).unwrap();
+        assert_eq!(both.models.len(), 2);
+        assert!(both.models.iter().all(|m| Path::new(&m.file).exists()));
+        assert!(extract(&pkg, &s, &[], &d.join("o5"), 0, MAX_ROOM_BYTES).is_err());
         assert!(!d.join("o3").exists(), "nothing is written when it is refused");
         std::fs::remove_dir_all(&d).ok();
     }

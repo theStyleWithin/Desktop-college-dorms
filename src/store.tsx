@@ -6,6 +6,7 @@ export type Route =
   | { page: "library" }
   | { page: "rooms"; edit?: number | "new" }
   | { page: "notes" }
+  | { page: "decor" }
   | { page: "lorebooks" }
   | { page: "editor"; id: string | null }
   | { page: "chat"; chatId?: number }

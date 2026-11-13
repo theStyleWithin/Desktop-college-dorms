@@ -1,6 +1,6 @@
 [package]
 name = "dorms-core"
-version = "0.6.2"
+version = "0.7.0"
 edition = "2021"
 description = "Character card parsing/export and prompt assembly for Desktop College Dorms"
 license = "MIT"

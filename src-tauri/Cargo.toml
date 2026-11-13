@@ -1,6 +1,6 @@
 [package]
 name = "desktop-college-dorms"
-version = "0.6.2"
+version = "0.7.0"
 description = "Offline-first AI character creator and chat rooms"
 authors = ["theStyleWithin"]
 license = "MIT"
