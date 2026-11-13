@@ -151,7 +151,12 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
 - Her plans in an imported room are wandering, using the phone standing up, and stretching (no bed, desk or window).
 - **Sharing.** Each model has a sharing mark, default *not allowed to share*. Only a model marked shareable is written into an exported profile (with its size, turn and height), and it comes back marked shareable.
   An unshared model is left out, the export lists its room as withheld, and ejecting removes the file from the device (the dialog says so). The mark is the owner's own declaration; it is not verified.
-- Unity shaders, prefabs and baked lighting are not read. A `.unitypackage` is not opened.
+- **Unity packages.** A `.unitypackage` (gzip tar: a folder per asset GUID with `asset`, `pathname`, `asset.meta`) is sent to disk with the chunked upload, then scanned in one streaming pass that reads
+  only the asset paths, sizes and the small text materials; nothing is executed. It is refused (nothing kept) when it is not a package, is over 4 GB, has less free space than about three times its size,
+  or holds no usable model (`.fbx` and `.glb` are used; `.blend`, `.max`, `.obj`, `.gltf` and the like are named in the refusal; a scene or prefabs without a room model are refused as separate pieces).
+  The chosen model and only the pictures its materials use are unpacked to a temporary folder, refused if together they exceed 1 GB or the free space. An FBX is rebuilt in the web view with the Unity materials'
+  main texture and colour put back (pictures scaled to at most 2048 px) and written as one `.glb` (GLTFExporter), which then goes through the normal room-model path; a `.glb` is used as it is. The temporary files are
+  always removed. Unity shaders, prefabs, scenes and baked lighting are not read.
 
 ## Hands: pet, poke, tickle, pick up
 

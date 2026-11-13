@@ -219,10 +219,10 @@ const MAX_MODEL_UPLOAD: u64 = 8 * 1024 * 1024 * 1024;
 fn check_model(name: &str, head: &[u8]) -> R<String> {
     let ext = std::path::Path::new(name).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
     if ext == "unitypackage" {
-        return Err("A .unitypackage can't be opened yet. Open it in Unity or Blender and export the room as a .fbx or .glb file, then import that.".into());
+        return Err("A .unitypackage isn't sent as a model: choose it in the room's 3D model field, which opens it and takes the room out.".into());
     }
     if !MODEL_EXTS.contains(&ext.as_str()) {
-        return Err("A 3D room has to be a .glb, .gltf or .fbx file. (A .unitypackage isn't supported yet: open it and export the model as .fbx or .glb.)".into());
+        return Err("A 3D room has to be a .glb, .gltf or .fbx file (or a .unitypackage, chosen in the room's 3D model field).".into());
     }
     let ok = match ext.as_str() {
         "glb" => head.starts_with(b"glTF"),
@@ -323,6 +323,15 @@ pub fn room_model_begin(state: State<'_, Shared>, size: Option<u64>) -> R<String
             }
         }
     }
+    // ... and unpacked Unity packages that were never finished
+    if let Ok(rd) = std::fs::read_dir(state.data_dir.join("media")) {
+        for f in rd.flatten() {
+            if f.file_name().to_string_lossy().starts_with("pkgtmp-") {
+                let old = f.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).map(|d| d.as_secs() > 3600).unwrap_or(true);
+                if old { let _ = std::fs::remove_dir_all(f.path()); }
+            }
+        }
+    }
     let token = uid();
     std::fs::write(upload_path(&state, &token)?, b"").map_err(e)?;
     Ok(token)
@@ -368,6 +377,73 @@ pub fn room_model_finish(state: State<'_, Shared>, id: i64, token: String, file_
         return fail(&format!("Couldn't save the file: {err}"));
     }
     install_model(&state, id, rel, shown_name(&file_name))
+}
+
+fn scan_path(st: &AppState, token: &str) -> R<std::path::PathBuf> {
+    let p = upload_path(st, token)?;
+    Ok(std::path::PathBuf::from(format!("{}.scan.json", p.display())))
+}
+
+fn pkg_dir(st: &AppState, token: &str) -> R<std::path::PathBuf> {
+    upload_path(st, token)?; // checks the token
+    Ok(st.data_dir.join("media").join(format!("pkgtmp-{token}")))
+}
+
+/// A Unity package that was sent with the chunked upload: look inside it (writes nothing), and refuse it with a plain reason if it can't become a room.
+#[tauri::command]
+pub async fn room_package_scan(state: State<'_, Shared>, token: String) -> R<crate::unitypkg::PkgReport> {
+    let st: Shared = state.inner().clone();
+    let path = upload_path(&st, &token)?;
+    let sp = scan_path(&st, &token)?;
+    tokio::task::spawn_blocking(move || {
+        let run = || -> R<crate::unitypkg::PkgReport> {
+            let size = std::fs::metadata(&path).map_err(|_| "The file transfer was cancelled.".to_string())?.len();
+            if size > crate::unitypkg::MAX_PACKAGE_BYTES {
+                return Err("That package is too big (4 GB at most).".into());
+            }
+            let scan = crate::unitypkg::scan(&path)?;
+            let rep = crate::unitypkg::report(&scan)?;
+            std::fs::write(&sp, serde_json::to_vec(&scan).map_err(|err| err.to_string())?).map_err(|err| err.to_string())?;
+            Ok(rep)
+        };
+        let r = run();
+        if r.is_err() {
+            let _ = std::fs::remove_file(&path);
+            let _ = std::fs::remove_file(&sp);
+        }
+        r
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+/// Unpack the chosen model (and the pictures its materials use) from a scanned package into a temporary folder.
+#[tauri::command]
+pub async fn room_package_extract(state: State<'_, Shared>, token: String, model_guid: String) -> R<crate::unitypkg::Extracted> {
+    let st: Shared = state.inner().clone();
+    let path = upload_path(&st, &token)?;
+    let sp = scan_path(&st, &token)?;
+    let dir = pkg_dir(&st, &token)?;
+    let free = fs4::available_space(&st.data_dir).unwrap_or(0);
+    tokio::task::spawn_blocking(move || {
+        let scan: crate::unitypkg::Scan = serde_json::from_slice(&std::fs::read(&sp).map_err(|_| "The package isn't here any more. Choose it again.".to_string())?)
+            .map_err(|_| "The package isn't here any more. Choose it again.".to_string())?;
+        let r = crate::unitypkg::extract(&path, &scan, &model_guid, &dir, free);
+        if r.is_err() {
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+        r
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+/// Throw away everything a package import left behind (the uploaded package, its scan and the unpacked folder).
+#[tauri::command]
+pub fn room_package_cleanup(state: State<'_, Shared>, token: String) {
+    if let Ok(p) = upload_path(&state, &token) { let _ = std::fs::remove_file(p); }
+    if let Ok(p) = scan_path(&state, &token) { let _ = std::fs::remove_file(p); }
+    if let Ok(p) = pkg_dir(&state, &token) { let _ = std::fs::remove_dir_all(p); }
 }
 
 #[tauri::command]

@@ -1472,7 +1472,8 @@ try:
     mk = lambda n: invoke("create_room", {"room": {"id": 0, "name": n, "kind": "living_room", "description": "", "owner_kind": "self", "character_id": None, "backdrop": "", "created_at": 0}})
     pub, priv = mk("Shared house"), mk("Private house")
     check("a new room has no 3D model", not pub.get("model") and pub.get("model_share") is False and pub.get("model_scale") == 1.0)
-    check("a model has to be a .glb, .gltf or .fbx", "glb" in (inv_err_file("set_room_model", glb, {"x-room-id": str(pub["id"]), "x-file-name": "house.unitypackage"}) or ""))
+    check("a model has to be a .glb, .gltf or .fbx", "glb" in (inv_err_file("set_room_model", glb, {"x-room-id": str(pub["id"]), "x-file-name": "house.txt"}) or ""))
+    check("a .unitypackage isn't sent as a model: it is opened from the room form", "3D model field" in (inv_err_file("set_room_model", glb, {"x-room-id": str(pub["id"]), "x-file-name": "house.unitypackage"}) or ""))
     check("a file that only has a model's name is refused", "valid 3D model" in (inv_err_file("set_room_model", bad, {"x-room-id": str(pub["id"]), "x-file-name": "house.glb"}) or ""))
     pub = invoke_file("set_room_model", glb, {"x-room-id": str(pub["id"]), "x-file-name": "My house.glb"})
     priv = invoke_file("set_room_model", glb, {"x-room-id": str(priv["id"]), "x-file-name": "Booth house.glb"})
@@ -1512,6 +1513,64 @@ try:
     check("a model can be removed again", not invoke("clear_room_model", {"id": rr["Shared house"]["id"]})["model"] and len(os.listdir(media_dir)) == files_before - 2)
     info2 = invoke("prepare_export")
     check("with no models left nothing is withheld", info2["withheld_rooms"] == [])
+
+    # -- Unity packages: opened inside the app, refused with a reason when they can't become a room
+    import tarfile, io as _io
+    def mkpkg(path, assets):
+        with tarfile.open(path, "w:gz") as t:
+            for guid, pn, data in assets:
+                for name, b in (("asset", data), ("asset.meta", b"fileFormatVersion: 2\n"), ("pathname", (pn + "\n00\n").encode())):
+                    ti = tarfile.TarInfo(f"{guid}/{name}"); ti.size = len(b); t.addfile(ti, _io.BytesIO(b))
+    g = lambda c: c * 32
+    png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+    mat = ("%YAML 1.1\nMaterial:\n  m_Name: Floor\n  m_SavedProperties:\n    m_TexEnvs:\n    - _MainTex:\n        m_Texture: {fileID: 2800000, guid: " + g("b") + ", type: 3}\n    m_Colors:\n    - _Color: {r: 1, g: 1, b: 1, a: 1}\n").encode()
+    pk_ok = os.path.join(WORK, "room-ok.unitypackage"); mkpkg(pk_ok, [(g("a"), "Assets/Room/Room.glb", open(glb, "rb").read()), (g("b"), "Assets/Room/Floor.png", png), (g("c"), "Assets/Room/Floor.mat", mat)])
+    pk_two = os.path.join(WORK, "room-two.unitypackage"); mkpkg(pk_two, [(g("a"), "Assets/Room/Big Room.glb", open(glb, "rb").read()), (g("d"), "Assets/Props/Small Prop.glb", open(glb, "rb").read()[:2000])])
+    pk_none = os.path.join(WORK, "room-none.unitypackage"); mkpkg(pk_none, [(g("b"), "Assets/Room/Floor.png", png), (g("c"), "Assets/Room/Floor.mat", mat)])
+    pk_blend = os.path.join(WORK, "room-blend.unitypackage"); mkpkg(pk_blend, [(g("e"), "Assets/Room/Room.blend", b"BLENDER"), (g("f"), "Assets/Room/Other.max", b"max")])
+    pk_scene = os.path.join(WORK, "room-scene.unitypackage"); mkpkg(pk_scene, [(g("1"), "Assets/Scenes/Room.unity", b"%YAML 1.1\n"), (g("2"), "Assets/Prefabs/Prop.prefab", b"%YAML 1.1\n")])
+    pk_text = os.path.join(WORK, "room-text.unitypackage"); open(pk_text, "wb").write(b"this is not a package at all")
+    # the app's own steps, one by one
+    def upload(path, factor=1):
+        data = open(path, "rb").read(); t = invoke("room_model_begin", {"size": len(data) * factor})
+        for i in range(0, len(data), 6000): invoke("room_model_chunk", {"token": t, "data": base64.b64encode(data[i:i + 6000]).decode()})
+        return t
+    tk = upload(pk_two); rep = invoke("room_package_scan", {"token": tk})
+    check("a package lists its models, biggest first", [m["name"] for m in rep["models"]] == ["Big Room.glb", "Small Prop.glb"] and rep["models"][0]["size"] > rep["models"][1]["size"], str(rep))
+    ex = invoke("room_package_extract", {"token": tk, "modelGuid": rep["models"][0]["guid"]})
+    check("the chosen model is unpacked into a file the app can read", ex["model_ext"] == "glb" and os.path.getsize(ex["model"]) == os.path.getsize(glb), str(ex))
+    invoke("room_package_cleanup", {"token": tk})
+    check("cleaning up leaves nothing behind", not [f for f in os.listdir(media_dir) if f.startswith((".roomup-", "pkgtmp-"))], str(os.listdir(media_dir)))
+    for label, path, want in [("with no 3D model in it", pk_none, "no 3D model"), ("whose models are in formats it can't read", pk_blend, ".blend"), ("that is only a Unity scene of separate pieces", pk_scene, "scene"), ("that isn't a package at all", pk_text, "isn't a Unity package")]:
+        tk = upload(path); err = inv_err("room_package_scan", {"token": tk})
+        check(f"a package {label} is refused with the reason", want in (err or ""), str(err))
+        check(f"and its files are removed ({label})", not [f for f in os.listdir(media_dir) if f.startswith(".roomup-" + tk)])
+    check("a package that can't fit on the drive is refused before it is copied", "enough free space" in (inv_err("room_model_begin", {"size": 3 * 10 ** 15}) or ""))
+    # the same thing through the room form
+    reload_ui(); nav("Rooms"); time.sleep(0.6)
+    click_text("button", "Make a room"); wait(5).until(lambda x: x.execute_script("return !!document.querySelector('input[placeholder=\\'e.g. My loft\\']')"))
+    set_value("input[placeholder='e.g. My loft']", "Package room")
+    def pkg_ui(path):
+        d.find_element(By.CSS_SELECTOR, "input[aria-label='3D room model']").send_keys(path)
+        for _ in range(60):
+            time.sleep(0.5)
+            r = d.execute_script("const n=document.querySelector('[data-testid=model-name]'),p=document.querySelector('[data-testid=model-problem]'),c=document.querySelector('[data-testid=package-choices]');return {name:n?n.textContent:'',problem:p?p.textContent:'',choose:!!c}")
+            if (r["name"] and "Built-in" not in r["name"]) or r["problem"] or r["choose"]: return r
+        return r
+    r = pkg_ui(pk_none)
+    check("the room form refuses a package with no 3D model and says why", "no 3D model" in r["problem"] and "Built-in" in d.execute_script("return document.querySelector('[data-testid=model-name]').textContent"), str(r))
+    r = pkg_ui(pk_two)
+    check("a package with several models asks which one is the room", r["choose"] and d.execute_script("return [...document.querySelectorAll('[data-testid=package-choices] [data-pick]')].map(b=>b.dataset.pick).join('|')") == "Big Room.glb|Small Prop.glb", str(r))
+    d.execute_script("document.querySelector('[data-testid=package-choices] [data-pick=\"Big Room.glb\"]').click()")
+    for _ in range(40):
+        time.sleep(0.5)
+        if "Big Room.glb" in d.execute_script("return document.querySelector('[data-testid=model-name]').textContent"): break
+    check("choosing one makes it the room's model in the form", "Big Room.glb" in d.execute_script("return document.querySelector('[data-testid=model-name]').textContent"))
+    click_text("button", "Save to list"); time.sleep(2.0)
+    pr = [x for x in invoke("list_rooms") if x["name"] == "Package room"]
+    check("saving stores the room with the model taken out of the package", len(pr) == 1 and pr[0]["model_name"] == "Big Room.glb" and os.path.exists(pr[0]["model_path"]) and pr[0]["model_share"] is False, str(pr))
+    check("the package's temporary files are gone", not [f for f in os.listdir(media_dir) if f.startswith((".roomup-", "pkgtmp-"))], str(os.listdir(media_dir)))
+    for x in pr: invoke("delete_room", {"id": x["id"]})
 
 finally:
     try: d.quit()
