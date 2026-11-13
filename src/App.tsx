@@ -1,3 +1,4 @@
+import { applyTextScale } from "./lib/textScale";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type AppInfo, type Character, type Chat, type Dorm, type Folder, type Persona, type Room, type SessionState, type Settings } from "./api";
 import { StoreCtx, type Route, type Store } from "./store";
@@ -11,6 +12,7 @@ import Rooms from "./pages/Rooms";
 import Notes from "./pages/Notes";
 import Lorebooks from "./pages/Lorebooks";
 import Decor from "./pages/Decor";
+import PromptsMenu from "./components/PromptsMenu";
 import Editor from "./pages/Editor";
 import ChatPage from "./pages/Chat";
 import SettingsPage from "./pages/Settings";
@@ -64,6 +66,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
 
   useEffect(() => { refresh(); api.appInfo().then(setInfo).catch(() => {}); }, [refresh]);
   useEffect(() => { document.documentElement.dataset.theme = settings.theme; }, [settings.theme]);
+  useEffect(() => { applyTextScale(); }, []);
 
   const setSettings = useCallback(async (s: Settings) => {
     setSettingsState(await api.saveSettings(s));
@@ -91,6 +94,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
               <span aria-hidden>{n.icon}</span>{n.label}
             </button>
           ))}
+          <PromptsMenu />
           <div className="grow" />
           <button className="nav" style={{ gap: 8 }} onClick={() => setRoute({ page: "settings", tab: "profile" })} title="Profile settings">
             <ProfileAvatar name={session.profile?.handle ?? "Guest"} size={26} src={profileAvatar(session.profile)} frame={session.profile?.avatar_frame} />

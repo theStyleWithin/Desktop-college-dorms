@@ -211,6 +211,7 @@ export interface PackageExtract {
   materials: { name: string; tex: string | null; tex_ext: string | null; color: [number, number, number] | null }[];
   notes: string[];
 }
+export interface SavedPrompt { id: string; title: string; body: string; tag: string; created_at: number; updated_at: number }
 export interface DecorItem { id: string; name: string; file: string; bytes: number; share: boolean; created_at: number; /** absolute path of the .glb */ path: string }
 export interface ExportInfo { token: string; file_name: string; size: number; characters: number; dorms: number; chats: number; messages: number; media: number; /** rooms whose 3D model was left out because it isn't marked as shareable */ withheld_rooms: string[]; /** decorations left out because they aren't marked as shareable */ withheld_items: string[] }
 export interface ImportPreview {
@@ -311,6 +312,10 @@ export const api = {
   saveLorebook: (b: { id?: string; name: string; book: CharacterBook }) => invoke<Lorebook>("save_lorebook", { lorebook: { created_at: 0, updated_at: 0, ...b, id: b.id ?? "" } }),
   deleteLorebook: (id: string) => invoke<void>("delete_lorebook", { id }),
   // notes
+  // saved prompts
+  listPrompts: () => invoke<SavedPrompt[]>("list_prompts"),
+  savePrompt: (p: { id?: string; title: string; body: string; tag?: string }) => invoke<SavedPrompt>("save_prompt", { prompt: { created_at: 0, updated_at: 0, tag: "", ...p, id: p.id ?? "" } }),
+  deletePrompt: (id: string) => invoke<void>("delete_prompt", { id }),
   listNotes: () => invoke<Note[]>("list_notes"),
   saveNote: (note: Pick<Note, "title" | "body" | "pinned"> & { id?: string }) => invoke<Note>("save_note", { note: { created_at: 0, updated_at: 0, ...note, id: note.id ?? "" } }),
   deleteNote: (id: string) => invoke<void>("delete_note", { id }),

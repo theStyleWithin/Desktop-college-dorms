@@ -158,6 +158,18 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   main texture and colour put back (pictures scaled to at most 2048 px) and written as one `.glb` (GLTFExporter), which then goes through the normal room-model path; a `.glb` is used as it is. The temporary files are
   always removed. Unity shaders, prefabs, scenes and baked lighting are not read.
 
+## Prompts (v0.8)
+
+- A per-profile library of saved prompts (`prompts` table: title, body, optional short label), private like every other row and part of backups. Title up to 100 characters, text up to 200,000, up to 1000 prompts.
+- The side bar's *Prompts* item is a drop-down (a floating panel above the bottom bar on a phone), not a page, so a roleplay is never left. Each row is draggable (`application/x-dorms-prompt` carries the title and text) and clickable.
+- Dropping on the chat: with an empty message box (and she is not replying) the text is sent as the user's message at once, exactly as if typed; with text already in the box, or while she is replying, the prompt goes into the message box (before what was typed) and nothing is sent.
+  Clicking a row puts the text in the message box of the open chat (or copies it when no chat is open), which is also the way to use one on a touch screen.
+
+## Text size (v0.8)
+
+- The size of chat text is a multiplier (0.8 to 2, in steps of 0.05) stored on the device in local storage (it differs between a phone and a desktop, so it is not part of the profile or its backups) and exposed as the CSS variable
+  `--chat-scale`. Message text, the message editor, the composer and the texting-style bubbles scale with it; the rest of the interface does not. One slider is in the chat header, another (with a sample) in Settings → Appearance; they stay in step.
+
 ## Decorations (v0.7)
 
 - A per-profile library (`decor` table, files `media/decor-*.glb`) of 3D props. Items come from a Unity package (the same streaming scan and extraction as rooms, for several models in one pass, with more room allowed: 2 GB of models and pictures

@@ -217,6 +217,21 @@ pub struct Note {
     pub updated_at: i64,
 }
 
+/// A saved prompt: a piece of text kept to drop into a roleplay as a message (a mid-chat instruction, a style reminder...).
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SavedPrompt {
+    pub id: String,
+    pub title: String,
+    pub body: String,
+    /// A short label shown beside the title ("Advanced Prompt", "Style"...), or empty.
+    #[serde(default)]
+    pub tag: String,
+    #[serde(default)]
+    pub created_at: i64,
+    #[serde(default)]
+    pub updated_at: i64,
+}
+
 /// A mechanic pack in the library (the imported .bundle.json, verbatim).
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MechanicRow {
@@ -430,6 +445,9 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
          CREATE TABLE IF NOT EXISTS decor(
             id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, file TEXT NOT NULL,
             bytes INTEGER NOT NULL DEFAULT 0, share INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS prompts(
+            id TEXT PRIMARY KEY, profile_id TEXT, title TEXT NOT NULL, body TEXT NOT NULL, tag TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS lorebooks(
             id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS folders(
@@ -816,6 +834,29 @@ pub fn delete_note(c: &Connection, id: &str, owner: &Owner) -> R<()> {
     Ok(())
 }
 
+// ----- saved prompts -----
+
+pub fn list_prompts(c: &Connection, owner: &Owner) -> R<Vec<SavedPrompt>> {
+    let mut s = c.prepare("SELECT id,title,body,tag,created_at,updated_at FROM prompts WHERE profile_id IS ?1 ORDER BY title COLLATE NOCASE, created_at")?;
+    let rows = s.query_map([owner], |r| Ok(SavedPrompt { id: r.get(0)?, title: r.get(1)?, body: r.get(2)?, tag: r.get(3)?, created_at: r.get(4)?, updated_at: r.get(5)? }))?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Insert or update (only ever a prompt of this owner).
+pub fn save_prompt(c: &Connection, p: &SavedPrompt, owner: &Owner) -> R<()> {
+    c.execute(
+        "INSERT INTO prompts(id,profile_id,title,body,tag,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7)
+         ON CONFLICT(id) DO UPDATE SET title=excluded.title, body=excluded.body, tag=excluded.tag, updated_at=excluded.updated_at WHERE prompts.profile_id IS ?2",
+        params![p.id, owner, p.title, p.body, p.tag, p.created_at, p.updated_at],
+    )?;
+    Ok(())
+}
+
+pub fn delete_prompt(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM prompts WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
 // ----- mechanic packs -----
 
 pub fn list_mechanics(c: &Connection, owner: &Owner) -> R<Vec<MechanicRow>> {
@@ -1141,6 +1182,7 @@ pub fn touch_login(c: &Connection, id: &str) -> R<()> {
 pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM rooms WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM decor WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM prompts WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM mechanics WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM notes WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM folders WHERE profile_id IS ?1", [owner])?;
@@ -1159,7 +1201,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
@@ -1309,6 +1351,22 @@ mod tests {
         assert!(get_decor(&c, "d1", &a).unwrap().is_some(), "B can't delete A's item");
         wipe_owner(&c, &a).unwrap();
         assert!(list_decor(&c, &a).unwrap().is_empty());
+    }
+
+    #[test]
+    fn saved_prompts_are_private_to_their_profile() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        let p = SavedPrompt { id: "p1".into(), title: "Soft redirect".into(), body: "[OOC: keep it gentle]".into(), tag: "Style".into(), created_at: 1, updated_at: 1 };
+        save_prompt(&c, &p, &a).unwrap();
+        assert!(list_prompts(&c, &b).unwrap().is_empty());
+        // B can't overwrite or delete A's prompt by using its id
+        save_prompt(&c, &SavedPrompt { title: "Stolen".into(), ..p.clone() }, &b).unwrap();
+        delete_prompt(&c, "p1", &b).unwrap();
+        let got = list_prompts(&c, &a).unwrap();
+        assert_eq!((got.len(), got[0].title.as_str(), got[0].body.as_str()), (1, "Soft redirect", "[OOC: keep it gentle]"));
+        wipe_owner(&c, &a).unwrap();
+        assert!(list_prompts(&c, &a).unwrap().is_empty());
     }
 
     #[test]

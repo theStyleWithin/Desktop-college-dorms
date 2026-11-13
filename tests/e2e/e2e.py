@@ -992,6 +992,22 @@ try:
     check("your messages show the persona's name and picture", d.execute_script("const u=document.querySelector('.msg.user');return !!u && u.querySelector('.who').textContent.includes('Kai') && !!u.querySelector('.avatar img')"))
     invoke("set_active_persona", {"id": None}); invoke("delete_persona", {"id": pe[0]["id"]})
 
+    # -- text size in chats: a slider that makes the roleplay text bigger, kept on this device
+    nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Appearance"); time.sleep(0.6)
+    px = lambda: float(d.execute_script("return parseFloat(getComputedStyle(document.querySelector('[data-testid=text-size-sample] .txt')).fontSize)"))
+    base_px = px()
+    check("Appearance has a text size slider, at 100% to start", text_present("Text size in chats") and d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "100%" and 14 <= base_px <= 20, str(base_px))
+    set_value("input[aria-label='Text size']", "150"); time.sleep(0.4)
+    check("moving it makes the sample text bigger right away", abs(px() / base_px - 1.5) < 0.02 and d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "150%", f"{base_px} -> {px()}")
+    check("the size is applied to the whole app (chats read it)", d.execute_script("return getComputedStyle(document.documentElement).getPropertyValue('--chat-scale').trim()") == "1.5")
+    reload_ui(); nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Appearance"); time.sleep(0.6)
+    check("it is remembered after a restart", d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "150%" and abs(px() / base_px - 1.5) < 0.02)
+    click_text("button", "Reset"); time.sleep(0.4)
+    check("Reset puts it back to normal", d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "100%" and abs(px() - base_px) < 0.5)
+    set_value("input[aria-label='Text size']", "300"); time.sleep(0.3)
+    check("it can't go past 200%", d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "200%")
+    click_text("button", "Reset"); time.sleep(0.3)
+
     # -- controllers: any pad, named the way the pad names its buttons, with bindings you can change
     fake_pad = """
       window.__fake = { id: arguments[0], index: 0, connected: true, mapping: 'standard', axes: [0,0,0,0], buttons: Array.from({length: 17}, () => ({pressed: false, value: 0})) };
@@ -1032,6 +1048,44 @@ try:
         check("a chat in a room with music shows the music player", d.execute_script("return !!document.querySelector('[data-testid=music]')") and "tone.wav" in d.execute_script("return document.querySelector('.music-name').textContent"))
         check("the music loops", wait(10).until(lambda x: x.execute_script("const a=document.querySelector('[data-testid=music] audio');return !!a&&a.loop===true&&a.src.startsWith('blob:')")))
         check("it has volume, mute and pause controls", d.execute_script("return !!document.querySelector('[aria-label=\"Music volume\"]') && !!document.querySelector('[aria-label=\"Mute music\"]') && !!document.querySelector('[aria-label=\"Pause music\"],[aria-label=\"Play music\"]')"))
+        # the text size slider inside a live chat: the text reacts as the slider moves, and the size is shown
+        msgs_px = lambda: float(d.execute_script("return parseFloat(getComputedStyle(document.querySelector('.msgs')).fontSize)"))
+        base_msgs = msgs_px()
+        check("the chat has its own text size slider", d.execute_script("return !!document.querySelector('.chathead .textsize input[aria-label=\\'Text size\\']')") and d.execute_script("return document.querySelector('[data-testid=text-size-pct]').textContent") == "100%")
+        set_value("input[aria-label='Text size']", "150"); time.sleep(0.7)
+        check("moving it makes the chat text bigger right away, and the size is shown", abs(msgs_px() / base_msgs - 1.5) < 0.03 and d.execute_script("return document.querySelector('[data-testid=text-size-pct]').textContent") == "150%" and d.execute_script("return !!document.querySelector('.size-flash')"), f"{base_msgs} -> {msgs_px()}")
+        set_value("input[aria-label='Text size']", "90"); time.sleep(0.7)
+        check("and smaller again just as quickly", abs(msgs_px() / base_msgs - 0.9) < 0.03, f"{base_msgs} -> {msgs_px()}")
+        set_value("input[aria-label='Text size']", "100"); time.sleep(0.5)
+        # saved prompts: a drop-down in the side bar that doesn't leave the chat; click puts one in the message box, dragging one into the chat sends it
+        sp = invoke("save_prompt", {"prompt": {"id": "", "title": "Soft redirect", "body": "[OOC: please keep the scene gentle.]", "tag": "Style", "created_at": 0, "updated_at": 0}})
+        check("a prompt is saved with its title, text and label", sp["id"] and sp["title"] == "Soft redirect" and sp["tag"] == "Style" and [p["title"] for p in invoke("list_prompts")] == ["Soft redirect"], str(sp))
+        d.execute_script("document.querySelector('[data-testid=prompts-toggle]').click()"); time.sleep(0.8)
+        check("the Prompts drop-down opens in the side bar and the chat stays open", d.execute_script("return !!document.querySelector('[data-testid=prompts-panel] [data-prompt=\"Soft redirect\"]') && !!document.querySelector('.chatmain') && !!document.querySelector('.composer')"))
+        d.execute_script("document.querySelector('[data-prompt=\"Soft redirect\"]').click()"); time.sleep(0.5)
+        check("clicking a prompt puts it in the message box (not sent)", d.execute_script("return document.querySelector('.composer textarea').value") == "[OOC: please keep the scene gentle.]")
+        n_msgs = d.execute_script("return document.querySelectorAll('.msgs .msg').length")
+        drop_prompt = """
+          const t = document.querySelector('.chatmain'); const dt = new DataTransfer();
+          dt.setData('application/x-dorms-prompt', JSON.stringify({title: 'x', body: arguments[0]}));
+          t.dispatchEvent(new DragEvent('dragover', {bubbles: true, cancelable: true, dataTransfer: dt}));
+          t.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer: dt}));"""
+        d.execute_script(drop_prompt, "[OOC: slow down a little.]"); time.sleep(1.2)
+        check("dropping a prompt on the chat while something is typed adds it to the message box instead of sending", d.execute_script("return document.querySelector('.composer textarea').value") == "[OOC: slow down a little.]\n\n[OOC: please keep the scene gentle.]" and d.execute_script("return document.querySelectorAll('.msgs .msg').length") == n_msgs)
+        set_value(".composer textarea", ""); time.sleep(0.3)
+        d.execute_script(drop_prompt, "[OOC: time skip to the evening.]")
+        for _ in range(20):
+            time.sleep(0.5)
+            if "time skip to the evening" in d.execute_script("return document.querySelector('.msgs').innerText"): break
+        check("dropping a prompt on the chat with nothing typed sends it as a message at once", "time skip to the evening" in d.execute_script("return document.querySelector('.msgs').innerText"))
+        d.execute_script("document.querySelector('[data-testid=prompts-toggle]').click()"); time.sleep(0.3)
+        check("the drop-down closes again", not d.execute_script("return !!document.querySelector('[data-testid=prompts-panel]')"))
+        check("a prompt needs a title and some text", "title" in (inv_err("save_prompt", {"prompt": {"id": "", "title": " ", "body": "x", "tag": "", "created_at": 0, "updated_at": 0}}) or "") and "no text" in (inv_err("save_prompt", {"prompt": {"id": "", "title": "T", "body": "  ", "tag": "", "created_at": 0, "updated_at": 0}}) or ""))
+        sp2 = invoke("save_prompt", {"prompt": dict(sp, title="Gentle redirect", body="[OOC: gentle.]")})
+        check("saving again with its id edits the prompt", sp2["id"] == sp["id"] and [p["title"] for p in invoke("list_prompts")] == ["Gentle redirect"] and sp2["created_at"] == sp["created_at"])
+        invoke("save_prompt", {"prompt": {"id": "", "title": "Keep for export", "body": "[OOC: export me.]", "tag": "", "created_at": 0, "updated_at": 0}})
+        invoke("delete_prompt", {"id": sp["id"]})
+        check("a prompt can be deleted", [p["title"] for p in invoke("list_prompts")] == ["Keep for export"])
         dd = [x for x in invoke("list_dorms") if x["room_id"] == rr2[0]["id"]][0]
         invoke_file("set_dorm_music", os.path.join(FIX, "song.mp3"), {"x-dorm-id": str(dd["id"]), "x-file-name": "dorm theme.mp3"})
         reload_ui(); nav("Dorms"); time.sleep(1.0); click_text("button.it", "Rooftop hangout"); time.sleep(2.0)
@@ -1602,6 +1656,7 @@ try:
     check("a decoration can be renamed and deleted (its file goes too)", set(items) == {"Lamp", "Fern"} and not any(f.endswith(".glb") and "decor-" in f and os.path.join(media_dir, f) not in [i["path"] for i in items.values()] for f in os.listdir(media_dir)), str(list(items)))
     check("only a real .glb is accepted into the library", "valid 3D model" in (inv_err("decor_finish", {"token": upload(pk_text), "name": "Bad"}) or ""))
     # export: only the shareable one goes along; eject removes the other with a warning
+    invoke("save_prompt", {"prompt": {"id": "", "title": "Round trip", "body": "[OOC: it came back.]", "tag": "Style", "created_at": 0, "updated_at": 0}})
     info = invoke("prepare_export")
     check("the export names the decoration that isn't shareable and leaves it out", info["withheld_items"] == ["Fern"], str(info))
     xp = os.path.join(WORK, "decor.dorms"); invoke("save_export", {"token": info["token"], "path": xp})
@@ -1610,6 +1665,8 @@ try:
     check("eject removes both decoration files from the device", len([f for f in os.listdir(media_dir) if f.startswith("decor-")]) == n_glb - 2)
     invoke_file("import_profile", xp, {"x-mode": "import", "x-handle": "Roomer3", "x-passcode": ""})
     back = invoke("list_decor")
+    rp = invoke("list_prompts")
+    check("saved prompts come back with a backup (title, label and text)", [(x["title"], x["tag"], x["body"]) for x in rp] == [("Round trip", "Style", "[OOC: it came back.]")], str(rp))
     check("the profile came back with only the shareable decoration, still marked shareable", [(i["name"], i["share"]) for i in back] == [("Lamp", True)] and os.path.exists(back[0]["path"]), str(back))
 
 finally:
