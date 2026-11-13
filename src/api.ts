@@ -207,11 +207,12 @@ export interface SessionState {
 export interface PackageModel { guid: string; path: string; name: string; size: number }
 export interface PackageReport { models: PackageModel[]; textures: number; materials: number }
 export interface PackageExtract {
-  model: string; model_ext: string; model_name: string;
+  models: { guid: string; file: string; ext: string; name: string }[];
   materials: { name: string; tex: string | null; tex_ext: string | null; color: [number, number, number] | null }[];
   notes: string[];
 }
-export interface ExportInfo { token: string; file_name: string; size: number; characters: number; dorms: number; chats: number; messages: number; media: number; /** rooms whose 3D model was left out because it isn't marked as shareable */ withheld_rooms: string[] }
+export interface DecorItem { id: string; name: string; file: string; bytes: number; share: boolean; created_at: number; /** absolute path of the .glb */ path: string }
+export interface ExportInfo { token: string; file_name: string; size: number; characters: number; dorms: number; chats: number; messages: number; media: number; /** rooms whose 3D model was left out because it isn't marked as shareable */ withheld_rooms: string[]; /** decorations left out because they aren't marked as shareable */ withheld_items: string[] }
 export interface ImportPreview {
   handle: string; display_name: string; guest: boolean; app_version: string; exported_at: number;
   characters: number; dorms: number; chats: number; messages: number; media: number;
@@ -345,7 +346,17 @@ export const api = {
   },
   // opening a Unity package
   roomPackageScan: (token: string) => invoke<PackageReport>("room_package_scan", { token }),
-  roomPackageExtract: (token: string, modelGuid: string) => invoke<PackageExtract>("room_package_extract", { token, modelGuid }),
+  roomPackageExtract: (token: string, modelGuids: string[], forDecor = false) => invoke<PackageExtract>("room_package_extract", { token, modelGuids, forDecor }),
+  // decorations (props kept in a library)
+  listDecor: () => invoke<DecorItem[]>("list_decor"),
+  async addDecor(file: File, name: string, onProgress?: (fraction: number) => void): Promise<DecorItem> {
+    const token = await api.uploadRoomFile(file, onProgress);
+    try { return await invoke<DecorItem>("decor_finish", { token, name }); }
+    catch (e) { await invoke("room_model_cancel", { token }).catch(() => {}); throw e; }
+  },
+  renameDecor: (id: string, name: string) => invoke<DecorItem>("rename_decor", { id, name }),
+  setDecorShare: (id: string, share: boolean) => invoke<DecorItem>("set_decor_share", { id, share }),
+  deleteDecor: (id: string) => invoke<void>("delete_decor", { id }),
   roomPackageCleanup: (token: string) => invoke<void>("room_package_cleanup", { token }),
   /** Free and total space (bytes) on the drive that holds the app's data; free is 0 when it can't be found out. */
   diskSpace: () => invoke<{ free: number; total: number }>("disk_space"),

@@ -417,18 +417,20 @@ pub async fn room_package_scan(state: State<'_, Shared>, token: String) -> R<cra
     .map_err(|err| err.to_string())?
 }
 
-/// Unpack the chosen model (and the pictures its materials use) from a scanned package into a temporary folder.
+/// Unpack the chosen models (and the pictures the package's materials use) from a scanned package into a temporary folder.
+/// `for_decor` is for a library of props (more room is allowed than for one room).
 #[tauri::command]
-pub async fn room_package_extract(state: State<'_, Shared>, token: String, model_guid: String) -> R<crate::unitypkg::Extracted> {
+pub async fn room_package_extract(state: State<'_, Shared>, token: String, model_guids: Vec<String>, for_decor: Option<bool>) -> R<crate::unitypkg::Extracted> {
     let st: Shared = state.inner().clone();
     let path = upload_path(&st, &token)?;
     let sp = scan_path(&st, &token)?;
     let dir = pkg_dir(&st, &token)?;
     let free = fs4::available_space(&st.data_dir).unwrap_or(0);
+    let max = if for_decor.unwrap_or(false) { crate::unitypkg::MAX_DECOR_BYTES } else { crate::unitypkg::MAX_ROOM_BYTES };
     tokio::task::spawn_blocking(move || {
         let scan: crate::unitypkg::Scan = serde_json::from_slice(&std::fs::read(&sp).map_err(|_| "The package isn't here any more. Choose it again.".to_string())?)
             .map_err(|_| "The package isn't here any more. Choose it again.".to_string())?;
-        let r = crate::unitypkg::extract(&path, &scan, &model_guid, &dir, free);
+        let r = crate::unitypkg::extract(&path, &scan, &model_guids, &dir, free, max);
         if r.is_err() {
             let _ = std::fs::remove_dir_all(&dir);
         }
@@ -980,6 +982,97 @@ pub fn set_folder_cover_char(state: State<'_, Shared>, id: String, character: Op
     f.cover_char = character.filter(|c| !c.is_empty());
     db::save_folder(&db, &f, &o).map_err(e)?;
     Ok(folder_out(&state, f))
+}
+
+// ---------------------------------------------------------------------------
+// Decorations: the profile's library of 3D props (furniture, plants, food...), each kept as a .glb
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct DecorOut {
+    #[serde(flatten)]
+    item: db::DecorItem,
+    /// Absolute path of the .glb (for the web view).
+    path: String,
+}
+
+fn decor_out(st: &AppState, item: db::DecorItem) -> DecorOut {
+    let path = st.data_dir.join(&item.file).to_string_lossy().to_string();
+    DecorOut { item, path }
+}
+
+fn clean_decor_name(n: &str) -> R<String> {
+    let n: String = n.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(80).collect();
+    if n.is_empty() { Err("Give the decoration a name.".into()) } else { Ok(n) }
+}
+
+#[tauri::command]
+pub fn list_decor(state: State<'_, Shared>) -> R<Vec<DecorOut>> {
+    let o = owner(&state)?;
+    let l = db::list_decor(&state.db.lock().unwrap(), &o).map_err(e)?;
+    Ok(l.into_iter().map(|d| decor_out(&state, d)).collect())
+}
+
+/// A .glb that was sent with the chunked upload becomes a decoration in the library. A new one is **not** marked as shareable.
+#[tauri::command]
+pub fn decor_finish(state: State<'_, Shared>, token: String, name: String) -> R<DecorOut> {
+    use std::io::Read;
+    let path = upload_path(&state, &token)?;
+    let fail = |m: &str| -> R<DecorOut> { let _ = std::fs::remove_file(&path); Err(m.to_string()) };
+    let name = match clean_decor_name(&name) { Ok(n) => n, Err(m) => return fail(&m) };
+    let mut head = [0u8; 64];
+    let n = match std::fs::File::open(&path).and_then(|mut f| f.read(&mut head)) {
+        Ok(n) => n,
+        Err(_) => return Err("The file transfer was cancelled.".into()),
+    };
+    if !head[..n].starts_with(b"glTF") {
+        return fail("That isn't a valid 3D model (a decoration is saved as a .glb).");
+    }
+    let bytes = std::fs::metadata(&path).map(|m| m.len() as i64).unwrap_or(0);
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    if db::list_decor(&db, &o).map_err(e)?.len() >= 2000 {
+        return fail("That's a lot of decorations. Delete some first.");
+    }
+    let id = uid();
+    let rel = format!("media/decor-{id}.glb");
+    if let Err(err) = std::fs::rename(&path, state.data_dir.join(&rel)) {
+        return fail(&format!("Couldn't save the file: {err}"));
+    }
+    let item = db::DecorItem { id, name, file: rel, bytes, share: false, created_at: db::now() };
+    db::save_decor(&db, &item, &o).map_err(e)?;
+    Ok(decor_out(&state, item))
+}
+
+#[tauri::command]
+pub fn rename_decor(state: State<'_, Shared>, id: String, name: String) -> R<DecorOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut d = db::get_decor(&db, &id, &o).map_err(e)?.ok_or("That decoration doesn't exist any more.")?;
+    d.name = clean_decor_name(&name)?;
+    db::save_decor(&db, &d, &o).map_err(e)?;
+    Ok(decor_out(&state, d))
+}
+
+/// Mark a decoration as allowed (or not allowed) to be shared in an exported profile. This is the owner's own word about the seller's terms.
+#[tauri::command]
+pub fn set_decor_share(state: State<'_, Shared>, id: String, share: bool) -> R<DecorOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut d = db::get_decor(&db, &id, &o).map_err(e)?.ok_or("That decoration doesn't exist any more.")?;
+    d.share = share;
+    db::save_decor(&db, &d, &o).map_err(e)?;
+    Ok(decor_out(&state, d))
+}
+
+#[tauri::command]
+pub fn delete_decor(state: State<'_, Shared>, id: String) -> R<()> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    if let Some(d) = db::get_decor(&db, &id, &o).map_err(e)? {
+        let _ = std::fs::remove_file(state.data_dir.join(&d.file));
+    }
+    db::delete_decor(&db, &id, &o).map_err(e)
 }
 
 // ---------------------------------------------------------------------------

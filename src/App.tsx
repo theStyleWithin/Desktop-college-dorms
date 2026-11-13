@@ -10,6 +10,7 @@ import Library from "./pages/Library";
 import Rooms from "./pages/Rooms";
 import Notes from "./pages/Notes";
 import Lorebooks from "./pages/Lorebooks";
+import Decor from "./pages/Decor";
 import Editor from "./pages/Editor";
 import ChatPage from "./pages/Chat";
 import SettingsPage from "./pages/Settings";
@@ -27,6 +28,7 @@ const NAV: { page: Route["page"]; label: string; icon: string }[] = [
   { page: "home", label: "Home", icon: "🏠" },
   { page: "library", label: "Characters", icon: "🧑‍🎤" },
   { page: "rooms", label: "Rooms", icon: "🛋️" },
+  { page: "decor", label: "Decorations", icon: "🪴" },
   { page: "chat", label: "Dorms", icon: "💬" },
   { page: "lorebooks", label: "Lorebooks", icon: "📚" },
   { page: "notes", label: "Notes", icon: "📝" },
@@ -102,6 +104,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
               {route.page === "home" && <Home />}
               {route.page === "library" && <Library />}
               {route.page === "notes" && <Notes />}
+              {route.page === "decor" && <Decor />}
               {route.page === "lorebooks" && <Lorebooks />}
               {route.page === "rooms" && <Rooms key={String(route.edit ?? "list")} edit={route.edit} />}
               {route.page === "editor" && <Editor key={route.id ?? "new"} id={route.id} />}

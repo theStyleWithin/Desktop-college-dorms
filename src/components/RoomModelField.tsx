@@ -70,7 +70,7 @@ export default function RoomModelField({ name, draft, onChange }: { name: string
             ))}
           </div>
           <div className="row" style={{ marginTop: 8 }}><button type="button" className="btn ghost" onClick={() => choices.done(null)}>Cancel</button></div>
-          <div className="hint">Models are listed biggest first. A room is usually the biggest one; the others are often furniture and props.</div>
+          <div className="hint">Models are listed biggest first. A room is usually the biggest one; the others are often furniture and props. If this package is a pack of props (furniture, plants, food…), import it on the Decorations page instead.</div>
         </div>
       )}
       {caution && !problem && <div className="hint" role="status" data-testid="model-caution" style={{ color: "var(--warn, #e0a030)" }}>{caution}</div>}

@@ -143,6 +143,22 @@ pub struct Room {
 
 fn one() -> f64 { 1.0 }
 
+/// A decoration (a 3D prop such as furniture, a plant or food) in the profile's library, kept as a .glb inside the data folder.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DecorItem {
+    pub id: String,
+    pub name: String,
+    /// Path inside the data folder (`media/decor-*.glb`).
+    pub file: String,
+    #[serde(default)]
+    pub bytes: i64,
+    /// The owner marked it as allowed to be shared: only then does it go into an exported profile.
+    #[serde(default)]
+    pub share: bool,
+    #[serde(default)]
+    pub created_at: i64,
+}
+
 /// Someone the player can be: a name, who they are, and how they like to roleplay. The active one is described to the AI
 /// before the chat begins (it replaces the plain name and "about you" text).
 #[derive(Serialize, Deserialize, Clone)]
@@ -411,6 +427,9 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
             id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', style TEXT NOT NULL DEFAULT '',
             avatar TEXT, frame TEXT, created_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS profile_avatars(profile_id TEXT PRIMARY KEY, file TEXT NOT NULL, frame TEXT);
+         CREATE TABLE IF NOT EXISTS decor(
+            id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, file TEXT NOT NULL,
+            bytes INTEGER NOT NULL DEFAULT 0, share INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS lorebooks(
             id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS folders(
@@ -576,6 +595,37 @@ pub fn update_room(c: &Connection, r: &Room, owner: &Owner) -> R<()> {
 pub fn delete_room(c: &Connection, id: i64, owner: &Owner) -> R<()> {
     c.execute("UPDATE dorms SET room_id=NULL WHERE room_id=?1 AND profile_id IS ?2", params![id, owner])?;
     c.execute("DELETE FROM rooms WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
+// ----- decorations -----
+
+fn row_decor(r: &rusqlite::Row) -> R<DecorItem> {
+    Ok(DecorItem { id: r.get(0)?, name: r.get(1)?, file: r.get(2)?, bytes: r.get(3)?, share: r.get::<_, i64>(4)? != 0, created_at: r.get(5)? })
+}
+const DECOR_COLS: &str = "id,name,file,bytes,share,created_at";
+
+pub fn list_decor(c: &Connection, owner: &Owner) -> R<Vec<DecorItem>> {
+    let mut s = c.prepare(&format!("SELECT {DECOR_COLS} FROM decor WHERE profile_id IS ?1 ORDER BY name COLLATE NOCASE, created_at"))?;
+    let rows = s.query_map([owner], row_decor)?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_decor(c: &Connection, id: &str, owner: &Owner) -> R<Option<DecorItem>> {
+    c.query_row(&format!("SELECT {DECOR_COLS} FROM decor WHERE id=?1 AND profile_id IS ?2"), params![id, owner], row_decor).optional()
+}
+
+pub fn save_decor(c: &Connection, d: &DecorItem, owner: &Owner) -> R<()> {
+    c.execute(
+        "INSERT INTO decor(id,profile_id,name,file,bytes,share,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, share=excluded.share WHERE decor.profile_id IS ?2",
+        params![d.id, owner, d.name, d.file, d.bytes, d.share as i64, d.created_at],
+    )?;
+    Ok(())
+}
+
+pub fn delete_decor(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM decor WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     Ok(())
 }
 
@@ -1090,6 +1140,7 @@ pub fn touch_login(c: &Connection, id: &str) -> R<()> {
 /// profile itself. For the guest space this just empties it.
 pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM rooms WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM decor WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM mechanics WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM notes WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM folders WHERE profile_id IS ?1", [owner])?;
@@ -1108,7 +1159,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
@@ -1238,6 +1289,26 @@ mod tests {
         assert!(get_profile_avatar(&c, "b").is_none());
         wipe_owner(&c, &a).unwrap();
         assert!(list_personas(&c, &a).unwrap().is_empty() && get_profile_avatar(&c, "a").is_none(), "wiping a profile removes its personas and picture");
+    }
+
+    #[test]
+    fn decorations_are_private_and_keep_their_sharing_mark() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        let d = DecorItem { id: "d1".into(), name: "Lamp".into(), file: "media/decor-1.glb".into(), bytes: 10, share: false, created_at: 1 };
+        save_decor(&c, &d, &a).unwrap();
+        assert!(list_decor(&c, &b).unwrap().is_empty() && get_decor(&c, "d1", &b).unwrap().is_none());
+        // B can't take over or change A's item by saving with the same id
+        save_decor(&c, &DecorItem { name: "Stolen".into(), share: true, ..d.clone() }, &b).unwrap();
+        let got = get_decor(&c, "d1", &a).unwrap().unwrap();
+        assert_eq!((got.name.as_str(), got.share), ("Lamp", false));
+        save_decor(&c, &DecorItem { name: "Desk lamp".into(), share: true, ..d.clone() }, &a).unwrap();
+        let got = get_decor(&c, "d1", &a).unwrap().unwrap();
+        assert_eq!((got.name.as_str(), got.share, got.file.as_str()), ("Desk lamp", true, "media/decor-1.glb"));
+        delete_decor(&c, "d1", &b).unwrap();
+        assert!(get_decor(&c, "d1", &a).unwrap().is_some(), "B can't delete A's item");
+        wipe_owner(&c, &a).unwrap();
+        assert!(list_decor(&c, &a).unwrap().is_empty());
     }
 
     #[test]
