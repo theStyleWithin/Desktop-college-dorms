@@ -181,7 +181,7 @@ try:
     for who in ["Mira Okafor", "Hiro Tanaka", "Professor Quill", "Hiro Tanaka"]:
         reply(chan["id"], who)
 
-    d.execute_script("localStorage.setItem('dorms.members.open','true'); localStorage.setItem('dorms.side.frame', arguments[0])", ids["Juno Reyes"])
+    d.execute_script("localStorage.setItem('dorms.members.open','1'); localStorage.setItem('dorms.side.frame', arguments[0])", ids["Juno Reyes"])
     reload_ui()
     snap("desktop-home", DESK)
     nav("Characters"); snap("desktop-library", DESK)
@@ -253,7 +253,7 @@ try:
     gate = mk("Garden gate", "garden", "A gate in a mossy wall, humming with crickets.", "preset:garden")
     shop = mk("Corner shop", "other", "Open all night. The owner knows everyone's order.", "preset:neon")
     inv("set_room_links", {"id": kitchen["id"], "links": [gate["id"]]}); inv("set_room_links", {"id": gate["id"], "links": [kitchen["id"], shop["id"]]}); inv("set_room_links", {"id": living["id"], "links": [gate["id"]]})
-    pos = {str(house["id"]): {"x": 10, "y": 20}, str(kitchen["id"]): {"x": 300, "y": 20}, str(living["id"]): {"x": 590, "y": 20}, str(attic["id"]): {"x": 10, "y": 240}, str(gate["id"]): {"x": 300, "y": 240}, str(shop["id"]): {"x": 590, "y": 240}}
+    pos = {str(house["id"]): {"x": 10, "y": 20}, str(kitchen["id"]): {"x": 340, "y": 20}, str(living["id"]): {"x": 670, "y": 20}, str(attic["id"]): {"x": 10, "y": 290}, str(gate["id"]): {"x": 340, "y": 290}, str(shop["id"]): {"x": 670, "y": 290}}
     d.execute_script("localStorage.setItem('dorms.rooms.map', arguments[0]); localStorage.setItem('dorms.rooms.view','map')", json.dumps(pos))
     reload_ui(); nav("Rooms"); time.sleep(0.8)
     snap("desktop-pathways-map", DESK)
