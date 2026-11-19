@@ -137,8 +137,9 @@ def snap(name, size, scroll=0, bottom=False):
     d.execute_script("const m=document.querySelector('.msgs'); if(m) m.scrollTop=arguments[0]?m.scrollHeight:0;", bottom)
     if scroll: d.execute_script("document.querySelector('.main').scrollTop=arguments[0]", scroll)
     d.execute_script("document.querySelectorAll('.toasts').forEach(e=>e.innerHTML='')"); time.sleep(0.3)
-    tmp = os.path.join(WORK, name + ".png"); d.get_screenshot_as_file(tmp)
-    im = Image.open(tmp).convert("RGB"); im.save(os.path.join(OUT, name + ".png"), "PNG", optimize=True)
+    # WebKitWebDriver's own screenshot call can hang on a software-rendered display, so grab the (virtual) screen: the window sits at its top-left corner
+    from PIL import ImageGrab
+    im = ImageGrab.grab(xdisplay=os.environ["DISPLAY"]).crop((0, 0, size[0], size[1])).convert("RGB"); im.save(os.path.join(OUT, name + ".png"), "PNG", optimize=True)
     print("saved", name, im.size, os.path.getsize(os.path.join(OUT, name + ".png")) // 1024, "KB", flush=True)
 DESK, PHONE = (1440, 860), (390, 844)
 
