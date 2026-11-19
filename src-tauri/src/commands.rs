@@ -204,6 +204,10 @@ pub fn save_character(state: State<'_, Shared>, mut character: Character) -> R<C
     let mine: Vec<String> = db::list_lorebooks(&db, &o).map_err(e)?.into_iter().map(|b| b.id).collect();
     let mut seen = std::collections::HashSet::new();
     character.lorebooks.retain(|l| mine.contains(l) && seen.insert(l.clone()));
+    // the playbook it comes with has to be one of this person's own
+    if !character.playbook.is_empty() && crate::playbook::get(&db, &character.playbook, &o).is_none() {
+        character.playbook.clear();
+    }
     character.updated_at = now;
     db::save_character(&db, &character, &o).map_err(e)?;
     Ok(out(&state, character))

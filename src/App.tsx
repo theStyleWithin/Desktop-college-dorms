@@ -12,6 +12,7 @@ import Library from "./pages/Library";
 import Rooms from "./pages/Rooms";
 import Notes from "./pages/Notes";
 import Lorebooks from "./pages/Lorebooks";
+import Playbooks from "./pages/Playbooks";
 import Decor from "./pages/Decor";
 import PromptsMenu from "./components/PromptsMenu";
 import SideWidgets from "./components/SideWidgets";
@@ -42,6 +43,7 @@ const NAV: { page: Route["page"]; label: string; icon: string }[] = [
   { page: "decor", label: "Decorations", icon: "🪴" },
   { page: "chat", label: "Dorms", icon: "💬" },
   { page: "lorebooks", label: "Lorebooks", icon: "📚" },
+  { page: "playbooks", label: "Playbooks", icon: "🎲" },
   { page: "notes", label: "Notes", icon: "📝" },
   { page: "settings", label: "Settings", icon: "⚙️" },
 ];
@@ -198,6 +200,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
               {route.page === "library" && <Library />}
               {route.page === "notes" && <Notes />}
               {route.page === "decor" && <Decor />}
+              {route.page === "playbooks" && <Playbooks key={String(route.edit ?? "list")} edit={route.edit} />}
               {route.page === "lorebooks" && <Lorebooks />}
               {route.page === "rooms" && <Rooms key={String(route.edit ?? "list") + ":" + String(route.world ?? "")} edit={route.edit} world={route.world} />}
               {route.page === "editor" && <Editor key={route.id ?? "new"} id={route.id} />}

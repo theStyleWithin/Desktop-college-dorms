@@ -8,6 +8,7 @@ export type Route =
   | { page: "notes" }
   | { page: "decor" }
   | { page: "lorebooks" }
+  | { page: "playbooks"; edit?: string | "new" }
   | { page: "editor"; id: string | null }
   | { page: "chat"; chatId?: number }
   | { page: "settings"; tab?: string };

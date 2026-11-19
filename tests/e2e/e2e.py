@@ -701,6 +701,72 @@ try:
     invoke("move_chat", {"chatId": wchat["id"], "roomId": home["id"]}); invoke("add_user_message", {"chatId": wchat["id"], "text": "and now?"}); gen_and_wait(wchat["id"])
     swd2 = sysprompt()
     check("walking into a room of another world changes the world, and its lorebooks stop applying", "world of Earth" in swd2 and "WORLD-LORE" not in swd2 and "seven nations" not in swd2, swd2[-600:])
+
+    # ---- playbooks: a story's values, and rules that change them before and after each reply ----
+    pbd = {"id": "", "name": "  Trust test  ", "description": "A test story.", "instructions": "Say please.",
+           "variables": [{"id": "trust", "label": "Trust", "kind": "number", "default": 2, "min": 0, "max": 10, "options": [], "note": "How much she trusts you.", "bands": [{"from": 0, "text": "wary of you"}, {"from": 3, "text": "warming up to you"}]}],
+           "rules": [{"id": "polite", "name": "Please", "phase": "before", "when": [{"type": "user_says", "words": ["please"]}], "when_any": [], "ask": "", "fallback": [], "then": [{"var": "trust", "op": "add", "value": 1}]}],
+           "lorebooks": [], "lore": [], "scenarios": [{"name": "Friends", "description": "old friends", "values": {"trust": 8}}], "created_at": 0, "updated_at": 0}
+    pbs = invoke("save_playbook", {"playbook": pbd})
+    check("a playbook is saved with a trimmed name and an id", pbs["name"] == "Trust test" and bool(pbs["id"]) and len(pbs["variables"]) == 1, str(pbs)[:200])
+    check("a rule that changes a value the playbook doesn't have is refused", "doesn't have" in (inv_err("save_playbook", {"playbook": dict(pbd, rules=[dict(pbd["rules"][0], then=[{"var": "ghost", "op": "add", "value": 1}])])}) or ""))
+    check("an unnamed playbook is refused", "name" in (inv_err("save_playbook", {"playbook": dict(pbd, name="  ")}) or "").lower())
+    check("the list shows it, and four starters are on offer", any(x["id"] == pbs["id"] for x in invoke("list_playbooks")) and len(invoke("playbook_templates")) == 4)
+    pchat = invoke("create_chat", {"dormId": wdorm["id"], "name": "story chat", "kind": "dm", "characterIds": [mira["id"]]})
+    check("a chat has no playbook until one is chosen", invoke("get_chat_playbook", {"chatId": pchat["id"]})["active"] is None)
+    cp = invoke("set_chat_playbook", {"chatId": pchat["id"], "mode": "set", "playbookId": pbs["id"], "scenario": None})
+    check("choosing a playbook shows its values as they start, with what they mean", cp["active"]["name"] == "Trust test" and cp["values"][0]["value"] == 2 and cp["values"][0]["meaning"] == "wary of you", str(cp)[:300])
+    invoke("add_user_message", {"chatId": pchat["id"], "text": "please be kind"}); gen_and_wait(pchat["id"])
+    sp = sysprompt(); cp = invoke("get_chat_playbook", {"chatId": pchat["id"]})
+    check("a rule that runs before the reply changes the value, and the characters are told what it now means", cp["values"][0]["value"] == 3 and "warming up to you" in sp and "wary of you" not in sp and "never mention that they are numbers" in sp, sp[-500:])
+    check("the turn count moved on", cp["turn"] == 1, str(cp["turn"]))
+    last_ = invoke("list_messages", {"chatId": pchat["id"]})[-1]
+    def gen_swipe(args, n_swipes):
+        invoke("generate", dict({"chatId": pchat["id"], "characterId": None, "regenerateMessageId": None, "continueMessageId": None}, **args))
+        for _ in range(40):
+            time.sleep(0.5)
+            m_ = invoke("list_messages", {"chatId": pchat["id"]})[-1]
+            if len(m_["swipes"]) >= n_swipes: break
+        time.sleep(0.8)
+    gen_swipe({"regenerateMessageId": last_["id"]}, 2)
+    cp = invoke("get_chat_playbook", {"chatId": pchat["id"]})
+    check("regenerating replays the turn from before it: the story does not move twice", cp["values"][0]["value"] == 3 and cp["turn"] == 1, str(cp["values"]))
+    m0_ = invoke("list_messages", {"chatId": pchat["id"]})[-1]; t0_ = m0_["swipes"][m0_["swipe_index"]]
+    invoke("generate", {"chatId": pchat["id"], "characterId": None, "regenerateMessageId": None, "continueMessageId": last_["id"]})
+    for _ in range(40):
+        time.sleep(0.5)
+        m1_ = invoke("list_messages", {"chatId": pchat["id"]})[-1]
+        if m1_["swipes"][m1_["swipe_index"]] != t0_: break
+    time.sleep(0.8)
+    cp = invoke("get_chat_playbook", {"chatId": pchat["id"]})
+    check("continuing a reply does not move the story on", cp["values"][0]["value"] == 3 and cp["turn"] == 1, str(cp["values"]))
+    cp = invoke("set_playbook_values", {"chatId": pchat["id"], "values": {"trust": 99}})
+    check("values can be corrected by hand, and stay inside their range", cp["values"][0]["value"] == 10, str(cp["values"]))
+    cp = invoke("set_chat_playbook", {"chatId": pchat["id"], "mode": "set", "playbookId": pbs["id"], "scenario": "Friends"})
+    check("a starting scenario sets its values", cp["values"][0]["value"] == 8 and "old friends" not in str(cp["values"][0]["meaning"]), str(cp["values"]))
+    invoke("set_chat_playbook", {"chatId": pchat["id"], "mode": "none", "playbookId": None, "scenario": None})
+    invoke("add_user_message", {"chatId": pchat["id"], "text": "and now?"}); gen_and_wait(pchat["id"])
+    check("with no playbook the characters are told nothing about values", "tracked by these values" not in sysprompt())
+    pm = invoke("save_character", {"character": dict(by_name("Mira"), playbook=pbs["id"])})
+    check("a character can come with a playbook", pm.get("playbook") == pbs["id"], str(pm.get("playbook")))
+    check("a playbook that isn't yours can't be attached", invoke("save_character", {"character": dict(pm, playbook="not-mine")}).get("playbook") in ("", None))
+    invoke("save_character", {"character": dict(pm, playbook=pbs["id"])})
+    invoke("set_chat_playbook", {"chatId": pchat["id"], "mode": "inherit", "playbookId": None, "scenario": None})
+    check("a chat on the character's own playbook uses it", (invoke("get_chat_playbook", {"chatId": pchat["id"]})["active"] or {}).get("id") == pbs["id"])
+    pbx = invoke("save_playbook", {"playbook": dict(pbs, id="")})
+    invoke("delete_playbook", {"id": pbx["id"]})
+    check("a playbook can be deleted", not any(x["id"] == pbx["id"] for x in invoke("list_playbooks")))
+    d.execute_script("localStorage.setItem('dorms.rooms.view','cards')"); reload_ui(); nav("Playbooks"); time.sleep(1.2)
+    check("the Playbooks page lists playbooks and the starters", d.execute_script("return !!document.querySelector('[data-testid=playbooks-page]') && !!document.querySelector('[data-pb=\"%s\"]') && document.querySelectorAll('[data-starter]').length===4" % pbs["id"]), page_text()[:300])
+    d.execute_script("document.querySelector('[data-testid=pb-new]').click()"); time.sleep(0.8)
+    set_value("input[aria-label='Playbook name']", "Built in the UI")
+    d.execute_script("document.querySelector('[data-testid=pb-add-var]').click()"); time.sleep(0.4)
+    d.execute_script("document.querySelector('[data-testid=pb-add-rule]').click()"); time.sleep(0.4)
+    check("the editor adds a value and a rule", d.execute_script("return document.querySelectorAll('[data-var]').length===1 && document.querySelectorAll('[data-rule]').length===1"))
+    d.execute_script("[...document.querySelectorAll('[data-rule] button')].find(b=>b.textContent.includes('Add a change')).click()"); time.sleep(0.4)
+    d.execute_script("document.querySelector('[data-testid=pb-save]').click()"); time.sleep(1.2)
+    built = [x for x in invoke("list_playbooks") if x["name"] == "Built in the UI"]
+    check("a playbook built in the editor is saved, with its value and its rule", len(built) == 1 and len(built[0]["variables"]) == 1 and len(built[0]["rules"]) == 1 and len(built[0]["rules"][0]["then"]) == 1, str(built)[:300])
     d.execute_script("localStorage.setItem('dorms.rooms.view','cards'); localStorage.removeItem('dorms.rooms.world')")
     reload_ui(); nav("Rooms"); time.sleep(1.2)
     check("the Rooms page has a bar of worlds", d.execute_script("return !!document.querySelector('[data-testid=worlds-bar]') && !!document.querySelector('[data-testid=world-chip-%d]')" % w1["id"]))
@@ -2164,6 +2230,10 @@ try:
     rt_items = [invoke_file("add_gallery_image", p_, {"x-char-id": rt["id"], "x-file-name": os.path.basename(p_)})["gallery"][-1]["id"] for p_ in (gpics["happy"], gpics["sad"])]
     invoke("set_gallery_moods", {"id": rt["id"], "itemId": rt_items[0], "moods": ["happy", "smug"]}); invoke("set_gallery_mode", {"id": rt["id"], "mode": "mood"})
     invoke("save_prompt", {"prompt": {"id": "", "title": "Round trip", "body": "[OOC: it came back.]", "tag": "Style", "created_at": 0, "updated_at": 0}})
+    rtpb = invoke("save_playbook", {"playbook": dict(pbd, name="Round trip story")})
+    invoke("save_character", {"character": dict(rt, playbook=rtpb["id"])})
+    rtchat = invoke("create_chat", {"dormId": None, "name": "pb round trip", "kind": "dm", "characterIds": [rt["id"]]})
+    invoke("set_chat_playbook", {"chatId": rtchat["id"], "mode": "set", "playbookId": rtpb["id"], "scenario": "Friends"})
     info = invoke("prepare_export")
     check("the export names the decoration that isn't shareable and leaves it out", info["withheld_items"] == ["Fern"], str(info))
     xp = os.path.join(WORK, "decor.dorms"); invoke("save_export", {"token": info["token"], "path": xp})
@@ -2175,6 +2245,11 @@ try:
     gt = [c_ for c_ in invoke("list_characters") if c_["card"]["name"] == "Gallery Trip"]
     check("a character's gallery comes back with a backup (pictures, moods and mode)", len(gt) == 1 and len(gt[0]["gallery"]) == 2 and gt[0]["gallery"][0]["moods"] == ["happy", "smug"] and gt[0]["gallery_mode"] == "mood" and all(os.path.exists(x["path"]) for x in gt[0]["gallery_paths"]), str(gt)[:300])
     rp = invoke("list_prompts")
+    back_pb = [x for x in invoke("list_playbooks") if x["name"] == "Round trip story"]
+    back_gt = [c_ for c_ in invoke("list_characters") if c_["card"]["name"] == "Gallery Trip"]
+    back_chat = [c_ for c_ in invoke("list_chats") if c_["name"] == "pb round trip"]
+    back_cp = invoke("get_chat_playbook", {"chatId": back_chat[0]["id"]}) if back_chat else None
+    check("playbooks come back with a backup: the playbook, the character that comes with it, and where a chat's story stood", len(back_pb) == 1 and back_gt and back_gt[0].get("playbook") == back_pb[0]["id"] and back_cp and back_cp["mode"] == "set" and back_cp["active"]["id"] == back_pb[0]["id"] and back_cp["values"][0]["value"] == 8, str((back_pb, back_cp))[:400])
     check("saved prompts come back with a backup (title, label and text)", [(x["title"], x["tag"], x["body"]) for x in rp] == [("Round trip", "Style", "[OOC: it came back.]")], str(rp))
     check("the profile came back with only the shareable decoration, still marked shareable", [(i["name"], i["share"]) for i in back] == [("Lamp", True)] and os.path.exists(back[0]["path"]), str(back))
 

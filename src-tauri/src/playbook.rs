@@ -572,7 +572,7 @@ pub fn save(c: &Connection, pb: &Playbook, o: &Owner) -> R<()> {
 
 // ----- one chat's story -----
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ChatRow {
     /// `inherit` (the character's own), `none`, or `set` (`playbook_id`).
     pub mode: String,
