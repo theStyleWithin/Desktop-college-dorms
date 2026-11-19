@@ -567,14 +567,16 @@ pub fn create_world(state: State<'_, Shared>, name: String, description: String)
 }
 
 #[tauri::command]
-pub fn update_world(state: State<'_, Shared>, id: i64, name: String, description: String, lorebooks: Vec<String>) -> R<db::World> {
+pub fn update_world(state: State<'_, Shared>, id: i64, name: String, description: String, lore: String, lorebooks: Vec<String>) -> R<db::World> {
     let (name, description) = clean_world_text(&name, &description)?;
     let o = owner(&state)?;
     let db = state.db.lock().unwrap();
     if db::get_world(&db, id, &o).map_err(e)?.is_none() {
         return Err("That world doesn't exist any more.".into());
     }
-    db::update_world(&db, id, &name, &description, &lorebooks, &o).map_err(e)?;
+    // the lore is for reading, so it may be long (and keeps its paragraphs)
+    let lore: String = lore.replace('\r', "").trim().chars().take(20_000).collect();
+    db::update_world(&db, id, &name, &description, &lore, &lorebooks, &o).map_err(e)?;
     Ok(db::get_world(&db, id, &o).map_err(e)?.ok_or("That world doesn't exist any more.")?)
 }
 

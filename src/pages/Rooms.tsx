@@ -58,7 +58,7 @@ export default function Rooms({ edit, world }: { edit?: number | "new"; world?: 
         <button className="btn primary" onClick={() => go({ page: "rooms", edit: "new", world: typeof shown === "number" ? shown : null })}>＋ Make a room</button>
       </div>
       <p className="sub" style={{ marginBottom: 12 }}>A room is the place a dorm happens in. Characters know where they are, and the chat shows the room behind it. Group connected rooms into <b>worlds</b> to keep big places apart.</p>
-      <WorldsBar rooms={allRooms} sel={shown} onSelect={pickWorld} />
+      <WorldsBar rooms={allRooms} sel={shown} onSelect={pickWorld} onStart={setStarting} onEdit={(r) => leave(() => go({ page: "rooms", edit: r.id }))} onMap={() => pickView("map")} />
       {rooms.length === 0 && allRooms.length > 0 ? (
         <div className="empty-state"><h3>No rooms here yet</h3><p className="sub" style={{ margin: "6px 0 14px" }}>{typeof shown === "number" ? "Make the first room of this world, or move rooms in from the room's own page." : "Every room is in a world."}</p></div>
       ) : rooms.length === 0 ? (

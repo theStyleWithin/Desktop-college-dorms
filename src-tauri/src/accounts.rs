@@ -1186,7 +1186,7 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             if name.trim().is_empty() { continue; }
             let nw = db::create_world(&db, name.trim(), &w.description.chars().take(4000).collect::<String>(), &o).map_err(e)?;
             let books: Vec<String> = w.lorebooks.iter().filter_map(|b| book_map.get(b).cloned()).collect();
-            db::update_world(&db, nw.id, &nw.name, &nw.description, &books, &o).map_err(e)?;
+            db::update_world(&db, nw.id, &nw.name, &nw.description, &w.lore.replace('\r', "").chars().take(20_000).collect::<String>(), &books, &o).map_err(e)?;
             world_map.insert(w.id, nw.id);
         }
         // rooms (after the characters, since a room can belong to one) and the dorms' place in them

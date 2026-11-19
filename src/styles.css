@@ -684,3 +684,15 @@ body.resizing * { cursor: col-resize !important; }
 .emoji-picker button.pick img { display: block; height: 36px; width: auto; max-width: 96px; margin: 0; }
 .map-bar { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; position: sticky; top: 0; z-index: 4; }
 .map-bar .tok.warn { color: var(--accent); font-weight: 700; }
+
+/* world lore: written to be read */
+.world-overview { max-width: 720px; }
+.world-summary { font-style: italic; color: var(--muted); margin: 0 0 12px; }
+.world-lore-read { line-height: 1.65; margin: 8px 0 14px; }
+.world-lore-read h3 { font-family: var(--serif); margin: 18px 0 6px; }
+.world-lore-read h4 { margin: 14px 0 4px; color: var(--accent); }
+.world-lore-read p { margin: 0 0 10px; }
+.world-lore-read ul { margin: 0 0 10px; padding-left: 22px; }
+.world-rooms { display: grid; gap: 8px; margin: 8px 0 12px; }
+.world-room { display: flex; gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.world-room small { display: block; color: var(--muted); }

@@ -3,6 +3,7 @@ import { api, type Lorebook, type Room } from "../api";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
 import { useToast } from "./ui";
+import WorldOverview from "./WorldOverview";
 
 export type WorldSel = "all" | "none" | number;
 
@@ -11,15 +12,16 @@ export type WorldSel = "all" | "none" | number;
  * world picked its name, what it is like, the lorebooks attached to it (they apply to every chat in any of its rooms) and a way to make
  * another room in it.
  */
-export default function WorldsBar({ rooms, sel, onSelect }: { rooms: Room[]; sel: WorldSel; onSelect: (s: WorldSel) => void }) {
+export default function WorldsBar({ rooms, sel, onSelect, onStart, onEdit, onMap }: { rooms: Room[]; sel: WorldSel; onSelect: (s: WorldSel) => void; onStart: (r: Room) => void; onEdit: (r: Room) => void; onMap: () => void }) {
   const { worlds, refresh, go } = useStore();
   const toast = useToast();
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [books, setBooks] = useState<Lorebook[]>([]);
   const world = typeof sel === "number" ? worlds.find((w) => w.id === sel) : undefined;
-  const [name, setName] = useState(world?.name ?? ""), [desc, setDesc] = useState(world?.description ?? "");
-  useEffect(() => { setName(world?.name ?? ""); setDesc(world?.description ?? ""); }, [world?.id, world?.name, world?.description]);
+  const [name, setName] = useState(world?.name ?? ""), [desc, setDesc] = useState(world?.description ?? ""), [lore, setLore] = useState(world?.lore ?? "");
+  const [reading, setReading] = useState(false);
+  useEffect(() => { setName(world?.name ?? ""); setDesc(world?.description ?? ""); setLore(world?.lore ?? ""); }, [world?.id, world?.name, world?.description, world?.lore]);
   useEffect(() => { api.listLorebooks().then(setBooks).catch(() => {}); }, [sel]);
   const unfiled = rooms.filter((r) => r.world_id == null).length;
 
@@ -27,9 +29,9 @@ export default function WorldsBar({ rooms, sel, onSelect }: { rooms: Room[]; sel
     try { const w = await api.createWorld(newName, ""); await refresh(); setNewName(""); setAdding(false); onSelect(w.id); toast(`Made the world "${w.name}".`, "ok"); }
     catch (e) { toast(errText(e), "err"); }
   };
-  const save = async (patch: { name?: string; description?: string; lorebooks?: string[] }) => {
+  const save = async (patch: { name?: string; description?: string; lore?: string; lorebooks?: string[] }) => {
     if (!world) return;
-    try { await api.updateWorld(world.id, patch.name ?? name, patch.description ?? desc, patch.lorebooks ?? world.lorebooks); await refresh(); }
+    try { await api.updateWorld(world.id, patch.name ?? name, patch.description ?? desc, patch.lore ?? lore, patch.lorebooks ?? world.lorebooks); await refresh(); }
     catch (e) { toast(errText(e), "err"); setName(world.name); }
   };
   const remove = async () => {
@@ -59,11 +61,15 @@ export default function WorldsBar({ rooms, sel, onSelect }: { rooms: Room[]; sel
         <div className="world-panel card" data-testid="world-panel">
           <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
             <input className="grow" type="text" value={name} maxLength={60} aria-label="World name" data-testid="world-name" onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name !== world.name && void save({ name })} style={{ fontWeight: 700, maxWidth: 360 }} />
+            <button className="btn" data-testid="world-read" onClick={() => setReading(true)}>📖 Read about this world</button>
             <button className="btn primary" data-testid="world-make-room" onClick={() => go({ page: "rooms", edit: "new", world: world.id })}>＋ Make a room in this world</button>
             <button className="btn danger" data-testid="world-delete" onClick={() => void remove()}>Delete world</button>
           </div>
           <label className="field"><span>What this world is like</span>
             <textarea rows={3} value={desc} maxLength={4000} data-testid="world-desc" placeholder="Told to the characters in every chat in this world: its history, its feel, its rules." onChange={(e) => setDesc(e.target.value)} onBlur={() => desc !== world.description && void save({ description: desc })} /></label>
+          <label className="field"><span>World lore <small className="muted">(for reading: its history, its places, its people)</small></span>
+            <textarea rows={8} value={lore} maxLength={20000} data-testid="world-lore" placeholder={"Write the world's background here. Blank lines make paragraphs; start a line with # for a heading, or - for a list.\n\nThis is yours to read before diving in. It is not sent to the model: the description above and the lorebooks below are what shape the roleplay."} onChange={(e) => setLore(e.target.value)} onBlur={() => lore !== world.lore && void save({ lore })} />
+            <div className="hint">{lore.length.toLocaleString()} of 20,000 characters. Kept when you click away.</div></label>
           <div className="field"><span>Lorebooks that apply to this world</span>
             {books.length === 0 ? <div className="hint">No lorebooks yet. Make some on the Lorebooks page, then attach them here.</div> : (
               <div className="chips" data-testid="world-books">
@@ -74,6 +80,7 @@ export default function WorldsBar({ rooms, sel, onSelect }: { rooms: Room[]; sel
           </div>
         </div>
       )}
+      {reading && world && <WorldOverview world={world} rooms={rooms} onClose={() => setReading(false)} onStart={onStart} onEdit={onEdit} onMap={onMap} />}
     </div>
   );
 }
