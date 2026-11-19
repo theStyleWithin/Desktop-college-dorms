@@ -15,5 +15,14 @@ The picture changes on the stage and on the character's latest message, and it's
 
 Galleries are included in profile backups.
 
+### 🧭 More in the side bar
+The empty space under **Prompts** now holds some useful extras:
+- **Recent chats**: the latest five (with Show more).
+- **Favorites**: every character you've marked as a favorite, with **no limit**. Press **＋** to tick as many as you like. Click one to open your latest chat with them.
+- **Most used**: the characters who've written the most messages, with their counts.
+- **Picture frame**: a framed picture of the character you talked to last (the picture they're wearing in that chat). Just for looking at, and clicking it takes you back into the chat.
+
+Fold any section away, or switch it off in **Settings → Appearance**.
+
 ### Notes
 - Tested with plain coloured pictures and replies I wrote for the tests, not real artwork. Please tell me if the mood detector gets a reply wrong; it's easy to teach it more words.

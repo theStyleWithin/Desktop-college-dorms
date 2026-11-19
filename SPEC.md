@@ -158,6 +158,11 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   main texture and colour put back (pictures scaled to at most 2048 px) and written as one `.glb` (GLTFExporter), which then goes through the normal room-model path; a `.glb` is used as it is. The temporary files are
   always removed. Unity shaders, prefabs, scenes and baked lighting are not read.
 
+## Side bar extras (v0.10)
+
+- Under *Prompts* the side bar shows up to four sections, each foldable and switchable in Settings → Appearance (local storage; hidden below 820 px): **Recent chats** (by the chat's `updated_at`, five, ten with "Show more"), **Favorites** (the characters' existing `favorite` flag, all of them, sorted by name; a picker with a checkbox per character toggles it), **Most used** (`character_usage`: the number of messages written by each character across the profile's chats, counted from the stored messages so it covers history; the top five)
+  and the **picture frame** (the first character of the newest chat, showing the gallery picture chosen for them in that chat when there is one, else the main picture; view-only, a click opens that chat). Clicking a favorite or a most used character opens the newest chat that includes them (a one-to-one chat first), or starts one.
+
 ## Character gallery and mood pictures (v0.10)
 
 - A character has `gallery` (items: id, file, kind `image`/`gif`/`video`, moods) and `gallery_mode` (`fixed`, `random`, `mood`; empty means fixed). Like the main picture, the gallery is owned by the backend: saving a character from the editor never replaces it, it changes only through
