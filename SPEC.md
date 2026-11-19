@@ -141,6 +141,20 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   applied with CSS, so the original image is untouched.
 - **Notes** and **lorebooks** are per profile. Backups carry all of it (rooms, music, packs and their per-chat state, notes, folders, lorebooks, framing).
 
+## Profile decorations
+
+- The ids, names and blurbs of the nameplates, profile backgrounds and avatar wreaths are in `src/lib/decoData.json`; the Rust side reads that file (`deco.rs`) and
+  the page draws the art from `src/lib/decoCore.js` (ported from Anti-Social, same author): each picture is SVG with its own small animations, handed to the page as one
+  style sheet, a moving set and a still set (`html[data-deco-anim="off"]`). A test keeps the file and the art code naming the same things.
+- The user's own: `settings.deco` (nameplate, background, wreath, animate, a 2 to 4 letter tag with one of eight colours and one of eight symbols, a built-in banner, and
+  `ai_pick`). It is cleaned on every save and import (`clean_user`) and travels with the settings in a backup.
+- A character's: a `char_deco` row per profile and character (`plate`, `bg`, `wreath`, `source` = `user` or `ai`), removed with the character and carried in backups.
+  `set_char_deco` takes known ids only and, given nothing, removes the row. `generate_char_deco` lists every choice to the model with the character's description,
+  personality and tags, asks for one JSON object, keeps only known ids (a reply with none is refused and changes nothing) and stores it as `ai`; it runs only if a cloud model is set
+  up or the local one is already running. With `ai_pick` on, the characters list picks, one at a time and never in a burst, for characters in view that have no row at all.
+- Shown: the user's nameplate, wreath and tag on the side bar's profile button; the profile card (Settings → Profile and Decorations); a character's nameplate and wreath in
+  the characters list, and their wreath on chat pictures.
+
 ## Pathways
 
 - A room may be part of another room (`parent_id`, never itself or anything inside it, checked on the backend) and may lead to other rooms by
