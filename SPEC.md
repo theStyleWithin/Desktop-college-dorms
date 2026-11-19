@@ -158,6 +158,27 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   main texture and colour put back (pictures scaled to at most 2048 px) and written as one `.glb` (GLTFExporter), which then goes through the normal room-model path; a `.glb` is used as it is. The temporary files are
   always removed. Unity shaders, prefabs, scenes and baked lighting are not read.
 
+## Side bar extras (v0.10)
+
+- Under *Prompts* the side bar shows up to four sections, each foldable and switchable in Settings → Appearance (local storage; hidden below 820 px): **Recent chats** (by the chat's `updated_at`, five, ten with "Show more"), **Favorites** (the characters' existing `favorite` flag, all of them, sorted by name; a picker with a checkbox per character toggles it), **Most used** (`character_usage`: the number of messages written by each character across the profile's chats, counted from the stored messages so it covers history; the top five)
+  and the **picture frame** (the first character of the newest chat, showing the gallery picture chosen for them in that chat when there is one, else the main picture; view-only, a click opens that chat). Clicking a favorite or a most used character opens the newest chat that includes them (a one-to-one chat first), or starts one.
+
+## Character gallery and mood pictures (v0.10)
+
+- A character has `gallery` (items: id, file, kind `image`/`gif`/`video`, moods) and `gallery_mode` (`fixed`, `random`, `mood`; empty means fixed). Like the main picture, the gallery is owned by the backend: saving a character from the editor never replaces it, it changes only through
+  `add_gallery_image` (raw upload, up to 200 items and 60 MB each, no 3D models), `set_gallery_moods`, `remove_gallery_item` and `set_gallery_mode`. Files are `media/<char>-gal-<item>.<ext>`, removed with the item or the character, packed into profile backups under fresh names and restored with only valid kinds and known moods.
+- Moods are a fixed list of 12 (neutral, happy, laughing, loving, embarrassed, smug, surprised, scared, sad, angry, thinking, sleepy). **Mood detector** (`src/lib/mood.ts`, runs in the web view, offline, no model call): per mood a set of word, action and emoji patterns; each hit counts one, two inside an *action*, a little more in the last 40% of the reply; hidden `[variable: ...]` lines are ignored; the best mood wins with a score of at least 1.5, ties by a fixed order, otherwise neutral.
+- **Choosing the picture** after each new character reply (not for messages already in the chat when it is opened, which also covers opening an old chat): `random` any picture except the one shown; `mood` one tagged with the detected mood, else one tagged neutral, else an untagged one, else the main picture; `fixed` the main picture. The choice is kept per chat and character in local storage. It shows on the stage (not for a 3D character), on the character's latest message and in the members list of the chat.
+
+## Panels, the characters list, statuses (v0.9)
+
+- The shell is a grid of side bar, middle and (on windows wider than 1100 px, when shown) the characters list. The two outer widths are CSS variables (`--side-w`, `--members-w`) set from values kept in local storage; a wall element between panels is dragged with the left button (pointer events on the window while dragging), clamped between a minimum and a maximum that leaves the middle at least 480 px,
+  double-click resets, arrow keys nudge. The side bar items carry their order in local storage (unknown pages are dropped and new ones appended); drag and Alt + arrows reorder; *Prompts* is outside the list and fixed at the end.
+- **Presence light**: `provider_health` answers `local` for the built-in engine (no probe, never starts it), otherwise probes `GET {base}/models` (8 s): 2xx, 404, 405 are `ok` (it is up); 401/403 and 429 and other 4xx are `warn`; timeouts, connection errors and 5xx are `down`; a missing key or profile is `none`.
+  The list checks on start, every 60 s while the window is visible, on focus and when the model settings change. One light for everyone: the model is a global setting.
+- **Statuses** (`char_status`, one short line per character, private per profile, removed with the character, not part of backups since they can be written again): `generate_status` asks the model for one line (at most 80 characters, no quotes, not explicit, never "as an AI"; the answer is cleaned to one line and refused if it reads as an apology) from the card's description and personality and the time of day.
+  A local model is used only if it is already running (a status is not worth loading a model). Writing them by themselves is opt-in, one at a time, for characters in view that have none or a status older than 12 hours; after a failure it pauses for five minutes.
+
 ## Prompts (v0.8)
 
 - A per-profile library of saved prompts (`prompts` table: title, body, optional short label), private like every other row and part of backups. Title up to 100 characters, text up to 200,000, up to 1000 prompts.

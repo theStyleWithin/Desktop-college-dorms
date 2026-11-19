@@ -62,6 +62,9 @@ export const DEFAULT_FRAME: Frame = { x: 0.5, y: 0.5, zoom: 1 };
 export interface Lorebook { id: string; name: string; book: CharacterBook; created_at: number; updated_at: number }
 export interface Folder { id: string; name: string; cover: string | null; frame: Frame | null; created_at: number; cover_path?: string | null; /** the folder this one sits inside (null = top level) */ parent?: string | null; /** a character whose picture stands in when the folder has none */ cover_char?: string | null }
 
+export interface GalleryItem { id: string; file: string; kind: "image" | "gif" | "video"; moods: string[] }
+export type GalleryMode = "fixed" | "random" | "mood";
+
 export interface Character {
   id: string;
   card: CardData;
@@ -72,6 +75,10 @@ export interface Character {
   outfits?: { id: string; name: string; file: string }[];
   outfit?: string | null;
   outfit_paths?: { id: string; name: string; path: string }[];
+  /** More pictures of the character, where each is (by id), and how they are used in a chat. */
+  gallery?: GalleryItem[];
+  gallery_paths?: { id: string; path: string }[];
+  gallery_mode?: GalleryMode | "";
   /** How the picture is framed so a face is never cut off. */
   frame?: Frame | null;
   /** The folder this character is filed in (null = top level). */
@@ -211,6 +218,8 @@ export interface PackageExtract {
   materials: { name: string; tex: string | null; tex_ext: string | null; color: [number, number, number] | null }[];
   notes: string[];
 }
+export interface ProviderHealth { state: "local" | "ok" | "warn" | "down" | "none"; detail: string; model: string; checked_at: number }
+export interface CharStatus { character_id: string; text: string; source: "ai" | "user"; updated_at: number }
 export interface SavedPrompt { id: string; title: string; body: string; tag: string; created_at: number; updated_at: number }
 export interface DecorItem { id: string; name: string; file: string; bytes: number; share: boolean; created_at: number; /** absolute path of the .glb */ path: string }
 export interface ExportInfo { token: string; file_name: string; size: number; characters: number; dorms: number; chats: number; messages: number; media: number; /** rooms whose 3D model was left out because it isn't marked as shareable */ withheld_rooms: string[]; /** decorations left out because they aren't marked as shareable */ withheld_items: string[] }
@@ -240,10 +249,17 @@ export const api = {
   saveCharacter: (character: Partial<Character> & { card: CardData }) =>
     invoke<Character>("save_character", { character }),
   deleteCharacter: (id: string) => invoke<void>("delete_character", { id }),
+  characterUsage: () => invoke<{ character_id: string; messages: number }[]>("character_usage"),
   setFavorite: (id: string, favorite: boolean) => invoke<void>("set_favorite", { id, favorite }),
   /** Sends a WAV recording to the voice server from Settings → Voice and returns what was said. */
   transcribe: (wav: Uint8Array) => bin("transcribe_audio", wav, {}) as Promise<string>,
   testVoice: () => invoke<string>("test_voice"),
+  async addGalleryImage(id: string, file: File): Promise<Character> {
+    return bin("add_gallery_image", new Uint8Array(await file.arrayBuffer()), { "x-char-id": id, "x-file-name": enc(file.name) });
+  },
+  setGalleryMoods: (id: string, itemId: string, moods: string[]) => invoke<Character>("set_gallery_moods", { id, itemId, moods }),
+  removeGalleryItem: (id: string, itemId: string) => invoke<Character>("remove_gallery_item", { id, itemId }),
+  setGalleryMode: (id: string, mode: GalleryMode) => invoke<Character>("set_gallery_mode", { id, mode }),
   async setMedia(id: string, file: File): Promise<Character> {
     const bytes = new Uint8Array(await file.arrayBuffer());
     return bin("set_media", bytes, { "x-char-id": id, "x-file-name": enc(file.name) });
@@ -312,6 +328,11 @@ export const api = {
   saveLorebook: (b: { id?: string; name: string; book: CharacterBook }) => invoke<Lorebook>("save_lorebook", { lorebook: { created_at: 0, updated_at: 0, ...b, id: b.id ?? "" } }),
   deleteLorebook: (id: string) => invoke<void>("delete_lorebook", { id }),
   // notes
+  // the characters list: is the model up, and what is on each character's mind
+  providerHealth: () => invoke<ProviderHealth>("provider_health"),
+  listStatuses: () => invoke<CharStatus[]>("list_statuses"),
+  setStatus: (characterId: string, text: string) => invoke<CharStatus | null>("set_status", { characterId, text }),
+  generateStatus: (characterId: string) => invoke<CharStatus>("generate_status", { characterId }),
   // saved prompts
   listPrompts: () => invoke<SavedPrompt[]>("list_prompts"),
   savePrompt: (p: { id?: string; title: string; body: string; tag?: string }) => invoke<SavedPrompt>("save_prompt", { prompt: { created_at: 0, updated_at: 0, tag: "", ...p, id: p.id ?? "" } }),
@@ -494,6 +515,8 @@ export function folderArt(f: Folder, characters: Character[]): { url: string | n
 export const roomModelUrl = (r: { model_path?: string | null }) => (r.model_path ? convertFileSrc(r.model_path) : null);
 export const musicUrl = (x: { music_path?: string | null }) => (x.music_path ? convertFileSrc(x.music_path) : null);
 export const roomBackdrop = (r: { backdrop_path?: string | null }) => (r.backdrop_path ? convertFileSrc(r.backdrop_path) : null);
+/** A gallery picture's address (the web view can't open a path directly). */
+export const galleryUrl = (c: Character, itemId: string) => { const p = c.gallery_paths?.find((g) => g.id === itemId)?.path; return p ? convertFileSrc(p) : null; };
 export const mediaUrl = (c: { media_path: string | null }) => (c.media_path ? convertFileSrc(c.media_path) : null);
 
 // ---- card helpers -------------------------------------------------------

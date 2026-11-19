@@ -110,6 +110,8 @@ def inv_err_file(cmd, path, headers):
 def inv_err(cmd, args=None):
     try: invoke(cmd, args); return None
     except RuntimeError as ex: return str(ex)
+def click_exact(sel, text):
+    return d.execute_script("const el=[...document.querySelectorAll(arguments[0])].find(b=>b.textContent.trim()===arguments[1]&&!b.disabled);if(!el)return false;el.scrollIntoView({block:'center'});el.click();return true", sel, text)
 def click_text(sel, text):
     return d.execute_script("const el=[...document.querySelectorAll(arguments[0])].find(b=>b.textContent.includes(arguments[1])&&!b.disabled);if(!el)return false;el.scrollIntoView({block:'center'});el.click();return true", sel, text)
 def set_value(sel, value):
@@ -992,6 +994,200 @@ try:
     check("your messages show the persona's name and picture", d.execute_script("const u=document.querySelector('.msg.user');return !!u && u.querySelector('.who').textContent.includes('Kai') && !!u.querySelector('.avatar img')"))
     invoke("set_active_persona", {"id": None}); invoke("delete_persona", {"id": pe[0]["id"]})
 
+    # -- the characters list on the right, the draggable walls between the panels, and the side bar's own order
+    st0 = invoke("get_settings")
+    def set_provider(**kw):
+        st = invoke("get_settings"); st.update(kw); invoke("save_settings", {"settings": st})
+    set_provider(provider="local"); reload_ui(); nav("Characters"); time.sleep(0.8)
+    d.execute_script("const t=document.querySelector('.members-tab'); if (t) t.click();"); time.sleep(0.8)
+    chars_now = invoke("list_characters")
+    check("the characters list opens on the right with every character in it", d.execute_script("return !!document.querySelector('[data-testid=members] .members')") and d.execute_script("return document.querySelectorAll('[data-testid=members] .m-row').length") == len(chars_now), str(len(chars_now)))
+    pres = lambda: d.execute_script("const h=document.querySelector('[data-testid=members-health]');return h?h.dataset.presence:''")
+    lights = lambda: d.execute_script("return [...new Set([...document.querySelectorAll('[data-testid=member-light]')].map(x=>[...x.classList].find(c=>['on','warn','off','idle'].includes(c))))].join(',')")
+    wait(10).until(lambda x: pres() not in ("", "checking"))
+    check("with the built-in model the light is green", pres() == "local" and lights() == "on", f"{pres()} {lights()}")
+    set_provider(provider="openai", openai_base_url="http://127.0.0.1:18999/v1", openai_model="fake-model"); reload_ui(); nav("Characters"); time.sleep(1.5)
+    wait(10).until(lambda x: pres() not in ("", "checking"))
+    check("a cloud model that answers makes the light green and names the model", pres() == "ok" and lights() == "on" and "fake-model" in d.execute_script("return document.querySelector('[data-testid=members-health]').innerText"), f"{pres()} {lights()}")
+    set_provider(openai_base_url="http://127.0.0.1:1/v1"); reload_ui(); nav("Characters"); time.sleep(1.5)
+    wait(15).until(lambda x: pres() not in ("", "checking"))
+    check("a cloud model that can't be reached turns every light red and says why", pres() == "down" and lights() == "off" and "reach" in d.execute_script("return document.querySelector('[data-testid=members-health]').innerText").lower(), f"{pres()} {lights()}")
+    set_provider(openai_base_url="http://127.0.0.1:18999/v1")
+    # statuses: in the character's voice (written by the model) or in the user's own words
+    cid = chars_now[0]["id"]
+    old_pieces = seen.get("pieces"); seen["pieces"] = ["studying ", "hard"]
+    gen = invoke("generate_status", {"characterId": cid}); seen["pieces"] = old_pieces
+    check("the model writes a status for a character, kept as theirs", gen["source"] == "ai" and gen["text"] == "studying hard" and [x["text"] for x in invoke("list_statuses")] == [gen["text"]], str(gen))
+    own = invoke("set_status", {"characterId": cid, "text": "  studying for finals  "})
+    check("a status can be written by hand (trimmed, marked as the user's)", own["text"] == "studying for finals" and own["source"] == "user")
+    check("a status can't be made up for a character that doesn't exist", "doesn't exist" in (inv_err("set_status", {"characterId": "nope", "text": "x"}) or ""))
+    reload_ui(); nav("Characters"); time.sleep(1.5)
+    check("the status shows above the character's name", d.execute_script("const r=[...document.querySelectorAll('[data-testid=members] .m-row')].find(x=>x.dataset.id===arguments[0]);return !!r && r.querySelector('[data-testid=member-status]')?.textContent==='studying for finals'", cid))
+    check("clearing the status removes it", invoke("set_status", {"characterId": cid, "text": ""}) is None and invoke("list_statuses") == [])
+    set_provider(provider=st0["provider"], openai_base_url=st0["openai_base_url"], openai_model=st0["openai_model"])
+
+    # -- a character's gallery: more pictures, tagged with moods; the chat shows the one that fits the reply (or a random one)
+    from PIL import Image as _Img
+    def png_file(name, rgb):
+        pth = os.path.join(WORK, name); _Img.new("RGB", (48, 64), rgb).save(pth); return pth
+    gpics = {"happy": png_file("g-happy.png", (240, 200, 40)), "sad": png_file("g-sad.png", (40, 80, 200)), "calm": png_file("g-calm.png", (120, 120, 120))}
+    gc = invoke("save_character", {"character": {"card": dict(card0, name="Gal Gallery", first_mes="Hi there!")}}); gid = gc["id"]
+    gitems = {}
+    for k_, pth in gpics.items():
+        res_ = invoke_file("add_gallery_image", pth, {"x-char-id": gid, "x-file-name": k_ + ".png"}); gitems[k_] = res_["gallery"][-1]["id"]
+    gnow = invoke("get_character", {"id": gid})
+    check("pictures can be added to a character's gallery, each with a file", len(gnow["gallery"]) == 3 and all(os.path.exists(x["path"]) for x in gnow["gallery_paths"]) and len(gnow["gallery_paths"]) == 3, str(gnow["gallery"]))
+    check("a gallery doesn't take a 3D model or a text file", "gallery holds" in (inv_err_file("add_gallery_image", os.path.join(FIX, "sample.vrm"), {"x-char-id": gid, "x-file-name": "x.vrm"}) or "") and "Unsupported" in (inv_err_file("add_gallery_image", os.path.join(FIX, "worldinfo_st.json"), {"x-char-id": gid, "x-file-name": "x.txt"}) or ""))
+    r1 = invoke("set_gallery_moods", {"id": gid, "itemId": gitems["happy"], "moods": ["happy", "laughing", "bogus", "happy"]})
+    check("moods are saved once each, and unknown ones are ignored", [g["moods"] for g in r1["gallery"] if g["id"] == gitems["happy"]] == [["happy", "laughing"]])
+    invoke("set_gallery_moods", {"id": gid, "itemId": gitems["sad"], "moods": ["sad"]}); invoke("set_gallery_moods", {"id": gid, "itemId": gitems["calm"], "moods": ["neutral"]})
+    check("only the known modes are accepted", "Unknown" in (inv_err("set_gallery_mode", {"id": gid, "mode": "chaos"}) or "") and invoke("set_gallery_mode", {"id": gid, "mode": "mood"})["gallery_mode"] == "mood")
+    stale = invoke("save_character", {"character": dict(gc, card=dict(gc["card"], description="edited in the editor"))})
+    check("saving the character from an old copy keeps its gallery and mode", len(stale["gallery"]) == 3 and stale["gallery_mode"] == "mood" and stale["card"]["description"] == "edited in the editor")
+    set_provider(provider="openai", openai_base_url="http://127.0.0.1:18999/v1", openai_model="fake-model")
+    gchat = invoke("create_chat", {"dormId": None, "name": "Gal chat", "kind": "dm", "characterIds": [gid]})
+    reload_ui(); nav("Dorms"); time.sleep(1.0)
+    d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'Gal chat')]").click(); time.sleep(1.0)
+    last_avatar = lambda: d.execute_script("const a=[...document.querySelectorAll('.msgs .msg:not(.user) .avatar img')];return a.length?decodeURIComponent(a[a.length-1].src):''")
+    stage_img = lambda: d.execute_script("const i=document.querySelector('.stage img');return i?decodeURIComponent(i.src):''")
+    check("before any reply the main picture is shown (no gallery picture yet)", not any(v in last_avatar() for v in gitems.values()))
+    def say_and_wait(text, pieces):
+        seen["pieces"] = pieces
+        n0 = len([x for x in invoke("list_messages", {"chatId": gchat["id"]}) if x["role"] == "character"])
+        box_ = d.find_element(By.CSS_SELECTOR, ".composer textarea"); box_.send_keys(text); box_.send_keys(Keys.ENTER)
+        for _ in range(40):
+            time.sleep(0.5)
+            if len([x for x in invoke("list_messages", {"chatId": gchat["id"]}) if x["role"] == "character"]) > n0: break
+        time.sleep(0.8)
+    say_and_wait("tell me a joke", ["*smiles and laughs* ", "Haha, ", "that's a good one!"])
+    check("a happy, laughing reply shows the picture tagged for it, on the message and the stage", gitems["happy"] in last_avatar() and gitems["happy"] in stage_img(), f"{last_avatar()} | {stage_img()}")
+    say_and_wait("what's wrong?", ["*tears run down her cheeks* ", "I miss them so much."])
+    check("a sad reply shows the sad picture", gitems["sad"] in last_avatar() and gitems["sad"] in stage_img(), f"{last_avatar()} | {stage_img()}")
+    say_and_wait("what time is it?", ["It is nine o'clock ", "and the shop is closed."])
+    check("a reply with no particular mood falls back to the picture tagged neutral", gitems["calm"] in last_avatar(), last_avatar())
+    check("earlier messages keep the picture they had (this character has no main picture, so only the latest message wears a picture)", d.execute_script("return document.querySelectorAll('.msgs .msg:not(.user)').length>=4 && document.querySelectorAll('.msgs .msg:not(.user) .avatar img').length===1"))
+    reload_ui(); nav("Dorms"); time.sleep(1.0)
+    d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'Gal chat')]").click(); time.sleep(1.0)
+    check("the picture is remembered when the chat is opened again", gitems["calm"] in last_avatar(), last_avatar())
+    invoke("set_gallery_mode", {"id": gid, "mode": "random"}); reload_ui(); nav("Dorms"); time.sleep(1.0)
+    d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'Gal chat')]").click(); time.sleep(1.0)
+    shown = set()
+    for i_ in range(5):
+        say_and_wait(f"again {i_}", ["Just a plain reply ", str(i_)])
+        shown.add(next((k_ for k_, v in gitems.items() if v in last_avatar()), "main"))
+    check("in random mode the picture changes between replies (and stays inside the gallery)", len(shown) >= 2 and "main" not in shown, str(shown))
+    invoke("set_gallery_mode", {"id": gid, "mode": "fixed"}); reload_ui(); nav("Dorms"); time.sleep(1.0)
+    d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'Gal chat')]").click(); time.sleep(1.0)
+    say_and_wait("and now?", ["*laughs out loud* ", "Hahaha!"])
+    check("with the main picture kept, no gallery picture is shown", not any(v in last_avatar() for v in gitems.values()) and not any(v in stage_img() for v in gitems.values()))
+    seen["pieces"] = None
+    removed = invoke("remove_gallery_item", {"id": gid, "itemId": gitems["sad"]})
+    check("a picture can be removed (its file goes too)", len(removed["gallery"]) == 2 and not any(f.startswith(gid + "-gal-" + gitems["sad"]) for f in os.listdir(os.path.join(DATA, "media"))))
+    set_provider(provider=st0["provider"], openai_base_url=st0["openai_base_url"], openai_model=st0["openai_model"])
+
+    # the walls between the panels can be dragged (left mouse button), double-click puts them back
+    reload_ui(); nav("Characters"); time.sleep(1.0)
+    drag_wall = """
+      const w = document.querySelector('.resizer.' + arguments[0]); const x = arguments[1];
+      w.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, clientX: 0, pointerId: 1}));
+      window.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, clientX: x, pointerId: 1}));
+      window.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: x, pointerId: 1}));"""
+    var = lambda n: d.execute_script("return getComputedStyle(document.querySelector('.shell')).getPropertyValue(arguments[0]).trim()", n)
+    width_of = lambda sel: d.execute_script("return Math.round(document.querySelector(arguments[0]).getBoundingClientRect().width)", sel)
+    d.execute_script(drag_wall, "left", 330); time.sleep(0.4)
+    check("dragging the wall by the side bar makes the side bar wider", var("--side-w") == "330px" and abs(width_of("nav.side") - 330) <= 2, f"{var('--side-w')} {width_of('nav.side')}")
+    win_w = d.execute_script("return window.innerWidth")
+    d.execute_script(drag_wall, "right", win_w - 350); time.sleep(0.4)
+    check("dragging the wall by the characters list resizes it too", var("--members-w") == "350px" and abs(width_of(".members") - 350) <= 2, f"{var('--members-w')} {width_of('.members')}")
+    d.execute_script(drag_wall, "left", 5); time.sleep(0.3)
+    check("a panel can't be dragged narrower than its minimum", var("--side-w") == "160px")
+    reload_ui(); nav("Characters"); time.sleep(1.0)
+    check("the widths are remembered after a restart", var("--side-w") == "160px" and var("--members-w") == "350px")
+    for side_ in ("left", "right"): d.execute_script("document.querySelector('.resizer.' + arguments[0]).dispatchEvent(new MouseEvent('dblclick', {bubbles: true}))", side_)
+    time.sleep(0.4)
+    check("double-clicking a wall puts the panel back to its normal width", var("--side-w") == "220px" and var("--members-w") == "264px")
+    d.execute_script("document.querySelector('[aria-label=\"Hide the characters list\"]').click()"); time.sleep(0.5)
+    check("the characters list can be hidden, and a small tab brings it back", not d.execute_script("return !!document.querySelector('.members')") and d.execute_script("return !!document.querySelector('.members-tab')"))
+
+    # the side bar's items can be dragged into your own order; Prompts stays last
+    # the label is the text of the button itself (its icon sits in a span of its own)
+    labels = lambda: d.execute_script("return [...document.querySelectorAll('nav.side button.nav[data-nav]')].map(b=>[...b.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join('').trim())")
+    order0 = labels()
+    check("the side bar starts in its normal order, with Prompts after them", order0[0] == "Home" and order0[-1] == "Settings" and d.execute_script("return document.querySelector('nav.side .prompts').previousElementSibling.dataset.nav") == "settings")
+    drag_nav = """
+      const a = document.querySelector('[data-nav=' + arguments[0] + ']'), b = document.querySelector('[data-nav=' + arguments[1] + ']');
+      const r = b.getBoundingClientRect(); const y = arguments[2] ? r.bottom - 2 : r.top + 2; const dt = new DataTransfer();
+      a.dispatchEvent(new DragEvent('dragstart', {bubbles: true, dataTransfer: dt}));
+      b.dispatchEvent(new DragEvent('dragover', {bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 5, clientY: y}));
+      b.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 5, clientY: y}));
+      a.dispatchEvent(new DragEvent('dragend', {bubbles: true, dataTransfer: dt}));"""
+    d.execute_script(drag_nav, "notes", "home", False); time.sleep(0.5)
+    check("dropping an item on the top half of another puts it before that one", labels()[0] == "Notes" and labels()[1] == "Home", str(labels()))
+    d.execute_script(drag_nav, "home", "settings", True); time.sleep(0.5)
+    check("dropping on the bottom half puts it after, and Prompts is still last", labels()[-1] == "Home" and d.execute_script("const ps=document.querySelector('nav.side .prompts');return [...document.querySelectorAll('nav.side button.nav[data-nav]')].every(b=>b.compareDocumentPosition(ps)&Node.DOCUMENT_POSITION_FOLLOWING)"), str(labels()))
+    check("Prompts can't be dragged", d.execute_script("return document.querySelector('[data-testid=prompts-toggle]').getAttribute('draggable')") is None)
+    reload_ui(); time.sleep(0.8)
+    check("the order is remembered after a restart", labels()[0] == "Notes" and labels()[-1] == "Home", str(labels()))
+    d.execute_script("document.querySelector('[data-nav=notes]').focus()")
+    ActionChains(d).key_down(Keys.ALT).send_keys(Keys.ARROW_DOWN).key_up(Keys.ALT).perform(); time.sleep(0.5)
+    check("Alt and the down arrow moves the focused item down one place", labels()[:2] == ["Characters", "Notes"], str(labels()))
+    nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Appearance"); time.sleep(0.6)
+    click_text("button", "Reset the side bar order"); time.sleep(0.5)
+    check("the order can be reset from Settings, Appearance", labels() == order0, str(labels()))
+
+    # -- side bar extras: recent chats, favorites (as many as you like), most used, and a picture frame
+    all_chars = invoke("list_characters")
+    extra_ids = []
+    while len(all_chars) + len(extra_ids) < 13:
+        extra_ids.append(invoke("save_character", {"character": {"card": dict(card0, name=f"Fave {len(extra_ids)}", first_mes="Hi!")}})["id"])
+    all_chars = invoke("list_characters")
+    orig_fav = {c_["id"]: c_["favorite"] for c_ in all_chars}
+    for c_ in all_chars: invoke("set_favorite", {"id": c_["id"], "favorite": False})
+    reload_ui(); nav("Characters"); time.sleep(1.2)
+    chats_sorted = sorted(invoke("list_chats"), key=lambda c: -c["updated_at"])
+    rows_ = d.execute_script("return [...document.querySelectorAll('[data-testid=side-recent] .sw-row')].map(r=>Number(r.dataset.chat))")
+    check("Recent chats lists the latest five, newest first", len(chats_sorted) >= 2 and rows_ == [c["id"] for c in chats_sorted[:5]], f"{rows_} vs {[c['id'] for c in chats_sorted[:5]]}")
+    check("with no favorites chosen the Favorites section says how to add some", d.execute_script("return document.querySelector('[data-testid=side-favorites]').innerText.includes('no limit')"))
+    for c_ in all_chars: invoke("set_favorite", {"id": c_["id"], "favorite": True})
+    reload_ui(); nav("Characters"); time.sleep(1.2)
+    n_fav = d.execute_script("return document.querySelectorAll('[data-testid=side-favorites] .sw-fave').length")
+    check("every favorite is in the side bar, however many there are (no limit)", n_fav == len(all_chars) and n_fav > 10, f"{n_fav} of {len(all_chars)}")
+    d.execute_script("document.querySelector('[aria-label=\"Choose favorite characters\"]').click()"); time.sleep(0.6)
+    one = d.execute_script("return document.querySelector('[data-pickfav]').dataset.pickfav")
+    check("the Favorites picker lists everyone, ticked", d.execute_script("return document.querySelectorAll('[data-pickfav] input:checked').length") == len(all_chars))
+    d.execute_script("document.querySelector('[data-pickfav] input').click()"); time.sleep(0.8)
+    check("unticking someone removes them from the favorites", len([c_ for c_ in invoke("list_characters") if c_["favorite"]]) == len(all_chars) - 1)
+    d.execute_script("document.querySelector('.modal button.btn.primary').click()"); time.sleep(0.5)
+    usage = invoke("character_usage")
+    check("the most used ranking counts each character's messages, most first", len(usage) >= 1 and all(usage[i]["messages"] >= usage[i + 1]["messages"] for i in range(len(usage) - 1)), str(usage[:3]))
+    top_n = usage[0]["messages"]
+    first_used = d.execute_script("const r=document.querySelector('[data-testid=side-usage] .sw-row small');return r?r.textContent:''")
+    check("the Most used section shows the top character with their message count", first_used == f"{top_n:,} message{'s' if top_n != 1 else ''}", first_used)
+    fr = d.execute_script("const f=document.querySelector('[data-testid=side-frame-link]');return f?f.dataset.frame:''")
+    check("the picture frame shows a character with a plaque", bool(fr) and d.execute_script("return !!document.querySelector('[data-testid=side-frame-link] .sw-plaque')"))
+    d.execute_script("document.querySelector('[data-testid=side-frame-link]').click()"); time.sleep(1.2)
+    check("clicking the picture frame opens the latest chat", d.execute_script("return document.querySelector('.chathead h3')?.textContent||''").endswith(chats_sorted[0]["name"]), d.execute_script("return document.querySelector('.chathead h3')?.textContent||''"))
+    nav("Characters"); time.sleep(0.6)
+    d.execute_script("document.querySelector('[data-testid=side-recent] .sw-row').click()"); time.sleep(1.0)
+    check("clicking a recent chat opens it", d.execute_script("return document.querySelector('.chathead h3')?.textContent||''").endswith(chats_sorted[0]["name"]))
+    fave_name = d.execute_script("const f=document.querySelector('[data-testid=side-favorites] .sw-fave');return f.dataset.fave")
+    d.execute_script("document.querySelector('[data-testid=side-favorites] .sw-fave').click()"); 
+    head_ = lambda: d.execute_script("return document.querySelector('.chathead .tok')?.textContent||''")
+    for _ in range(20):
+        time.sleep(0.5)
+        if fave_name in head_(): break
+    toasts_ = d.execute_script("return [...document.querySelectorAll('.toast')].map(t=>t.textContent).join(' | ')")
+    check("clicking a favorite opens a chat with them", fave_name in head_(), f"{fave_name!r} vs {head_()!r}; toasts: {toasts_!r}; chats: {len(invoke('list_chats'))}")
+    nav("Characters"); time.sleep(0.5)
+    d.execute_script("document.querySelector('[data-testid=side-recent] .sw-title').click()"); time.sleep(0.4)
+    check("a section can be folded away", not d.execute_script("return !!document.querySelector('[data-testid=side-recent] .sw-body')"))
+    d.execute_script("document.querySelector('[data-testid=side-recent] .sw-title').click()"); time.sleep(0.3)
+    nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Appearance"); time.sleep(0.6)
+    d.execute_script("document.querySelector('[data-widget=frame]').click()"); time.sleep(0.5)
+    check("a side bar extra can be switched off in Settings (and back on)", not d.execute_script("return !!document.querySelector('[data-testid=side-frame]')") and d.execute_script("document.querySelector('[data-widget=frame]').click(); return true") and d.execute_script("return !!document.querySelector('[data-testid=side-frame]')"))
+    for c_ in all_chars: invoke("set_favorite", {"id": c_["id"], "favorite": orig_fav.get(c_["id"], False)})
+    for i_ in extra_ids: invoke("delete_character", {"id": i_})
+
     # -- text size in chats: a slider that makes the roleplay text bigger, kept on this device
     nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Appearance"); time.sleep(0.6)
     px = lambda: float(d.execute_script("return parseFloat(getComputedStyle(document.querySelector('[data-testid=text-size-sample] .txt')).fontSize)"))
@@ -1002,11 +1198,11 @@ try:
     check("the size is applied to the whole app (chats read it)", d.execute_script("return getComputedStyle(document.documentElement).getPropertyValue('--chat-scale').trim()") == "1.5")
     reload_ui(); nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Appearance"); time.sleep(0.6)
     check("it is remembered after a restart", d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "150%" and abs(px() / base_px - 1.5) < 0.02)
-    click_text("button", "Reset"); time.sleep(0.4)
+    click_exact("button", "Reset"); time.sleep(0.4)
     check("Reset puts it back to normal", d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "100%" and abs(px() - base_px) < 0.5)
     set_value("input[aria-label='Text size']", "300"); time.sleep(0.3)
     check("it can't go past 200%", d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "200%")
-    click_text("button", "Reset"); time.sleep(0.3)
+    click_exact("button", "Reset"); time.sleep(0.3)
 
     # -- controllers: any pad, named the way the pad names its buttons, with bindings you can change
     fake_pad = """
@@ -1656,6 +1852,9 @@ try:
     check("a decoration can be renamed and deleted (its file goes too)", set(items) == {"Lamp", "Fern"} and not any(f.endswith(".glb") and "decor-" in f and os.path.join(media_dir, f) not in [i["path"] for i in items.values()] for f in os.listdir(media_dir)), str(list(items)))
     check("only a real .glb is accepted into the library", "valid 3D model" in (inv_err("decor_finish", {"token": upload(pk_text), "name": "Bad"}) or ""))
     # export: only the shareable one goes along; eject removes the other with a warning
+    rt = invoke("save_character", {"character": {"card": dict(card0, name="Gallery Trip", first_mes="Hello!")}})
+    rt_items = [invoke_file("add_gallery_image", p_, {"x-char-id": rt["id"], "x-file-name": os.path.basename(p_)})["gallery"][-1]["id"] for p_ in (gpics["happy"], gpics["sad"])]
+    invoke("set_gallery_moods", {"id": rt["id"], "itemId": rt_items[0], "moods": ["happy", "smug"]}); invoke("set_gallery_mode", {"id": rt["id"], "mode": "mood"})
     invoke("save_prompt", {"prompt": {"id": "", "title": "Round trip", "body": "[OOC: it came back.]", "tag": "Style", "created_at": 0, "updated_at": 0}})
     info = invoke("prepare_export")
     check("the export names the decoration that isn't shareable and leaves it out", info["withheld_items"] == ["Fern"], str(info))
@@ -1665,6 +1864,8 @@ try:
     check("eject removes both decoration files from the device", len([f for f in os.listdir(media_dir) if f.startswith("decor-")]) == n_glb - 2)
     invoke_file("import_profile", xp, {"x-mode": "import", "x-handle": "Roomer3", "x-passcode": ""})
     back = invoke("list_decor")
+    gt = [c_ for c_ in invoke("list_characters") if c_["card"]["name"] == "Gallery Trip"]
+    check("a character's gallery comes back with a backup (pictures, moods and mode)", len(gt) == 1 and len(gt[0]["gallery"]) == 2 and gt[0]["gallery"][0]["moods"] == ["happy", "smug"] and gt[0]["gallery_mode"] == "mood" and all(os.path.exists(x["path"]) for x in gt[0]["gallery_paths"]), str(gt)[:300])
     rp = invoke("list_prompts")
     check("saved prompts come back with a backup (title, label and text)", [(x["title"], x["tag"], x["body"]) for x in rp] == [("Round trip", "Style", "[OOC: it came back.]")], str(rp))
     check("the profile came back with only the shareable decoration, still marked shareable", [(i["name"], i["share"]) for i in back] == [("Lamp", True)] and os.path.exists(back[0]["path"]), str(back))

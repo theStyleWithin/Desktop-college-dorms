@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api, displayName, mediaUrl, musicUrl, onAutoStopped, onGen, tagline, type Character, type Chat, type ChatKind, type Message, type TurnMode,
+  galleryUrl, type MediaKind,
 } from "../api";
 import Art from "../components/Art";
 import MicButton from "../components/MicButton";
@@ -9,6 +10,7 @@ import PhoneView from "../components/PhoneView";
 import MusicPlayer from "../components/MusicPlayer";
 import MusicField from "../components/MusicField";
 import { PROMPT_DRAG } from "../components/PromptsMenu";
+import { detectMood, pickGalleryItem } from "../lib/mood";
 import { useTextScale, setTextScaleAnchored, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
 import { hideDirectives, roomBackground, roomScene, kindLabel } from "../lib/rooms";
 import { makeWardrobe } from "../components/WardrobePanel";
@@ -27,10 +29,10 @@ function renderText(text: string) {
   );
 }
 
-function Avatar({ c, name, pic }: { c?: Character; name: string; pic?: { src: string | null; frame: import("../api").Frame | null } }) {
+function Avatar({ c, name, pic, art }: { c?: Character; name: string; pic?: { src: string | null; frame: import("../api").Frame | null }; art?: { kind: MediaKind; url: string; frame: null } }) {
   return (
     <div className="avatar">
-      {pic ? <Art kind={pic.src ? "image" : null} url={pic.src} name={name} frame={pic.frame} />
+      {art ? <Art kind={art.kind} url={art.url} name={name} frame={art.frame} /> : pic ? <Art kind={pic.src ? "image" : null} url={pic.src} name={name} frame={pic.frame} />
         : <Art kind={c?.media?.kind === "vrm" ? null : c?.media?.kind ?? null} url={c ? mediaUrl(c) : null} name={name} frame={c?.frame} />}
     </div>
   );
@@ -65,6 +67,44 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
   const music = dormOfChat?.music_path ? { src: musicUrl(dormOfChat), name: dormOfChat.music_name || "Music" } : room?.music_path ? { src: musicUrl(room), name: room.music_name || "Music" } : null;
   const phone = chat?.style === "phone";
   const stageChar = (focus && byId.get(focus)) || members[0] || null;
+
+  // the gallery picture each character shows (by its id; none means the main picture). It changes after each new reply, by the
+  // character's gallery mode: at random, or to the picture that fits the mood of the reply. Remembered for this chat.
+  const [picks, setPicks] = useState<Record<string, string | null>>({});
+  const galSeen = useRef<{ chat: number; key: string } | null>(null);
+  useEffect(() => {
+    if (!chat) return;
+    try { setPicks(JSON.parse(localStorage.getItem(`dorms.gal.${chat.id}`) || "{}")); } catch { setPicks({}); }
+    galSeen.current = null;
+  }, [chat?.id]);
+  useEffect(() => {
+    if (!chat || !msgs.length || msgs[0].chat_id !== chat.id) return;
+    const m = msgs[msgs.length - 1];
+    const text = m.swipes[m.swipe_index] ?? "";
+    const key = `${m.id}:${m.swipe_index}:${text.length}`;
+    const prev = galSeen.current;
+    galSeen.current = { chat: chat.id, key };
+    if (!prev || prev.chat !== chat.id || prev.key === key) return;      // the messages that were already there are not new replies
+    const c = m.role === "character" && m.character_id ? byId.get(m.character_id) : undefined;
+    if (!c?.gallery?.length || !c.gallery_mode || c.gallery_mode === "fixed") return;
+    setPicks((p) => {
+      const next = { ...p, [c.id]: pickGalleryItem(c, detectMood(hideDirectives(text)), p[c.id] ?? null) };
+      try { localStorage.setItem(`dorms.gal.${chat.id}`, JSON.stringify(next)); } catch { /* storage unavailable */ }
+      window.setTimeout(() => window.dispatchEvent(new Event("dorms-gal-pick")), 0);   // the picture frame in the side bar follows
+      return next;
+    });
+  }, [msgs, chat, byId]);
+  /** What to show for a character instead of their main picture, when their gallery has chosen one. */
+  const artOf = (c?: Character): { kind: MediaKind; url: string; frame: null } | undefined => {
+    const id = c ? picks[c.id] : null;
+    const it = c && id ? c.gallery?.find((g) => g.id === id) : undefined;
+    if (!c || !it || (c.gallery_mode !== "random" && c.gallery_mode !== "mood")) return undefined;
+    const url = galleryUrl(c, it.id);
+    return url ? { kind: it.kind, url, frame: null } : undefined;
+  };
+  // only a character's latest message wears the gallery picture: earlier ones keep the picture they had
+  const lastMsgOf = useMemo(() => { const mp = new Map<string, number>(); for (const m of msgs) if (m.character_id) mp.set(m.character_id, m.id); return mp; }, [msgs]);
+  const stageArt = stageChar && stageChar.media?.kind !== "vrm" ? artOf(stageChar) : undefined;   // a 3D character stays 3D on the stage
 
   // load messages when switching chats
   useEffect(() => {
@@ -311,7 +351,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                 const body = extending ? saved + (saved && live.text && !/\s$/.test(saved) && !/^\s/.test(live.text) ? " " : "") + hideDirectives(live.text) : saved;
                 return (
                   <div className={`msg ${m.role}`} key={m.id}>
-                    <Avatar c={c} name={nameOf(m)} pic={m.role === "user" ? { src: me.avatar, frame: me.frame } : undefined} />
+                    <Avatar c={c} name={nameOf(m)} pic={m.role === "user" ? { src: me.avatar, frame: me.frame } : undefined} art={m.role === "user" || lastMsgOf.get(m.character_id ?? "") !== m.id ? undefined : artOf(c)} />
                     <div>
                       <div className="who">{nameOf(m)} <small>{timeAgo(m.created_at)}</small></div>
                       {editing?.id === m.id ? (
@@ -343,7 +383,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               })}
               {live && live.continueOf == null && (
                 <div className="msg character">
-                  <Avatar c={byId.get(live.characterId)} name={byId.get(live.characterId)?.card.name ?? "?"} />
+                  <Avatar c={byId.get(live.characterId)} name={byId.get(live.characterId)?.card.name ?? "?"} art={artOf(byId.get(live.characterId))} />
                   <div>
                     <div className="who">{byId.get(live.characterId)?.card.name ?? "…"}</div>
                     {live.text ? <div className="txt">{renderText(hideDirectives(live.text))}</div>
@@ -382,7 +422,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
       <aside className="side-panel">
         {stageChar ? (
           <>
-            <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "")} kind={stageChar.media?.kind ?? null} url={mediaUrl(stageChar)} name={displayName(stageChar)} frame={stageChar.frame} mode="full" scene={roomScene(room)} attentive={busy || listening || text.trim().length > 0}
+            <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "") + (stageArt?.url ?? "")} kind={stageArt?.kind ?? stageChar.media?.kind ?? null} url={stageArt?.url ?? mediaUrl(stageChar)} name={displayName(stageChar)} frame={stageArt ? stageArt.frame : stageChar.frame} mode="full" scene={roomScene(room)} attentive={busy || listening || text.trim().length > 0}
               wardrobe={makeWardrobe(stageChar, () => void refresh(), toast)}
               speech={speech && speech.characterId === stageChar.id ? { ...speech, text: hideDirectives(speech.text) } : null}
               talk={{ draft: text, setDraft: setText, send: (t) => void sendText(t), busy, onHeard: heard, onListening: setListening }} /></div>
@@ -396,7 +436,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               <div className="who-list">
                 {members.map((m) => (
                   <button key={m.id} className={m.id === stageChar.id ? "on" : ""} onClick={() => setFocus(m.id)}>
-                    <Avatar c={m} name={displayName(m)} /><span>{displayName(m)}</span>
+                    <Avatar c={m} name={displayName(m)} art={artOf(m)} /><span>{displayName(m)}</span>
                   </button>
                 ))}
               </div>

@@ -29,6 +29,22 @@ pub struct Outfit {
     pub file: String,
 }
 
+/// One picture (or GIF or short video) in a character's gallery, with the moods it fits (for the mood-matching display).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct GalleryItem {
+    pub id: String,
+    /// Path relative to the data dir.
+    pub file: String,
+    /// image | gif | video
+    pub kind: String,
+    /// Moods from `GALLERY_MOODS` this picture shows (empty: it fits no particular mood).
+    #[serde(default)]
+    pub moods: Vec<String>,
+}
+
+/// The moods a gallery picture can be tagged with (and the mood detector can pick).
+pub const GALLERY_MOODS: [&str; 12] = ["neutral", "happy", "laughing", "loving", "embarrassed", "smug", "surprised", "scared", "sad", "angry", "thinking", "sleepy"];
+
 /// How an avatar picture is framed wherever it is shown: the point of the picture to keep in view (0..1 across and
 /// down) and how far to zoom in on it.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -54,6 +70,13 @@ pub struct Character {
     pub card: CharacterData,
     #[serde(default)]
     pub media: Option<Media>,
+    /// More pictures of the character; what shows in a chat depends on `gallery_mode`.
+    #[serde(default)]
+    pub gallery: Vec<GalleryItem>,
+    /// `fixed` (the main picture, always), `random` (a new picture from the gallery after each reply) or `mood` (the picture that
+    /// fits the mood of the reply). Empty means fixed.
+    #[serde(default)]
+    pub gallery_mode: String,
     /// Extra outfits (VRM models) for a 3D character; `media` stays the original.
     #[serde(default)]
     pub outfits: Vec<Outfit>,
@@ -229,6 +252,17 @@ pub struct SavedPrompt {
     #[serde(default)]
     pub created_at: i64,
     #[serde(default)]
+    pub updated_at: i64,
+}
+
+/// What is on a character's mind (a short line shown in the characters list), written by the model in their voice or by the user.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CharStatus {
+    /// The character's id.
+    pub character_id: String,
+    pub text: String,
+    /// `ai` or `user`.
+    pub source: String,
     pub updated_at: i64,
 }
 
@@ -448,6 +482,8 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
          CREATE TABLE IF NOT EXISTS prompts(
             id TEXT PRIMARY KEY, profile_id TEXT, title TEXT NOT NULL, body TEXT NOT NULL, tag TEXT NOT NULL DEFAULT '',
             created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS char_status(
+            id TEXT PRIMARY KEY, profile_id TEXT, text TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'ai', updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS lorebooks(
             id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS folders(
@@ -534,6 +570,7 @@ pub fn list_characters(c: &Connection, owner: &Owner) -> R<Vec<Character>> {
 
 pub fn delete_character(c: &Connection, id: &str, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM characters WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    c.execute("DELETE FROM char_status WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     Ok(())
 }
 
@@ -857,6 +894,29 @@ pub fn delete_prompt(c: &Connection, id: &str, owner: &Owner) -> R<()> {
     Ok(())
 }
 
+// ----- character statuses -----
+
+pub fn list_statuses(c: &Connection, owner: &Owner) -> R<Vec<CharStatus>> {
+    let mut s = c.prepare("SELECT id,text,source,updated_at FROM char_status WHERE profile_id IS ?1")?;
+    let rows = s.query_map([owner], |r| Ok(CharStatus { character_id: r.get(0)?, text: r.get(1)?, source: r.get(2)?, updated_at: r.get(3)? }))?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Insert or replace (only ever a status of this owner).
+pub fn save_status(c: &Connection, st: &CharStatus, owner: &Owner) -> R<()> {
+    c.execute(
+        "INSERT INTO char_status(id,profile_id,text,source,updated_at) VALUES(?1,?2,?3,?4,?5)
+         ON CONFLICT(id) DO UPDATE SET text=excluded.text, source=excluded.source, updated_at=excluded.updated_at WHERE char_status.profile_id IS ?2",
+        params![st.character_id, owner, st.text, st.source, st.updated_at],
+    )?;
+    Ok(())
+}
+
+pub fn delete_status(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM char_status WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
 // ----- mechanic packs -----
 
 pub fn list_mechanics(c: &Connection, owner: &Owner) -> R<Vec<MechanicRow>> {
@@ -1038,6 +1098,17 @@ pub fn get_message(c: &Connection, id: i64) -> R<Option<Message>> {
     .optional()
 }
 
+/// How many messages each character has written across all of this profile's chats (most first): their "most used" ranking.
+pub fn character_usage(c: &Connection, owner: &Owner) -> R<Vec<(String, i64)>> {
+    let mut s = c.prepare(
+        "SELECT m.character_id, COUNT(*) FROM messages m JOIN chats ch ON ch.id = m.chat_id
+         WHERE ch.profile_id IS ?1 AND m.role = 'character' AND m.character_id IS NOT NULL
+         GROUP BY m.character_id ORDER BY 2 DESC, 1",
+    )?;
+    let rows = s.query_map([owner], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
 pub fn add_message(c: &Connection, chat_id: i64, role: &str, character_id: Option<&str>, swipes: &[String]) -> R<Message> {
     c.execute(
         "INSERT INTO messages(chat_id,role,character_id,swipes,swipe_index,created_at) VALUES(?1,?2,?3,?4,0,?5)",
@@ -1183,6 +1254,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM rooms WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM decor WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM prompts WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM char_status WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM mechanics WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM notes WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM folders WHERE profile_id IS ?1", [owner])?;
@@ -1201,7 +1273,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
@@ -1230,6 +1302,8 @@ mod tests {
             card: CharacterData { name: name.into(), ..Default::default() },
             media: None,
             outfits: vec![],
+            gallery: vec![],
+            gallery_mode: String::new(),
             outfit: None,
             frame: None,
             folder: None,
@@ -1367,6 +1441,53 @@ mod tests {
         assert_eq!((got.len(), got[0].title.as_str(), got[0].body.as_str()), (1, "Soft redirect", "[OOC: keep it gentle]"));
         wipe_owner(&c, &a).unwrap();
         assert!(list_prompts(&c, &a).unwrap().is_empty());
+    }
+
+    #[test]
+    fn character_statuses_are_private_and_follow_their_character() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        save_character(&c, &ch("x", "X"), &a).unwrap();
+        let st = CharStatus { character_id: "x".into(), text: "brewing tea".into(), source: "ai".into(), updated_at: 1 };
+        save_status(&c, &st, &a).unwrap();
+        assert!(list_statuses(&c, &b).unwrap().is_empty());
+        save_status(&c, &CharStatus { text: "stolen".into(), ..st.clone() }, &b).unwrap();
+        delete_status(&c, "x", &b).unwrap();
+        assert_eq!(list_statuses(&c, &a).unwrap()[0].text, "brewing tea", "B can't change or remove A's status");
+        save_status(&c, &CharStatus { text: "napping".into(), source: "user".into(), updated_at: 2, ..st }, &a).unwrap();
+        let got = list_statuses(&c, &a).unwrap();
+        assert_eq!((got.len(), got[0].text.as_str(), got[0].source.as_str()), (1, "napping", "user"));
+        delete_character(&c, "x", &a).unwrap();
+        assert!(list_statuses(&c, &a).unwrap().is_empty(), "deleting the character removes the status");
+    }
+
+    #[test]
+    fn a_gallery_survives_a_save_and_older_characters_still_load() {
+        let c = fresh();
+        let a = me("a");
+        let mut x = ch("x", "X");
+        x.gallery = vec![GalleryItem { id: "g1".into(), file: "media/x-gal-1.png".into(), kind: "image".into(), moods: vec!["happy".into(), "laughing".into()] }];
+        x.gallery_mode = "mood".into();
+        save_character(&c, &x, &a).unwrap();
+        let got = get_character(&c, "x", &a).unwrap().unwrap();
+        assert_eq!((got.gallery.len(), got.gallery[0].moods.clone(), got.gallery_mode.as_str()), (1, vec!["happy".to_string(), "laughing".to_string()], "mood"));
+        // a character saved before galleries existed has neither field
+        let old: Character = serde_json::from_str(&serde_json::to_string(&ch("y", "Y")).unwrap().replace(",\"gallery\":[]", "").replace(",\"gallery_mode\":\"\"", "")).unwrap();
+        assert!(old.gallery.is_empty() && old.gallery_mode.is_empty());
+        assert!(GALLERY_MOODS.contains(&"embarrassed") && GALLERY_MOODS.len() == 12);
+    }
+
+    #[test]
+    fn character_usage_counts_their_messages_per_profile() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        for id in ["x", "y"] { save_character(&c, &ch(id, id), &a).unwrap(); }
+        let chat = create_chat(&c, None, "t", "dm", &["x".to_string()], &a).unwrap();
+        for _ in 0..3 { add_message(&c, chat.id, "character", Some("x"), &["hi".to_string()]).unwrap(); }
+        add_message(&c, chat.id, "character", Some("y"), &["yo".to_string()]).unwrap();
+        add_message(&c, chat.id, "user", None, &["me".to_string()]).unwrap();
+        assert_eq!(character_usage(&c, &a).unwrap(), vec![("x".to_string(), 3), ("y".to_string(), 1)], "the user's own messages are not counted");
+        assert!(character_usage(&c, &b).unwrap().is_empty(), "another profile sees nothing");
     }
 
     #[test]
