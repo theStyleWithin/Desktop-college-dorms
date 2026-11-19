@@ -94,7 +94,7 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
   and how long each is, then writes it chapter by chapter in the chat. Scroll and read at your own pace while it keeps writing: the view only follows if you are at the very
   bottom, and a "Jump to latest" button waits for you. For a free model with a daily allowance, enter it in **Settings → Chat** (there is a "Free model, 40 a day" preset): the story
   is planned to fit what is left today, a few requests are kept back for chatting, and it stops after a finished chapter with a message that says why. Stop and **Keep going** work
-  any time; every finished chapter is saved. The app must stay open while it writes (closing the window warns you first).
+  any time; every finished chapter is saved. The app has to stay running while it writes: closing the window asks whether to **keep writing in the system tray** (the window comes back when the novel is finished; on Linux desktops without tray icons just wait for it), or close and stop. On a phone the app has to stay open.
 - **Pathways**: build a place out of rooms. "Our house" can hold a kitchen, a living room and an attic (each with its own picture and
   description), and a room can lead on to other rooms by **exits**: one-way pathways, up to three per room (the garden gate leads to the street and the
   alley). Rooms can lead on to more rooms for as long as you keep connecting them; a room is a dead end only when you haven't connected an exit.

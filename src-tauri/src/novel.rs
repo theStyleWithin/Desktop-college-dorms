@@ -278,8 +278,16 @@ async fn write(st: Shared, o: Owner, chat_id: i64, mut plan: Plan, limit: u32, r
     }
     let used = used_today(&st.db.lock().unwrap(), &o);
     note(&st, chat_id, &stop_note(why, plan.done, total, used, limit, &err_text));
-    st.novels.lock().unwrap().remove(&chat_id);
+    let none_left = {
+        let mut m = st.novels.lock().unwrap();
+        m.remove(&chat_id);
+        m.is_empty()
+    };
     event(&st, chat_id, why, plan.done, total, &err_text);
+    // written while the window was hidden in the tray: bring it back, so you see it is done
+    if none_left && st.hidden.load(std::sync::atomic::Ordering::SeqCst) {
+        crate::tray::reveal(&st.app);
+    }
 }
 
 // ----- commands -----

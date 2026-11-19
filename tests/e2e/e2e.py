@@ -785,6 +785,7 @@ try:
     check("each chapter is its own reply, and the writer says when the novel is finished", len(chs_) == 3 and ms_[-1]["role"] == "note" and "finished" in ms_[-1]["swipes"][0] and "Enjoy your story" in ms_[-1]["swipes"][0], str([(m["role"], m["swipes"][0][:60]) for m in ms_]))
     sp_ = sysprompt()
     check("the last chapter is asked for as the final chapter, from the plot", "chapter 3 of 3" in sp_ and "final chapter" in sp_ and "a mystery in the old library" in sp_ and "Mystery" in sp_ and "first person, past tense" in sp_ and "Carry on exactly" in sp_, sp_[-700:])
+    check("a desktop can hide the app to the tray while a novel is written", invoke("tray_available") is True)
     ns_ = invoke("novel_status", {"chatId": nchat["id"]})
     check("the plan is kept, with how far it got, and nothing is left running", ns_["plan"]["done"] == 3 and not ns_["running"] and ns_["used_today"] >= 3, str(ns_))
     check("the writer's own note is never sent to the model as part of the story", "Enjoy your story" not in json.dumps(seen["body"]["messages"]))
