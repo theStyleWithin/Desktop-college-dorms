@@ -26,6 +26,14 @@ export function useWidgetPrefs(): [Record<WidgetId, boolean>, (id: WidgetId, on:
   return [p, set];
 }
 
+/** The character the user chose to hang in the picture frame (this device); nobody chosen = whoever they talked to last. */
+const FRAME_KEY = "dorms.side.frame";
+const readFramed = (): string | null => { try { return localStorage.getItem(FRAME_KEY) || null; } catch { return null; } };
+const writeFramed = (id: string | null) => {
+  try { if (id) localStorage.setItem(FRAME_KEY, id); else localStorage.removeItem(FRAME_KEY); } catch { /* storage unavailable */ }
+  window.dispatchEvent(new Event("dorms-side-frame"));
+};
+
 const stillOf = (c: Character): string | null => (c.media?.kind === "image" || c.media?.kind === "gif" ? mediaUrl(c) : null);
 
 /** A small section of the side bar that can be folded away. */
@@ -51,6 +59,9 @@ export default function SideWidgets() {
   const [usage, setUsage] = useState<{ character_id: string; messages: number }[]>([]);
   const [picker, setPicker] = useState(false);
   const [more, setMore] = useState(false);
+  const [framePicker, setFramePicker] = useState(false);
+  const [framedId, setFramedId] = useState<string | null>(readFramed);
+  useEffect(() => { const f = () => setFramedId(readFramed()); window.addEventListener("dorms-side-frame", f); return () => window.removeEventListener("dorms-side-frame", f); }, []);
   const [, bump] = useState(0);
   const byId = useMemo(() => new Map(characters.map((c) => [c.id, c])), [characters]);
   const recent = useMemo(() => [...chats].sort((a, b) => b.updated_at - a.updated_at), [chats]);
@@ -74,17 +85,19 @@ export default function SideWidgets() {
   const favorites = characters.filter((c) => c.favorite).sort((a, b) => displayName(a).localeCompare(displayName(b)));
   const top = usage.map((u) => ({ c: byId.get(u.character_id), n: u.messages })).filter((x): x is { c: Character; n: number } => !!x.c).slice(0, 5);
   const shownRecent = recent.slice(0, more ? 10 : 5);
-  const frameChat = recent.find((ch) => byId.has(ch.character_ids[0]));
+  // the character hanging in the frame: the one chosen (until changed), else whoever was talked to last
+  const chosen = framedId ? byId.get(framedId) : undefined;
+  const frameChat = chosen ? recent.find((ch) => ch.character_ids.includes(chosen.id)) : recent.find((ch) => byId.has(ch.character_ids[0]));
   if (!WIDGETS.some((w) => prefs[w.id])) return null;
 
   // the picture in the frame: the one the character is showing in that chat (a gallery picture), else their main picture
   let frameArt: { kind: MediaKind | null; url: string | null } = { kind: null, url: null };
-  let frameChar: Character | undefined;
-  if (frameChat) {
-    frameChar = byId.get(frameChat.character_ids[0]);
+  let frameChar: Character | undefined = chosen;
+  if (frameChat || chosen) {
+    if (!frameChar && frameChat) frameChar = byId.get(frameChat.character_ids[0]);
     if (frameChar) {
       let pickId: string | null = null;
-      try { pickId = (JSON.parse(localStorage.getItem(`dorms.gal.${frameChat.id}`) || "{}") as Record<string, string | null>)[frameChar.id] ?? null; } catch { /* nothing remembered */ }
+      if (frameChat) try { pickId = (JSON.parse(localStorage.getItem(`dorms.gal.${frameChat.id}`) || "{}") as Record<string, string | null>)[frameChar.id] ?? null; } catch { /* nothing remembered */ }
       const it = pickId && (frameChar.gallery_mode === "random" || frameChar.gallery_mode === "mood") ? frameChar.gallery?.find((g) => g.id === pickId) : undefined;
       const gurl = it ? galleryUrl(frameChar, it.id) : null;
       frameArt = gurl && it ? { kind: it.kind, url: gurl } : { kind: frameChar.media?.kind === "vrm" ? null : frameChar.media?.kind ?? null, url: frameChar.media?.kind === "vrm" ? null : mediaUrl(frameChar) };
@@ -118,15 +131,16 @@ export default function SideWidgets() {
         </Section>
       )}
       {prefs.frame && (
-        <Section id="frame" title="Picture frame">
-          {frameChat && frameChar ? (
-            <button className="sw-wall" data-testid="side-frame-link" data-frame={displayName(frameChar)} onClick={() => go({ page: "chat", chatId: frameChat.id })} title={`Open your chat with ${displayName(frameChar)}`}>
+        <Section id="frame" title="Picture frame" action={<button className="iconbtn" aria-label="Choose who hangs in the picture frame" title="Choose who hangs in the frame" onClick={() => setFramePicker(true)}>✎</button>}>
+          {frameChar ? (
+            <button className="sw-wall" data-testid="side-frame-link" data-frame={displayName(frameChar)} data-framed={chosen ? "chosen" : "auto"} onClick={() => (frameChat ? go({ page: "chat", chatId: frameChat.id }) : void openWith(frameChar!.id))} title={`Open your chat with ${displayName(frameChar)}`}>
               <span className="sw-frame"><span className="sw-pic"><Art kind={frameArt.kind} url={frameArt.url} name={displayName(frameChar)} frame={frameArt.url === mediaUrl(frameChar) ? frameChar.frame : null} /></span></span>
               <span className="sw-plaque">{displayName(frameChar)}</span>
             </button>
-          ) : <div className="hint">Start a chat and the character you talked to last will hang here. Click it to go back.</div>}
+          ) : <div className="hint">Choose who hangs here with the pencil, or start a chat and the character you talked to last will hang here. Click it to go back.</div>}
         </Section>
       )}
+      {framePicker && <FramePicker characters={characters} current={chosen?.id ?? null} onClose={() => setFramePicker(false)} />}
       {picker && <FavoritesPicker characters={characters} onClose={() => setPicker(false)} onChanged={refresh} />}
     </div>
   );
@@ -157,6 +171,32 @@ function FavoritesPicker({ characters, onClose, onChanged }: { characters: Chara
         {list.length === 0 && <div className="hint">Nobody matches.</div>}
       </div>
       <div className="row" style={{ marginTop: 10 }}><button className="btn primary" onClick={onClose}>Done</button></div>
+    </Modal>
+  );
+}
+
+/** Choose who hangs in the picture frame: one character, kept until changed, or whoever was talked to last. */
+function FramePicker({ characters, current, onClose }: { characters: Character[]; current: string | null; onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const list = characters.filter((c) => !q.trim() || displayName(c).toLowerCase().includes(q.trim().toLowerCase())).sort((a, b) => displayName(a).localeCompare(displayName(b)));
+  const pick = (id: string | null) => { writeFramed(id); onClose(); };
+  return (
+    <Modal title="Who hangs in the frame?" onClose={onClose}>
+      <p className="hint" style={{ marginTop: 0 }}>Your choice stays there until you change it. Click the frame any time to open your chat with them.</p>
+      <input type="search" placeholder="Search characters…" aria-label="Search characters" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="who-list" style={{ maxHeight: 360, overflow: "auto", marginTop: 8 }}>
+        <label className="row" data-pickframe="auto" style={{ gap: 10, padding: "5px 8px", cursor: "pointer" }}>
+          <input type="radio" name="framed" checked={current == null} onChange={() => pick(null)} /><span className="grow">Whoever I talked to last</span>
+        </label>
+        {list.map((c) => (
+          <label key={c.id} className="row" data-pickframe={displayName(c)} style={{ gap: 10, padding: "5px 8px", cursor: "pointer" }}>
+            <input type="radio" name="framed" checked={current === c.id} onChange={() => pick(c.id)} />
+            <ProfileAvatar name={displayName(c)} size={28} src={stillOf(c)} frame={c.frame} /><span className="grow">{displayName(c)}</span>
+          </label>
+        ))}
+        {list.length === 0 && <div className="hint">Nobody matches.</div>}
+      </div>
+      <div className="row" style={{ marginTop: 10 }}><button className="btn" onClick={onClose}>Cancel</button></div>
     </Modal>
   );
 }
