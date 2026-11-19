@@ -781,7 +781,7 @@ try:
     np_ = invoke("novel_start", {"chatId": nchat["id"], "plot": "  a mystery in the old library  ", "tone": "Mystery", "pov": "first person, past tense", "chapters": 3, "chapterTokens": 800, "resume": False})
     check("a novel is planned from the plot, tone and length", np_["chapters"] == 3 and np_["plot"] == "a mystery in the old library" and np_["chapter_tokens"] == 800, str(np_))
     ms_ = wait_note(nchat["id"]); seen["pieces"] = None
-    chs_ = [m for m in ms_ if m["role"] == "character"]
+    chs_ = [m for m in ms_ if m["role"] == "character" and m["swipes"][0].startswith("Chapter")]
     check("each chapter is its own reply, and the writer says when the novel is finished", len(chs_) == 3 and ms_[-1]["role"] == "note" and "finished" in ms_[-1]["swipes"][0] and "Enjoy your story" in ms_[-1]["swipes"][0], str([(m["role"], m["swipes"][0][:60]) for m in ms_]))
     sp_ = sysprompt()
     check("the last chapter is asked for as the final chapter, from the plot", "chapter 3 of 3" in sp_ and "final chapter" in sp_ and "a mystery in the old library" in sp_ and "Mystery" in sp_ and "first person, past tense" in sp_ and "Carry on exactly" in sp_, sp_[-700:])
@@ -795,7 +795,7 @@ try:
     np2_ = invoke("novel_start", {"chatId": nchat["id"], "plot": "again", "tone": "", "pov": "", "chapters": 10, "chapterTokens": 800, "resume": False})
     check("a story that would not fit the day's allowance is planned shorter so it can end properly", np2_["chapters"] == 3, str(np2_))
     ms2_ = wait_note(nchat["id"], 60); seen["pieces"] = None
-    check("it writes the chapters that fit and finishes", "finished" in ms2_[-1]["swipes"][0] and len([m for m in ms2_ if m["role"] == "character"]) == 6, str([(m["role"], m["swipes"][0][:50]) for m in ms2_[-4:]]))
+    check("it writes the chapters that fit and finishes", "finished" in ms2_[-1]["swipes"][0] and len([m for m in ms2_ if m["role"] == "character" and m["swipes"][0].startswith("Chapter")]) == 6, str([(m["role"], m["swipes"][0][:50]) for m in ms2_[-4:]]))
     check("with the allowance spent, a new novel is refused with the reason", "used up" in (inv_err("novel_start", {"chatId": nchat["id"], "plot": "", "tone": "", "pov": "", "chapters": 2, "chapterTokens": 800, "resume": False}) or ""))
     st = invoke("get_settings"); st["novel_daily_limit"] = 0; invoke("save_settings", {"settings": st})
     d.execute_script("localStorage.setItem('dorms.rooms.view','cards'); localStorage.removeItem('dorms.rooms.world')")
