@@ -1209,12 +1209,9 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             let Some(&me_) = room_map.get(&r.id) else { continue };
             let links: Vec<i64> = r.links.iter().filter_map(|l| room_map.get(l).copied()).collect();
             if !links.is_empty() {
-                // pathways go both ways: keep what the other side already joined to this room
-                let mut all = db::get_room(&db, me_, &o).map_err(e)?.map(|x| x.links).unwrap_or_default();
-                all.extend(links);
-                db::set_room_links(&db, me_, &all, &o).map_err(e)?;
-            }
-        }
+                // exits are one-way: each room brings its own
+                db::set_room_links(&db, me_, &links, &o).map_err(e)?;
+            }      }
 
         // decorations (only shareable ones are ever packed): a .glb, a safe name, written under a fresh name
         for d in &parsed.data.decor {

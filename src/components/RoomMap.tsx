@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Room } from "../api";
-import { kindLabel, roomBackground } from "../lib/rooms";
+import { MAX_EXITS, kindLabel, roomBackground } from "../lib/rooms";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
 import { useToast } from "./ui";
@@ -13,8 +13,8 @@ const loadPos = (): Record<string, Pos> => { try { return JSON.parse(localStorag
 const savePos = (p: Record<string, Pos>) => { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* storage unavailable */ } };
 
 /**
- * A map of the rooms. Each room is a card with a round handle: drag from the handle onto another room to draw a
- * pathway between them (the story can then walk from one to the other, both ways). Click the x on a line to remove it.
+ * A map of the rooms. Each room is a card with a round handle: drag from the handle onto another room to draw an exit
+ * (a one-way pathway, an arrow; a room can have up to three). Draw one back for a way home. Click the x on an arrow to remove it.
  * Drag a card to move it; the layout is kept on this device.
  */
 export default function RoomMap({ rooms, onEdit, onStart }: { rooms: Room[]; onEdit: (r: Room) => void; onStart: (r: Room) => void }) {
@@ -40,7 +40,8 @@ export default function RoomMap({ rooms, onEdit, onStart }: { rooms: Room[]; onE
   const link = useCallback(async (a: number, b: number) => {
     const ra = rooms.find((r) => r.id === a);
     if (!ra || a === b) return;
-    if ((ra.links ?? []).includes(b)) { toast("Those rooms are already connected.", "ok"); return; }
+    if ((ra.links ?? []).includes(b)) { toast("That exit is already there.", "ok"); return; }
+    if ((ra.links ?? []).length >= MAX_EXITS) { toast(`${ra.name} already has ${MAX_EXITS} exits. Remove one first.`, "err"); return; }
     try { await api.setRoomLinks(a, [...(ra.links ?? []), b]); await refresh(); } catch (e) { toast(errText(e), "err"); }
   }, [rooms, refresh, toast]);
 
@@ -53,6 +54,8 @@ export default function RoomMap({ rooms, onEdit, onStart }: { rooms: Room[]; onE
   // drawing a line from a room's handle
   const startLine = (e: React.PointerEvent, from: number) => {
     e.preventDefault(); e.stopPropagation();
+    const fr = rooms.find((r) => r.id === from);
+    if (fr && (fr.links ?? []).length >= MAX_EXITS) { toast(`${fr.name} already has ${MAX_EXITS} exits. Remove one first.`, "err"); return; }
     const first = local(e);
     setLine({ from, ...first });
     const move = (ev: PointerEvent) => {
@@ -87,29 +90,34 @@ export default function RoomMap({ rooms, onEdit, onStart }: { rooms: Room[]; onE
 
   const centre = (id: number): Pos | null => { const p = where(id); return p ? { x: p.x + W / 2, y: p.y + H / 2 } : null; };
   const port = (id: number): Pos | null => { const p = where(id); return p ? { x: p.x + W / 2, y: p.y + H + 4 } : null; };
-  const pairs: [number, number][] = [];
-  for (const r of rooms) for (const l of r.links ?? []) if (r.id < l && rooms.some((x) => x.id === l)) pairs.push([r.id, l]);
+  // where a straight line from the middle of a card towards `to` leaves the card's edge (so arrow heads show outside the cards)
+  const edge = (id: number, to: Pos): Pos | null => {
+    const c = centre(id); if (!c) return null;
+    const dx = to.x - c.x, dy = to.y - c.y;
+    if (dx === 0 && dy === 0) return c;
+    const k = Math.min((W / 2 + 6) / Math.abs(dx || 1e-9), (H / 2 + 6) / Math.abs(dy || 1e-9));
+    return { x: c.x + dx * k, y: c.y + dy * k };
+  };
+  // every exit is an arrow; two rooms leading to each other show as two arcs side by side
+  const exits: { a: number; b: number }[] = [];
+  for (const r of rooms) for (const l of r.links ?? []) if (rooms.some((x) => x.id === l) && l !== r.id) exits.push({ a: r.id, b: l });
+  const geom = exits.flatMap(({ a, b }) => {
+    const ca = centre(a), cb = centre(b); if (!ca || !cb) return [];
+    const p0 = edge(a, cb)!, p1 = edge(b, ca)!;
+    const dx = p1.x - p0.x, dy = p1.y - p0.y, len = Math.hypot(dx, dy) || 1;
+    const bow = 26, cx = (p0.x + p1.x) / 2 - (dy / len) * bow, cy = (p0.y + p1.y) / 2 + (dx / len) * bow;
+    return [{ a, b, d: `M${p0.x},${p0.y} Q${cx},${cy} ${p1.x},${p1.y}`, mx: 0.25 * p0.x + 0.5 * cx + 0.25 * p1.x, my: 0.25 * p0.y + 0.5 * cy + 0.25 * p1.y }];
+  });
   const inside = rooms.filter((r) => r.parent_id != null && rooms.some((x) => x.id === r.parent_id));
 
   return (
     <div className="room-map-wrap" data-testid="room-map">
-      <p className="hint" style={{ margin: "0 0 8px" }}>Drag from the round handle under a room onto another room to connect them. Click the × on a line to remove it. Drag a room to move it. Dashed lines show which rooms are inside another room.</p>
+      <p className="hint" style={{ margin: "0 0 8px" }}>Drag from the round handle under a room onto another room to give it an exit there (an arrow, one way; up to 3 exits per room). Click the × on an arrow to remove it. Drag a room to move it. Dashed lines show which rooms are inside another room.</p>
       <div className="room-map" ref={canvas} style={{ width, height }}>
         <svg className="room-map-lines" width={width} height={height} aria-hidden="false">
+          <defs><marker id="room-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor" /></marker></defs>
           {inside.map((r) => { const a = centre(r.parent_id!), b = centre(r.id); return a && b ? <line key={`in${r.id}`} className="inside" x1={a.x} y1={a.y} x2={b.x} y2={b.y} /> : null; })}
-          {pairs.map(([a, b]) => {
-            const pa = centre(a), pb = centre(b); if (!pa || !pb) return null;
-            const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
-            return (
-              <g key={`${a}-${b}`} data-link={`${a}-${b}`}>
-                <line className="path" x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} />
-                <g className="unlink" transform={`translate(${mx},${my})`} onClick={() => void unlink(a, b)} role="button" aria-label="Remove this pathway" tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") void unlink(a, b); }}>
-                  <circle r="10" /><text textAnchor="middle" dy="4">×</text>
-                </g>
-              </g>
-            );
-          })}
+          {geom.map(({ a, b, d }) => <path key={`${a}>${b}`} className="path" data-link={`${a}-${b}`} d={d} markerEnd="url(#room-arrow)" />)}
           {line && (() => { const f = port(line.from); return f ? <line className="drawing" x1={f.x} y1={f.y} x2={line.x} y2={line.y} /> : null; })()}
         </svg>
         {placed.map(({ r, p }) => (
@@ -127,6 +135,14 @@ export default function RoomMap({ rooms, onEdit, onStart }: { rooms: Room[]; onE
             <span className="room-port" data-port={r.id} role="button" aria-label={`Connect ${r.name} to another room`} title="Drag onto another room to connect them" onPointerDown={(e) => startLine(e, r.id)} />
           </div>
         ))}
+        <svg className="room-map-controls" width={width} height={height}>
+          {geom.map(({ a, b, mx, my }) => (
+            <g key={`${a}>${b}`} className="unlink" data-unlink={`${a}-${b}`} transform={`translate(${mx},${my})`} onClick={() => void unlink(a, b)} role="button" aria-label="Remove this exit" tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") void unlink(a, b); }}>
+              <circle r="10" /><text textAnchor="middle" dy="4">×</text>
+            </g>
+          ))}
+        </svg>
       </div>
     </div>
   );

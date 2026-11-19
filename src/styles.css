@@ -551,12 +551,15 @@ body.resizing * { cursor: col-resize !important; }
 .room-map-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: var(--panel); max-height: calc(100vh - 220px); }
 .room-map { position: relative; touch-action: none; }
 .room-map-lines { position: absolute; inset: 0; z-index: 0; overflow: visible; }
-.room-map-lines .path { stroke: var(--accent); stroke-width: 3; stroke-linecap: round; opacity: 0.85; }
+.room-map-lines { color: var(--accent); }
+.room-map-lines .path { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; opacity: 0.85; }
+.room-map-lines .inside { color: var(--text, #ddd); }
 .room-map-lines .inside { stroke: currentColor; stroke-width: 2; stroke-dasharray: 6 6; opacity: 0.35; }
 .room-map-lines .drawing { stroke: var(--accent); stroke-width: 3; stroke-dasharray: 2 6; stroke-linecap: round; }
-.room-map-lines .unlink { cursor: pointer; }
-.room-map-lines .unlink circle { fill: var(--panel); stroke: var(--accent); stroke-width: 2; }
-.room-map-lines .unlink text { fill: var(--text, currentColor); font-size: 14px; pointer-events: none; }
+.room-map-controls { position: absolute; inset: 0; z-index: 3; overflow: visible; pointer-events: none; }
+.room-map-controls .unlink { cursor: pointer; pointer-events: auto; }
+.room-map-controls .unlink circle { fill: var(--panel); stroke: var(--accent); stroke-width: 2; }
+.room-map-controls .unlink text { fill: var(--text, currentColor); font-size: 14px; pointer-events: none; }
 .room-node { position: absolute; z-index: 1; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); cursor: grab; display: flex; flex-direction: column; user-select: none; }
 .room-node.drop { outline: 3px solid var(--accent); }
 .room-node-art { height: 80px; border-radius: 13px 13px 0 0; background-size: cover; }

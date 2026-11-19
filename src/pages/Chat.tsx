@@ -12,7 +12,7 @@ import MusicField from "../components/MusicField";
 import { PROMPT_DRAG } from "../components/PromptsMenu";
 import { detectMood, pickGalleryItem } from "../lib/mood";
 import { useTextScale, setTextScaleAnchored, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
-import { hideDirectives, roomBackground, roomScene, kindLabel, nearbyRooms, pathName } from "../lib/rooms";
+import { hideDirectives, roomBackground, roomScene, kindLabel, nearbyRooms, roomExits, pathName } from "../lib/rooms";
 import { makeWardrobe } from "../components/WardrobePanel";
 import type { Speech } from "../components/SpeechBubble";
 import { Modal, useToast } from "../components/ui";
@@ -409,8 +409,10 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                 )}
                 <div className="grow" />
                 {rooms.length > 1 && (() => {
-                  const near = nearbyRooms(rooms, room), nearIds = new Set(near.map((r) => r.id));
-                  const far = rooms.filter((r) => r.id !== room?.id && !nearIds.has(r.id));
+                  // the way on is whatever the user connected: this room's exits, and the rooms around it. A chat that isn't in a room yet can enter any.
+                  const exits = roomExits(rooms, room), near = nearbyRooms(rooms, room);
+                  const all = room ? [] : rooms;
+                  if (room && exits.length + near.length === 0) return <span className="hint" data-testid="dead-end" title="This room has no exits. Connect it to another room on the Rooms page.">No way on from here</span>;
                   return (
                     <select style={{ width: "auto", maxWidth: 220 }} value="" disabled={busy} aria-label="Go to another room" title="Walk the story into another room. Same conversation, new setting."
                       onChange={async (e) => {
@@ -418,8 +420,9 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                         try { const m = await api.moveChat(chat.id, rid); setMsgs((x) => (x.some((y) => y.id === m.id) ? x : [...x, m])); await refresh(); } catch (err) { toast(errText(err), "err"); }
                       }}>
                       <option value="">➜ Go to…{room ? "" : " (a room)"}</option>
+                      {exits.length > 0 && <optgroup label="Exits">{exits.map((r) => <option key={r.id} value={r.id}>{pathName(rooms, r.id)}</option>)}</optgroup>}
                       {near.length > 0 && <optgroup label="Nearby">{near.map((r) => <option key={r.id} value={r.id}>{pathName(rooms, r.id)}</option>)}</optgroup>}
-                      {far.length > 0 && <optgroup label={near.length ? "Elsewhere" : "Rooms"}>{far.map((r) => <option key={r.id} value={r.id}>{pathName(rooms, r.id)}</option>)}</optgroup>}
+                      {all.length > 0 && <optgroup label="Rooms">{all.map((r) => <option key={r.id} value={r.id}>{pathName(rooms, r.id)}</option>)}</optgroup>}
                     </select>
                   );
                 })()}
