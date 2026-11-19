@@ -1081,7 +1081,7 @@ try:
     say_and_wait("and now?", ["*laughs out loud* ", "Hahaha!"])
     check("with the main picture kept, no gallery picture is shown", not any(v in last_avatar() for v in gitems.values()) and not any(v in stage_img() for v in gitems.values()))
     removed = invoke("remove_gallery_item", {"id": gid, "itemId": gitems["sad"]})
-    check("a picture can be removed (its file goes too)", len(removed["gallery"]) == 2 and not any(f.startswith(gid + "-gal-" + gitems["sad"]) for f in os.listdir(media_dir)))
+    check("a picture can be removed (its file goes too)", len(removed["gallery"]) == 2 and not any(f.startswith(gid + "-gal-" + gitems["sad"]) for f in os.listdir(os.path.join(DATA, "media"))))
     set_provider(provider=st0["provider"], openai_base_url=st0["openai_base_url"], openai_model=st0["openai_model"])
 
     # the walls between the panels can be dragged (left mouse button), double-click puts them back
