@@ -158,6 +158,13 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   main texture and colour put back (pictures scaled to at most 2048 px) and written as one `.glb` (GLTFExporter), which then goes through the normal room-model path; a `.glb` is used as it is. The temporary files are
   always removed. Unity shaders, prefabs, scenes and baked lighting are not read.
 
+## Character gallery and mood pictures (v0.10)
+
+- A character has `gallery` (items: id, file, kind `image`/`gif`/`video`, moods) and `gallery_mode` (`fixed`, `random`, `mood`; empty means fixed). Like the main picture, the gallery is owned by the backend: saving a character from the editor never replaces it, it changes only through
+  `add_gallery_image` (raw upload, up to 200 items and 60 MB each, no 3D models), `set_gallery_moods`, `remove_gallery_item` and `set_gallery_mode`. Files are `media/<char>-gal-<item>.<ext>`, removed with the item or the character, packed into profile backups under fresh names and restored with only valid kinds and known moods.
+- Moods are a fixed list of 12 (neutral, happy, laughing, loving, embarrassed, smug, surprised, scared, sad, angry, thinking, sleepy). **Mood detector** (`src/lib/mood.ts`, runs in the web view, offline, no model call): per mood a set of word, action and emoji patterns; each hit counts one, two inside an *action*, a little more in the last 40% of the reply; hidden `[variable: ...]` lines are ignored; the best mood wins with a score of at least 1.5, ties by a fixed order, otherwise neutral.
+- **Choosing the picture** after each new character reply (not for messages already in the chat when it is opened, which also covers opening an old chat): `random` any picture except the one shown; `mood` one tagged with the detected mood, else one tagged neutral, else an untagged one, else the main picture; `fixed` the main picture. The choice is kept per chat and character in local storage. It shows on the stage (not for a 3D character), on the character's latest message and in the members list of the chat.
+
 ## Panels, the characters list, statuses (v0.9)
 
 - The shell is a grid of side bar, middle and (on windows wider than 1100 px, when shown) the characters list. The two outer widths are CSS variables (`--side-w`, `--members-w`) set from values kept in local storage; a wall element between panels is dragged with the left button (pointer events on the window while dragging), clamped between a minimum and a maximum that leaves the middle at least 480 px,

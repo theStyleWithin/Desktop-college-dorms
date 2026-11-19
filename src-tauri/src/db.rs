@@ -29,6 +29,22 @@ pub struct Outfit {
     pub file: String,
 }
 
+/// One picture (or GIF or short video) in a character's gallery, with the moods it fits (for the mood-matching display).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct GalleryItem {
+    pub id: String,
+    /// Path relative to the data dir.
+    pub file: String,
+    /// image | gif | video
+    pub kind: String,
+    /// Moods from `GALLERY_MOODS` this picture shows (empty: it fits no particular mood).
+    #[serde(default)]
+    pub moods: Vec<String>,
+}
+
+/// The moods a gallery picture can be tagged with (and the mood detector can pick).
+pub const GALLERY_MOODS: [&str; 12] = ["neutral", "happy", "laughing", "loving", "embarrassed", "smug", "surprised", "scared", "sad", "angry", "thinking", "sleepy"];
+
 /// How an avatar picture is framed wherever it is shown: the point of the picture to keep in view (0..1 across and
 /// down) and how far to zoom in on it.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -54,6 +70,13 @@ pub struct Character {
     pub card: CharacterData,
     #[serde(default)]
     pub media: Option<Media>,
+    /// More pictures of the character; what shows in a chat depends on `gallery_mode`.
+    #[serde(default)]
+    pub gallery: Vec<GalleryItem>,
+    /// `fixed` (the main picture, always), `random` (a new picture from the gallery after each reply) or `mood` (the picture that
+    /// fits the mood of the reply). Empty means fixed.
+    #[serde(default)]
+    pub gallery_mode: String,
     /// Extra outfits (VRM models) for a 3D character; `media` stays the original.
     #[serde(default)]
     pub outfits: Vec<Outfit>,
@@ -1268,6 +1291,8 @@ mod tests {
             card: CharacterData { name: name.into(), ..Default::default() },
             media: None,
             outfits: vec![],
+            gallery: vec![],
+            gallery_mode: String::new(),
             outfit: None,
             frame: None,
             folder: None,
@@ -1423,6 +1448,22 @@ mod tests {
         assert_eq!((got.len(), got[0].text.as_str(), got[0].source.as_str()), (1, "napping", "user"));
         delete_character(&c, "x", &a).unwrap();
         assert!(list_statuses(&c, &a).unwrap().is_empty(), "deleting the character removes the status");
+    }
+
+    #[test]
+    fn a_gallery_survives_a_save_and_older_characters_still_load() {
+        let c = fresh();
+        let a = me("a");
+        let mut x = ch("x", "X");
+        x.gallery = vec![GalleryItem { id: "g1".into(), file: "media/x-gal-1.png".into(), kind: "image".into(), moods: vec!["happy".into(), "laughing".into()] }];
+        x.gallery_mode = "mood".into();
+        save_character(&c, &x, &a).unwrap();
+        let got = get_character(&c, "x", &a).unwrap().unwrap();
+        assert_eq!((got.gallery.len(), got.gallery[0].moods.clone(), got.gallery_mode.as_str()), (1, vec!["happy".to_string(), "laughing".to_string()], "mood"));
+        // a character saved before galleries existed has neither field
+        let old: Character = serde_json::from_str(&serde_json::to_string(&ch("y", "Y")).unwrap().replace(",\"gallery\":[]", "").replace(",\"gallery_mode\":\"\"", "")).unwrap();
+        assert!(old.gallery.is_empty() && old.gallery_mode.is_empty());
+        assert!(GALLERY_MOODS.contains(&"embarrassed") && GALLERY_MOODS.len() == 12);
     }
 
     #[test]

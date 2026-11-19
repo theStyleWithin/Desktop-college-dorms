@@ -62,6 +62,9 @@ export const DEFAULT_FRAME: Frame = { x: 0.5, y: 0.5, zoom: 1 };
 export interface Lorebook { id: string; name: string; book: CharacterBook; created_at: number; updated_at: number }
 export interface Folder { id: string; name: string; cover: string | null; frame: Frame | null; created_at: number; cover_path?: string | null; /** the folder this one sits inside (null = top level) */ parent?: string | null; /** a character whose picture stands in when the folder has none */ cover_char?: string | null }
 
+export interface GalleryItem { id: string; file: string; kind: "image" | "gif" | "video"; moods: string[] }
+export type GalleryMode = "fixed" | "random" | "mood";
+
 export interface Character {
   id: string;
   card: CardData;
@@ -72,6 +75,10 @@ export interface Character {
   outfits?: { id: string; name: string; file: string }[];
   outfit?: string | null;
   outfit_paths?: { id: string; name: string; path: string }[];
+  /** More pictures of the character, where each is (by id), and how they are used in a chat. */
+  gallery?: GalleryItem[];
+  gallery_paths?: { id: string; path: string }[];
+  gallery_mode?: GalleryMode | "";
   /** How the picture is framed so a face is never cut off. */
   frame?: Frame | null;
   /** The folder this character is filed in (null = top level). */
@@ -246,6 +253,12 @@ export const api = {
   /** Sends a WAV recording to the voice server from Settings → Voice and returns what was said. */
   transcribe: (wav: Uint8Array) => bin("transcribe_audio", wav, {}) as Promise<string>,
   testVoice: () => invoke<string>("test_voice"),
+  async addGalleryImage(id: string, file: File): Promise<Character> {
+    return bin("add_gallery_image", new Uint8Array(await file.arrayBuffer()), { "x-char-id": id, "x-file-name": enc(file.name) });
+  },
+  setGalleryMoods: (id: string, itemId: string, moods: string[]) => invoke<Character>("set_gallery_moods", { id, itemId, moods }),
+  removeGalleryItem: (id: string, itemId: string) => invoke<Character>("remove_gallery_item", { id, itemId }),
+  setGalleryMode: (id: string, mode: GalleryMode) => invoke<Character>("set_gallery_mode", { id, mode }),
   async setMedia(id: string, file: File): Promise<Character> {
     const bytes = new Uint8Array(await file.arrayBuffer());
     return bin("set_media", bytes, { "x-char-id": id, "x-file-name": enc(file.name) });
@@ -501,6 +514,8 @@ export function folderArt(f: Folder, characters: Character[]): { url: string | n
 export const roomModelUrl = (r: { model_path?: string | null }) => (r.model_path ? convertFileSrc(r.model_path) : null);
 export const musicUrl = (x: { music_path?: string | null }) => (x.music_path ? convertFileSrc(x.music_path) : null);
 export const roomBackdrop = (r: { backdrop_path?: string | null }) => (r.backdrop_path ? convertFileSrc(r.backdrop_path) : null);
+/** A gallery picture's address (the web view can't open a path directly). */
+export const galleryUrl = (c: Character, itemId: string) => { const p = c.gallery_paths?.find((g) => g.id === itemId)?.path; return p ? convertFileSrc(p) : null; };
 export const mediaUrl = (c: { media_path: string | null }) => (c.media_path ? convertFileSrc(c.media_path) : null);
 
 // ---- card helpers -------------------------------------------------------

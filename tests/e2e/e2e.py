@@ -1024,6 +1024,64 @@ try:
     check("clearing the status removes it", invoke("set_status", {"characterId": cid, "text": ""}) is None and invoke("list_statuses") == [])
     set_provider(provider=st0["provider"], openai_base_url=st0["openai_base_url"], openai_model=st0["openai_model"])
 
+    # -- a character's gallery: more pictures, tagged with moods; the chat shows the one that fits the reply (or a random one)
+    from PIL import Image as _Img
+    def png_file(name, rgb):
+        pth = os.path.join(WORK, name); _Img.new("RGB", (48, 64), rgb).save(pth); return pth
+    gpics = {"happy": png_file("g-happy.png", (240, 200, 40)), "sad": png_file("g-sad.png", (40, 80, 200)), "calm": png_file("g-calm.png", (120, 120, 120))}
+    gc = invoke("save_character", {"character": {"card": dict(card0, name="Gal Gallery", first_mes="Hi there!")}}); gid = gc["id"]
+    gitems = {}
+    for k_, pth in gpics.items():
+        res_ = invoke_file("add_gallery_image", pth, {"x-char-id": gid, "x-file-name": k_ + ".png"}); gitems[k_] = res_["gallery"][-1]["id"]
+    gnow = invoke("get_character", {"id": gid})
+    check("pictures can be added to a character's gallery, each with a file", len(gnow["gallery"]) == 3 and all(os.path.exists(x["path"]) for x in gnow["gallery_paths"]) and len(gnow["gallery_paths"]) == 3, str(gnow["gallery"]))
+    check("a gallery doesn't take a 3D model or a text file", "gallery holds" in (inv_err_file("add_gallery_image", os.path.join(FIX, "sample.vrm"), {"x-char-id": gid, "x-file-name": "x.vrm"}) or "") and "Unsupported" in (inv_err_file("add_gallery_image", os.path.join(FIX, "worldinfo_st.json"), {"x-char-id": gid, "x-file-name": "x.txt"}) or ""))
+    r1 = invoke("set_gallery_moods", {"id": gid, "itemId": gitems["happy"], "moods": ["happy", "laughing", "bogus", "happy"]})
+    check("moods are saved once each, and unknown ones are ignored", [g["moods"] for g in r1["gallery"] if g["id"] == gitems["happy"]] == [["happy", "laughing"]])
+    invoke("set_gallery_moods", {"id": gid, "itemId": gitems["sad"], "moods": ["sad"]}); invoke("set_gallery_moods", {"id": gid, "itemId": gitems["calm"], "moods": ["neutral"]})
+    check("only the known modes are accepted", "Unknown" in (inv_err("set_gallery_mode", {"id": gid, "mode": "chaos"}) or "") and invoke("set_gallery_mode", {"id": gid, "mode": "mood"})["gallery_mode"] == "mood")
+    stale = invoke("save_character", {"character": dict(gc, card=dict(gc["card"], description="edited in the editor"))})
+    check("saving the character from an old copy keeps its gallery and mode", len(stale["gallery"]) == 3 and stale["gallery_mode"] == "mood" and stale["card"]["description"] == "edited in the editor")
+    set_provider(provider="openai", openai_base_url="http://127.0.0.1:18999/v1", openai_model="fake-model")
+    gchat = invoke("create_chat", {"dormId": None, "name": "Gal chat", "kind": "dm", "characterIds": [gid]})
+    reload_ui(); nav("Dorms"); time.sleep(1.0)
+    d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'Gal chat')]").click(); time.sleep(1.0)
+    last_avatar = lambda: d.execute_script("const a=[...document.querySelectorAll('.msgs .msg:not(.user) .avatar img')];return a.length?decodeURIComponent(a[a.length-1].src):''")
+    stage_img = lambda: d.execute_script("const i=document.querySelector('.stage img');return i?decodeURIComponent(i.src):''")
+    check("before any reply the main picture is shown (no gallery picture yet)", not any(v in last_avatar() for v in gitems.values()))
+    def say_and_wait(text, pieces):
+        seen["pieces"] = pieces
+        n0 = len([x for x in invoke("list_messages", {"chatId": gchat["id"]}) if x["role"] == "character"])
+        box_ = d.find_element(By.CSS_SELECTOR, ".composer textarea"); box_.send_keys(text); box_.send_keys(Keys.ENTER)
+        for _ in range(40):
+            time.sleep(0.5)
+            if len([x for x in invoke("list_messages", {"chatId": gchat["id"]}) if x["role"] == "character"]) > n0: break
+        time.sleep(0.8)
+    say_and_wait("tell me a joke", ["*smiles and laughs* ", "Haha, ", "that's a good one!"])
+    check("a happy, laughing reply shows the picture tagged for it, on the message and the stage", gitems["happy"] in last_avatar() and gitems["happy"] in stage_img(), f"{last_avatar()} | {stage_img()}")
+    say_and_wait("what's wrong?", ["*tears run down her cheeks* ", "I miss them so much."])
+    check("a sad reply shows the sad picture", gitems["sad"] in last_avatar() and gitems["sad"] in stage_img(), f"{last_avatar()} | {stage_img()}")
+    say_and_wait("what time is it?", ["It is nine o'clock ", "and the shop is closed."])
+    check("a reply with no particular mood falls back to the picture tagged neutral", gitems["calm"] in last_avatar(), last_avatar())
+    check("earlier messages keep the picture they had (only the latest wears the new one)", d.execute_script("const a=[...document.querySelectorAll('.msgs .msg:not(.user) .avatar img')];return a.length>=3 && decodeURIComponent(a[a.length-2].src)!==decodeURIComponent(a[a.length-1].src)"))
+    reload_ui(); nav("Dorms"); time.sleep(1.0)
+    d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'Gal chat')]").click(); time.sleep(1.0)
+    check("the picture is remembered when the chat is opened again", gitems["calm"] in last_avatar(), last_avatar())
+    invoke("set_gallery_mode", {"id": gid, "mode": "random"}); reload_ui(); nav("Dorms"); time.sleep(1.0)
+    d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'Gal chat')]").click(); time.sleep(1.0)
+    shown = set()
+    for i_ in range(5):
+        say_and_wait(f"again {i_}", ["Just a plain reply ", str(i_)])
+        shown.add(next((k_ for k_, v in gitems.items() if v in last_avatar()), "main"))
+    check("in random mode the picture changes between replies (and stays inside the gallery)", len(shown) >= 2 and "main" not in shown, str(shown))
+    invoke("set_gallery_mode", {"id": gid, "mode": "fixed"}); reload_ui(); nav("Dorms"); time.sleep(1.0)
+    d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'Gal chat')]").click(); time.sleep(1.0)
+    say_and_wait("and now?", ["*laughs out loud* ", "Hahaha!"])
+    check("with the main picture kept, no gallery picture is shown", not any(v in last_avatar() for v in gitems.values()) and not any(v in stage_img() for v in gitems.values()))
+    removed = invoke("remove_gallery_item", {"id": gid, "itemId": gitems["sad"]})
+    check("a picture can be removed (its file goes too)", len(removed["gallery"]) == 2 and not any(f.startswith(gid + "-gal-" + gitems["sad"]) for f in os.listdir(media_dir)))
+    set_provider(provider=st0["provider"], openai_base_url=st0["openai_base_url"], openai_model=st0["openai_model"])
+
     # the walls between the panels can be dragged (left mouse button), double-click puts them back
     reload_ui(); nav("Characters"); time.sleep(1.0)
     drag_wall = """
@@ -1737,6 +1795,9 @@ try:
     check("a decoration can be renamed and deleted (its file goes too)", set(items) == {"Lamp", "Fern"} and not any(f.endswith(".glb") and "decor-" in f and os.path.join(media_dir, f) not in [i["path"] for i in items.values()] for f in os.listdir(media_dir)), str(list(items)))
     check("only a real .glb is accepted into the library", "valid 3D model" in (inv_err("decor_finish", {"token": upload(pk_text), "name": "Bad"}) or ""))
     # export: only the shareable one goes along; eject removes the other with a warning
+    rt = invoke("save_character", {"character": {"card": dict(card0, name="Gallery Trip", first_mes="Hello!")}})
+    rt_items = [invoke_file("add_gallery_image", p_, {"x-char-id": rt["id"], "x-file-name": os.path.basename(p_)})["gallery"][-1]["id"] for p_ in (gpics["happy"], gpics["sad"])]
+    invoke("set_gallery_moods", {"id": rt["id"], "itemId": rt_items[0], "moods": ["happy", "smug"]}); invoke("set_gallery_mode", {"id": rt["id"], "mode": "mood"})
     invoke("save_prompt", {"prompt": {"id": "", "title": "Round trip", "body": "[OOC: it came back.]", "tag": "Style", "created_at": 0, "updated_at": 0}})
     info = invoke("prepare_export")
     check("the export names the decoration that isn't shareable and leaves it out", info["withheld_items"] == ["Fern"], str(info))
@@ -1746,6 +1807,8 @@ try:
     check("eject removes both decoration files from the device", len([f for f in os.listdir(media_dir) if f.startswith("decor-")]) == n_glb - 2)
     invoke_file("import_profile", xp, {"x-mode": "import", "x-handle": "Roomer3", "x-passcode": ""})
     back = invoke("list_decor")
+    gt = [c_ for c_ in invoke("list_characters") if c_["card"]["name"] == "Gallery Trip"]
+    check("a character's gallery comes back with a backup (pictures, moods and mode)", len(gt) == 1 and len(gt[0]["gallery"]) == 2 and gt[0]["gallery"][0]["moods"] == ["happy", "smug"] and gt[0]["gallery_mode"] == "mood" and all(os.path.exists(x["path"]) for x in gt[0]["gallery_paths"]), str(gt)[:300])
     rp = invoke("list_prompts")
     check("saved prompts come back with a backup (title, label and text)", [(x["title"], x["tag"], x["body"]) for x in rp] == [("Round trip", "Style", "[OOC: it came back.]")], str(rp))
     check("the profile came back with only the shareable decoration, still marked shareable", [(i["name"], i["share"]) for i in back] == [("Lamp", True)] and os.path.exists(back[0]["path"]), str(back))

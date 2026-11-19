@@ -1,0 +1,84 @@
+import { useRef, useState } from "react";
+import { api, galleryUrl, type Character, type GalleryMode } from "../api";
+import { MOODS, detectMood } from "../lib/mood";
+import { errText } from "../lib/util";
+import { useToast } from "./ui";
+
+const MODES: { id: GalleryMode; label: string; hint: string }[] = [
+  { id: "fixed", label: "Keep the main picture", hint: "The chat always shows the main picture. The gallery is just stored." },
+  { id: "random", label: "Change randomly after each reply", hint: "After every reply, the chat shows a different picture from the gallery." },
+  { id: "mood", label: "Match the mood of the reply", hint: "The chat shows the picture that fits how the reply feels (tag your pictures below). Anything that doesn't fit falls back to a calm or untagged picture, then the main one." },
+];
+
+/**
+ * A character's gallery: more pictures (or GIFs and short videos) of them, each of which can be tagged with the moods it shows.
+ * The chat then keeps the main picture, changes it at random after each reply, or picks the one that fits the reply's mood.
+ */
+export default function GalleryEditor({ char, onChanged }: { char: Character | null; onChanged: (c: Character) => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState("");
+  const [sample, setSample] = useState("");
+  const file = useRef<HTMLInputElement>(null);
+  if (!char) return <p className="hint">Save the character first, then you can add more pictures to their gallery here.</p>;
+
+  const run = async (label: string, p: Promise<Character>) => {
+    setBusy(label);
+    try { onChanged(await p); } catch (e) { toast(errText(e), "err"); } finally { setBusy(""); }
+  };
+  const addFiles = async (files: FileList | File[] | null) => {
+    if (!files) return;
+    for (const f of Array.from(files)) {
+      setBusy(`Adding ${f.name}…`);
+      try { onChanged(await api.addGalleryImage(char.id, f)); } catch (e) { toast(`${f.name}: ${errText(e)}`, "err"); }
+    }
+    setBusy("");
+  };
+  const mode = (char.gallery_mode || "fixed") as GalleryMode;
+  const items = char.gallery ?? [];
+  const seen = sample.trim() ? detectMood(sample) : null;
+  const seenMood = MOODS.find((m) => m.id === seen);
+
+  return (
+    <div className="gallery" data-testid="gallery" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); void addFiles(e.dataTransfer.files); }}>
+      <div className="chips" role="radiogroup" aria-label="How the gallery is used in a chat">
+        {MODES.map((m) => (
+          <button key={m.id} type="button" role="radio" aria-checked={mode === m.id} data-mode={m.id} className={`chip big ${mode === m.id ? "on" : ""}`} onClick={() => void run("Saving…", api.setGalleryMode(char.id, m.id))}>{m.label}</button>
+        ))}
+      </div>
+      <div className="hint">{MODES.find((m) => m.id === mode)?.hint}</div>
+      {mode === "mood" && items.length > 0 && !items.some((i) => i.moods.length) && <div className="hint" style={{ color: "#f4c76a" }}>No picture is tagged with a mood yet. Click the faces under a picture to say which moods it shows.</div>}
+
+      <div className="gallery-grid">
+        {items.map((it) => {
+          const url = galleryUrl(char, it.id);
+          return (
+            <div key={it.id} className="gal-card" data-gal={it.id}>
+              <div className="gal-thumb">
+                {url && (it.kind === "video" ? <video src={url} muted loop playsInline onMouseEnter={(e) => void e.currentTarget.play().catch(() => {})} onMouseLeave={(e) => e.currentTarget.pause()} /> : <img src={url} alt="" draggable={false} loading="lazy" />)}
+                <button type="button" className="iconbtn gal-del" aria-label="Remove this picture" title="Remove" onClick={() => { if (window.confirm("Remove this picture from the gallery?")) void run("Removing…", api.removeGalleryItem(char.id, it.id)); }}>✕</button>
+              </div>
+              <div className="gal-moods" aria-label="Moods this picture shows">
+                {MOODS.map((m) => {
+                  const on = it.moods.includes(m.id);
+                  return <button key={m.id} type="button" className={`gal-mood${on ? " on" : ""}`} data-mood={m.id} aria-pressed={on} title={m.label}
+                    onClick={() => void run("Saving…", api.setGalleryMoods(char.id, it.id, on ? it.moods.filter((x) => x !== m.id) : [...it.moods, m.id]))}>{m.emoji}</button>;
+                })}
+              </div>
+            </div>
+          );
+        })}
+        <button type="button" className="gal-add" disabled={!!busy} onClick={() => file.current?.click()}>＋<span>Add pictures</span></button>
+      </div>
+      <input ref={file} type="file" hidden multiple aria-label="Add gallery pictures" onChange={(e) => { void addFiles(e.target.files); e.target.value = ""; }} />
+      {busy && <div className="hint" role="status">{busy}</div>}
+      {items.length === 0 && !busy && <div className="hint">Add pictures, GIFs or short videos of {char.card.name || "the character"} (drop them here too). With lots of expressions, tag each with its mood and pick “Match the mood of the reply”.</div>}
+
+      <details style={{ marginTop: 10 }}>
+        <summary>How does it tell the mood?</summary>
+        <div className="hint" style={{ margin: "6px 0" }}>It reads each reply for feelings: actions in asterisks like *blushes* or *laughs*, words like “furious” or “giggles”, and emoji. Try it:</div>
+        <input type="text" value={sample} aria-label="Try a reply" placeholder="*blushes and looks away* I-It's not like I missed you…" onChange={(e) => setSample(e.target.value)} />
+        {seenMood && <div className="hint" data-testid="mood-sample" data-mood={seenMood.id}>That reads as <b>{seenMood.emoji} {seenMood.label}</b>.</div>}
+      </details>
+    </div>
+  );
+}

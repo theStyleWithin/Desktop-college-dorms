@@ -88,6 +88,14 @@ pub struct CharacterOut {
     media_path: Option<String>,
     /// The wardrobe: where each extra outfit's model file is.
     outfit_paths: Vec<OutfitOut>,
+    /// Where each gallery picture is (by its id).
+    gallery_paths: Vec<GalleryPath>,
+}
+
+#[derive(Serialize)]
+pub struct GalleryPath {
+    id: String,
+    path: String,
 }
 
 fn out(st: &AppState, c: Character) -> CharacterOut {
@@ -95,7 +103,8 @@ fn out(st: &AppState, c: Character) -> CharacterOut {
     let worn = c.outfit.as_ref().and_then(|id| c.outfits.iter().find(|o| &o.id == id));
     let media_path = worn.map(|o| abs(&o.file)).or_else(|| c.media.as_ref().map(|m| abs(&m.file)));
     let outfit_paths = c.outfits.iter().map(|o| OutfitOut { id: o.id.clone(), name: o.name.clone(), path: abs(&o.file) }).collect();
-    CharacterOut { c, media_path, outfit_paths }
+    let gallery_paths = c.gallery.iter().map(|g| GalleryPath { id: g.id.clone(), path: abs(&g.file) }).collect();
+    CharacterOut { c, media_path, outfit_paths, gallery_paths }
 }
 
 pub(crate) fn raw_body<'a>(req: &'a Request<'_>) -> R<&'a [u8]> {
@@ -183,6 +192,8 @@ pub fn save_character(state: State<'_, Shared>, mut character: Character) -> R<C
         character.media = existing.media;
         character.outfits = existing.outfits;
         character.outfit = existing.outfit;
+        character.gallery = existing.gallery; // the gallery too: it only changes through its own commands
+        character.gallery_mode = existing.gallery_mode;
         character.folder = existing.folder; // filing is done by dragging, not by editing
         if character.created_at == 0 {
             character.created_at = existing.created_at;
@@ -218,6 +229,9 @@ pub fn delete_character(state: State<'_, Shared>, id: String) -> R<()> {
         remove_media_file(&state, &c.media);
         for f in &c.outfits {
             let _ = std::fs::remove_file(state.data_dir.join(&f.file));
+        }
+        for g in &c.gallery {
+            let _ = std::fs::remove_file(state.data_dir.join(&g.file));
         }
     }
     db::delete_character(&db, &id, &o).map_err(e)
@@ -344,6 +358,87 @@ pub fn remove_outfit(state: State<'_, Shared>, id: String, outfit_id: String) ->
     Ok(out(&state, c))
 }
 
+// ---- gallery: more pictures of a character, shown by mood or at random --------------------------------------
+
+const MAX_GALLERY: usize = 200;
+
+/// Adds a picture, GIF or short video to the character's gallery.
+/// Body: raw file bytes. Headers: `x-char-id`, `x-file-name` (percent-encoded).
+#[tauri::command]
+pub fn add_gallery_image(request: Request<'_>, state: State<'_, Shared>) -> R<CharacterOut> {
+    let id = header(&request, "x-char-id");
+    let file_name = header(&request, "x-file-name");
+    let bytes = raw_body(&request)?;
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Save the character first")?;
+    if c.gallery.len() >= MAX_GALLERY {
+        return Err(format!("That's the most pictures one gallery can hold ({MAX_GALLERY}). Remove some first."));
+    }
+    let (kind, ext) = media_kind(&file_name)?;
+    if kind == "vrm" {
+        return Err("A gallery holds pictures, GIFs and videos. (A 3D model is the character's main model.)".into());
+    }
+    if bytes.len() > 60 * 1024 * 1024 {
+        return Err("That file is too large for a gallery picture (60 MB at most).".into());
+    }
+    let item_id = uid();
+    let rel = format!("media/{id}-gal-{item_id}.{ext}");
+    std::fs::write(state.data_dir.join(&rel), bytes).map_err(e)?;
+    c.gallery.push(db::GalleryItem { id: item_id, file: rel, kind: kind.into(), moods: vec![] });
+    c.updated_at = db::now();
+    db::save_character(&db, &c, &o).map_err(e)?;
+    Ok(out(&state, c))
+}
+
+/// Which moods a gallery picture shows (unknown ones are ignored).
+#[tauri::command]
+pub fn set_gallery_moods(state: State<'_, Shared>, id: String, item_id: String, moods: Vec<String>) -> R<CharacterOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Character not found")?;
+    let item = c.gallery.iter_mut().find(|g| g.id == item_id).ok_or("That picture isn't in the gallery any more.")?;
+    let mut clean: Vec<String> = vec![];
+    for m in moods {
+        if db::GALLERY_MOODS.contains(&m.as_str()) && !clean.contains(&m) {
+            clean.push(m);
+        }
+    }
+    item.moods = clean;
+    c.updated_at = db::now();
+    db::save_character(&db, &c, &o).map_err(e)?;
+    Ok(out(&state, c))
+}
+
+#[tauri::command]
+pub fn remove_gallery_item(state: State<'_, Shared>, id: String, item_id: String) -> R<CharacterOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Character not found")?;
+    if let Some(i) = c.gallery.iter().position(|g| g.id == item_id) {
+        let gone = c.gallery.remove(i);
+        let _ = std::fs::remove_file(state.data_dir.join(&gone.file));
+        c.updated_at = db::now();
+        db::save_character(&db, &c, &o).map_err(e)?;
+    }
+    Ok(out(&state, c))
+}
+
+/// `fixed` (the main picture), `random` (a new one after each reply) or `mood` (the one that fits the reply's mood).
+#[tauri::command]
+pub fn set_gallery_mode(state: State<'_, Shared>, id: String, mode: String) -> R<CharacterOut> {
+    if !["fixed", "random", "mood"].contains(&mode.as_str()) {
+        return Err("Unknown gallery mode.".into());
+    }
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Character not found")?;
+    c.gallery_mode = mode;
+    c.updated_at = db::now();
+    db::save_character(&db, &c, &o).map_err(e)?;
+    Ok(out(&state, c))
+}
+
 #[tauri::command]
 pub fn clear_media(state: State<'_, Shared>, id: String) -> R<CharacterOut> {
     let o = owner(&state)?;
@@ -386,6 +481,8 @@ pub fn import_card(request: Request<'_>, state: State<'_, Shared>) -> R<ImportOu
         card: parsed.data,
         media: None,
         outfits: vec![],
+        gallery: vec![],
+        gallery_mode: String::new(),
         outfit: None,
         frame: None,
         folder: None,

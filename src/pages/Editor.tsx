@@ -6,6 +6,7 @@ import Art from "../components/Art";
 import FrameEditor from "../components/FrameEditor";
 import BookEditor from "../components/BookEditor";
 import { makeWardrobe } from "../components/WardrobePanel";
+import GalleryEditor from "../components/GalleryEditor";
 import { TagInput, useToast } from "../components/ui";
 import { errText, tokens } from "../lib/util";
 import { useStore } from "../store";
@@ -214,6 +215,9 @@ export default function Editor({ id }: { id: string | null }) {
             <input ref={fileRef} type="file" hidden onChange={(e) => { pickMedia(e.target.files?.[0]); e.target.value = ""; }} />
           </div>
         </div>
+      </Field>
+      <Field label="Gallery" plain hint="More pictures of them. The chat can keep the main picture, show a different one at random after each reply, or match the mood of the reply.">
+        <GalleryEditor char={char} onChanged={(n) => { setChar(n); refresh(); }} />
       </Field>
       <Field label="Tagline" hint="Short line shown on the character card. Not part of the prompt."><input type="text" value={tagline} placeholder="Short tagline about your character" onChange={(e) => { setTagline(e.target.value); setDirty(true); }} /></Field>
       <Field label="In-Chat Name" hint="Optional. The name used inside chats, if different from the name above."><input type="text" value={chatName} placeholder="Some name, if different from the name above" onChange={(e) => { setChatName(e.target.value); setDirty(true); }} /></Field>
