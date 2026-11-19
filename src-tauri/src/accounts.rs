@@ -490,12 +490,23 @@ struct Data {
     /// Custom emoji and stickers (pictures travel in the archive's media folder).
     #[serde(default)]
     emoji: Vec<db::EmojiItem>,
+    /// Playbooks, and where each chat's story stands.
+    #[serde(default)]
+    playbooks: Vec<crate::playbook::Playbook>,
+    #[serde(default)]
+    chat_playbooks: Vec<ChatPlaybookExport>,
     /// Profile decorations of the characters (the user's own are part of the settings).
     #[serde(default)]
     char_deco: Vec<db::CharDeco>,
     /// The profile's own picture (file name inside the archive's media folder) and its framing.
     #[serde(default)]
     profile_avatar: Option<(String, Option<db::Frame>)>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ChatPlaybookExport {
+    chat_id: i64,
+    row: crate::playbook::ChatRow,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -823,7 +834,13 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     // API keys, passcodes and per-device model choices are deliberately not part of the file.
     let mut exported_settings = settings;
     exported_settings.local_model = String::new();
-    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, emoji, worlds, profile_avatar };
+    let (playbooks, chat_playbooks) = {
+        let db = st.db.lock().unwrap();
+        let pbs = crate::playbook::list(&db, o).unwrap_or_default();
+        let rows: Vec<ChatPlaybookExport> = chats.iter().map(|c| ChatPlaybookExport { chat_id: c.id, row: crate::playbook::chat_row(&db, c.id) }).filter(|x| x.row != crate::playbook::ChatRow::default()).collect();
+        (pbs, rows)
+    };
+    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, emoji, worlds, playbooks, chat_playbooks, profile_avatar };
     zip.start_file("manifest.json", deflated).map_err(e)?;
     zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(e)?).map_err(e)?;
     zip.start_file("data.json", deflated).map_err(e)?;
@@ -1128,8 +1145,25 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             book_map.insert(b.id.clone(), nb.id);
         }
 
+        // playbooks (their lorebooks are the new copies), so the characters that come with one can be pointed at it
+        let mut playbook_map: HashMap<String, String> = HashMap::new();
+        {
+            let my_books: Vec<String> = book_map.values().cloned().collect();
+            for p in &parsed.data.playbooks {
+                let mut np = p.clone();
+                np.lorebooks = np.lorebooks.iter().filter_map(|b| book_map.get(b).cloned()).collect();
+                for g in np.lore.iter_mut() { g.book = book_map.get(&g.book).cloned().unwrap_or_default(); }
+                let Ok(mut np) = crate::playbook::clean_playbook(np, &my_books) else { continue };
+                np.id = uid();
+                if crate::playbook::save(&db, &np, &o).is_ok() {
+                    playbook_map.insert(p.id.clone(), np.id);
+                }
+            }
+        }
+
         let mut char_map: HashMap<String, String> = HashMap::new();
         for (i, mut c) in parsed.data.characters.clone().into_iter().enumerate() {
+            c.playbook = playbook_map.get(&c.playbook).cloned().unwrap_or_default();
             c.lorebooks = c.lorebooks.iter().filter_map(|l| book_map.get(l).cloned()).collect();
             c.folder = c.folder.as_ref().and_then(|f| folder_map.get(f).cloned());
             c.frame = c.frame.and_then(|f| f.clean());
@@ -1369,6 +1403,14 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
         for pr in &parsed.data.prompts {
             if pr.title.trim().is_empty() || pr.body.trim().is_empty() { continue; }
             db::save_prompt(&db, &db::SavedPrompt { id: uid(), title: pr.title.chars().take(100).collect(), tag: pr.tag.chars().take(30).collect(), ..pr.clone() }, &o).map_err(e)?;
+        }
+        for cp in &parsed.data.chat_playbooks {
+            let Some(chat) = chat_map.get(&cp.chat_id) else { continue };
+            let mut row = cp.row.clone();
+            row.playbook_id = row.playbook_id.as_ref().and_then(|p| playbook_map.get(p).cloned());
+            if row.mode == "set" && row.playbook_id.is_none() { row.mode = "inherit".into(); }
+            row.pending = None;
+            let _ = crate::playbook::save_row(&db, *chat, &row);
         }
         for cm in &parsed.data.chat_mechanics {
             if let (Some(chat), Some(mid)) = (chat_map.get(&cm.chat_id), mech_map.get(&cm.mech_id)) {

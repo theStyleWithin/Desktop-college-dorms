@@ -204,6 +204,10 @@ pub fn save_character(state: State<'_, Shared>, mut character: Character) -> R<C
     let mine: Vec<String> = db::list_lorebooks(&db, &o).map_err(e)?.into_iter().map(|b| b.id).collect();
     let mut seen = std::collections::HashSet::new();
     character.lorebooks.retain(|l| mine.contains(l) && seen.insert(l.clone()));
+    // the playbook it comes with has to be one of this person's own
+    if !character.playbook.is_empty() && crate::playbook::get(&db, &character.playbook, &o).is_none() {
+        character.playbook.clear();
+    }
     character.updated_at = now;
     db::save_character(&db, &character, &o).map_err(e)?;
     Ok(out(&state, character))
@@ -502,6 +506,7 @@ pub fn import_card(request: Request<'_>, state: State<'_, Shared>) -> R<ImportOu
         folder: None,
         order: None,
         lorebooks: vec![],
+        playbook: String::new(),
         favorite: false,
         created_at: now,
         updated_at: now,
@@ -685,7 +690,11 @@ pub fn delete_message(state: State<'_, Shared>, id: i64) -> R<()> {
     if !db::message_owned(&db, id, &o).map_err(e)? {
         return Err("Message not found".into());
     }
-    db::delete_message(&db, id).map_err(e)
+    let chat_id = db::get_message(&db, id).map_err(e)?.map(|m| m.chat_id);
+    db::delete_message(&db, id).map_err(e)?;
+    // the story's state goes back to what the newest remaining reply left
+    if let Some(c) = chat_id { crate::playbook::rewind(&db, c); }
+    Ok(())
 }
 
 #[tauri::command]
@@ -706,7 +715,9 @@ pub fn clear_chat(state: State<'_, Shared>, chat_id: i64) -> R<()> {
     let o = owner(&state)?;
     let db = state.db.lock().unwrap();
     db::get_chat(&db, chat_id, &o).map_err(e)?.ok_or("Chat not found")?;
-    db::clear_messages(&db, chat_id).map_err(e)
+    db::clear_messages(&db, chat_id).map_err(e)?;
+    crate::playbook::rewind(&db, chat_id);
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1073,7 +1084,7 @@ async fn run_generation(
 
     let items: Vec<HistoryItem> = history
         .iter()
-        .filter(|m| m.role != "system")
+        .filter(|m| m.role != "system" && m.role != "note")
         .map(|m| {
             // a move to another room is told to the characters as narration
             if m.role == "travel" {
@@ -1100,17 +1111,26 @@ async fn run_generation(
         .collect();
     emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "loading", "continue_of": cont }));
     let (endpoint, context_tokens) = resolve_endpoint(st, o, &settings).await?;
+    // the playbook's rules that run before the reply (a continued reply does not advance the story; nor does regenerating the opening message)
+    let user_text = history.iter().rev().find(|m| m.role == "user").map(|m| m.content().to_string()).unwrap_or_default();
+    let pturn = if continuing { None } else { crate::playbook::before_turn(st, o, &chat, &endpoint, &user_text, regen, !user_text.is_empty()).await };
     // the room, the texting style and the switched-on packs
     let extra = {
         let db = st.db.lock().unwrap();
         let recent: String = history.iter().rev().take(6).map(|m| m.content()).collect::<Vec<_>>().join("\n");
         crate::extras::extra_system(&db, &chat, o, &recent)
     };
+    // a novel being written: this reply is a chapter
+    let novel = crate::novel::running_directive(st, chat_id);
+    let extra = match &novel {
+        Some((d, _)) => format!("{extra}\n\n{d}"),
+        None => extra,
+    };
     let ps = PromptSettings {
         user_name: settings.user_name.clone(),
         user_description: settings.user_description.clone(),
         context_tokens,
-        max_response_tokens: settings.max_tokens.min(context_tokens / 2),
+        max_response_tokens: novel.as_ref().map_or(settings.max_tokens, |(_, t)| *t).min(context_tokens / 2),
         use_card_system_prompt: settings.use_card_system_prompt,
         default_system: Some(settings.default_system.clone()).filter(|s| !s.trim().is_empty()),
         default_scan_depth: 4,
@@ -1120,7 +1140,16 @@ async fn run_generation(
     let speaker_card = {
         let db = st.db.lock().unwrap();
         let world_books = db::chat_world(&db, &chat, o).ok().flatten().map(|w| w.lorebooks).unwrap_or_default();
-        crate::extras::card_with_lorebooks(&db, o, speaker_char, &world_books)
+        let mut card = crate::extras::card_with_lorebooks(&db, o, speaker_char, &world_books);
+        // and the entries of the playbook's lorebooks that its state makes available right now
+        let pe = crate::playbook::lore_for_chat(&db, &chat, o);
+        if !pe.is_empty() {
+            match card.character_book.as_mut() {
+                Some(b) => b.entries.extend(pe),
+                None => { let mut b = dorms_core::CharacterBook::from_value(&json!({ "entries": [] }), &mut vec![]); b.entries = pe; card.character_book = Some(b); }
+            }
+        }
+        card
     };
     let prompt = build_prompt(&PromptInput {
         speaker_id: &speaker_id,
@@ -1157,6 +1186,8 @@ async fn run_generation(
     if text.trim().is_empty() {
         return Err("The model returned an empty reply. Try again, or raise the max length in Settings.".into());
     }
+    // the playbook's rules that run after the reply, which can look at what was just written
+    let after_state = match &pturn { Some(t) => Some(crate::playbook::after_turn(st, o, &chat, &endpoint, t, &user_text, &text).await), None => None };
 
     let msg = {
         let db = st.db.lock().unwrap();
@@ -1187,6 +1218,10 @@ async fn run_generation(
             c.last_used = db::now();
             let _ = db::save_character(&db, &c, o);
         }
+        // the state is kept with the reply, so regenerating it reruns from before, and deleting it rewinds
+        if let (Some(t), Some(a)) = (&pturn, &after_state) {
+            let _ = crate::playbook::save_snapshot(&db, m.id, chat_id, &t.before, a, t.turn);
+        }
         m
     };
     emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "done", "message": msg, "continue_of": cont }));
@@ -1194,7 +1229,7 @@ async fn run_generation(
 }
 
 /// One full reply, with busy/cancel bookkeeping and error events.
-async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option<String>, regen: Option<i64>, cont: Option<i64>, rid: String) -> R<Message> {
+pub(crate) async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option<String>, regen: Option<i64>, cont: Option<i64>, rid: String) -> R<Message> {
     if !st.busy.lock().unwrap().insert(chat_id) {
         let err = "This chat is already generating a reply.".to_string();
         emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "kind": "error", "error": err }));
@@ -1205,6 +1240,8 @@ async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option
     let _guard = BusyGuard { st: st.clone(), chat_id, rid: rid.clone() };
     let res = run_generation(st, o, &rid, chat_id, speaker, regen, cont, &cancel).await;
     if let Err(err) = &res {
+        // a reply that didn't come must not have moved the story on
+        crate::playbook::restore_pending(&st.db.lock().unwrap(), chat_id);
         emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "kind": "error", "error": err }));
     }
     res

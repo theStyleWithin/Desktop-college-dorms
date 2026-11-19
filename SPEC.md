@@ -168,6 +168,25 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   keeps the card positions; **Discard** drops the draft, and leaving the editor with unsaved changes asks first. Two rooms that lead to each other show two arcs. Card positions are kept in `dorms.rooms.map` on the device; dashed lines are `parent_id`.
 - A moved chat prefers the new room's music over the dorm's. Backups carry parents, pathways and each chat's current room (numbers are remapped on import).
 
+## Novel writing
+
+- `novel_start(chat, plot, tone, pov, chapters 1..60, chapter_tokens 300..4000, resume)` writes one chapter per reply (`generate_once` with a `[NOVEL MODE]` directive added to the system
+  prompt and the reply length raised to `chapter_tokens`); the plan and progress are kept in `chat_novel`. `novel_stop` cancels the running reply and drops it (nothing half-written is kept).
+  Replies are normal character messages; the stop message is a `note` message (never sent to the model).
+- Requests are counted per profile per day in `novel_usage`. With `novel_daily_limit` > 0 the plan is cut to `limit - used - novel_reserve` chapters; when nothing is left it stops after a
+  finished chapter ("budget"). A 429/quota error waits and retries (30 s, then 90 s) unless it says the day's allowance is gone, in which case the day counts as used up ("limit").
+- The writer runs inside the app. Closing the main window while a novel is written is stopped by the backend (`CloseRequested`) and asked about (`dorms://close-while-writing`): `hide_to_tray` hides the window and makes a tray icon (Open / Quit) that exists only while hidden, `quit_app` closes. The window is revealed again when the last novel ends. Without a tray (phones, desktops with no tray host) the fallback is a plain warning; nothing runs after the app is quit, and a novel resumes from the last finished chapter.
+
+## Playbooks
+
+- A playbook (`playbooks` table, JSON per profile; up to 10 values, 15 rules of which 3 may ask the model, 4 lorebooks, 8 scenarios) holds typed values (`number` with range and
+  bands, `bool`, `text`, `choice`), rules (`before`/`after` a reply; all-of and any-of conditions: value comparison, user says, reply says, every N turns, chance; changes: set, add,
+  subtract, toggle, append, clear), lore gates (`#N` or entry name) and scenarios. `clean_playbook` makes any definition safe and within these limits.
+- A chat's story (`chat_playbook`: mode `inherit`|`none`|`set`, state, turn, model-judging switch, starting state, pending state) and a snapshot per reply (`playbook_snap`) make
+  regenerate rerun from the state before the turn, continue not advance, and deleting messages rewind. A reply that fails puts the pending state back.
+- The prompt block names each value with what it means; lorebook entries of the playbook's books join the character's own when the state makes them available.
+- Backups carry playbooks, each character's playbook and each chat's story state (lorebook ids are remapped to the new copies).
+
 ## Worlds
 
 - A room's gallery (`rooms.gallery`, JSON of `{id,file,caption}`, at most `MAX_ROOM_PICS` = 24) holds copies of pictures in `media/roompic-*`; captions go into the room block ("Details of this place"). Deleting the room or a picture deletes the file; backups pack and re-import them.

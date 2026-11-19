@@ -56,6 +56,8 @@ export default function Editor({ id }: { id: string | null }) {
   const [trusted, setTrusted] = useState(true);
   const [library, setLibrary] = useState<Lorebook[]>([]);
   const [attached, setAttached] = useState<string[]>([]);
+  const [playbook, setPlaybook] = useState("");
+  const [playbooks, setPlaybooks] = useState<{ id: string; name: string }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const hydrate = (c: Character) => {
@@ -63,6 +65,7 @@ export default function Editor({ id }: { id: string | null }) {
     const dn = String(d.display_name ?? "");
     setChar(c);
     setAttached(c.lorebooks ?? []);
+    setPlaybook(c.playbook ?? "");
     setTrusted(c.trusted !== false);
     setCard(c.card);
     setName(dn || c.card.name);
@@ -76,7 +79,7 @@ export default function Editor({ id }: { id: string | null }) {
   useEffect(() => {
     if (id) api.getCharacter(id).then((c) => { if (c) hydrate(c); setLoaded(true); });
   }, [id]);
-  useEffect(() => { api.listLorebooks().then(setLibrary).catch(() => {}); }, []);
+  useEffect(() => { api.listLorebooks().then(setLibrary).catch(() => {}); api.listPlaybooks().then(setPlaybooks).catch(() => {}); }, []);
   useEffect(() => () => { if (pending) URL.revokeObjectURL(pending.url); }, [pending]);
 
   const set = <K extends keyof CardData>(k: K, v: CardData[K]) => { setCard((c) => ({ ...c, [k]: v })); setDirty(true); };
@@ -133,7 +136,7 @@ export default function Editor({ id }: { id: string | null }) {
     if (!name.trim() && !chatName.trim()) { toast("Give your character a name first.", "err"); return null; }
     setSaving(true);
     try {
-      let saved = await api.saveCharacter({ ...(char ?? {}), card: built, trusted, lorebooks: attached });
+      let saved = await api.saveCharacter({ ...(char ?? {}), card: built, trusted, lorebooks: attached, playbook });
       if (pending) { saved = await api.setMedia(saved.id, pending.file); if (pending.frame) saved = await api.setFrame(saved.id, pending.frame); setPending(null); }
       hydrate(saved);
       await refresh();
@@ -265,6 +268,14 @@ export default function Editor({ id }: { id: string | null }) {
           {!library.length && <div className="hint">No lorebooks in your library yet.</div>}
           <button type="button" className="btn sm" style={{ justifySelf: "start" }} onClick={() => go({ page: "lorebooks" })}>Open Lorebooks</button>
         </div>
+      </Field>
+      <h2 className="sect">Playbook <span className="sub" style={{ fontSize: ".9rem", fontFamily: "var(--sans)" }}>(a story's values and rules)</span></h2>
+      <Field label="Playbook" plain hint="The story tracking this character comes with: values like trust, and rules that change them. A chat can use another one, or none, from its 🎲 Playbook button.">
+        <select aria-label="Playbook" data-testid="char-playbook" value={playbook} onChange={(e) => { setPlaybook(e.target.value); setDirty(true); }}>
+          <option value="">None</option>
+          {playbooks.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <button type="button" className="btn sm" style={{ justifySelf: "start", marginTop: 6 }} onClick={() => go({ page: "playbooks" })}>Open Playbooks</button>
       </Field>
       <Field label="This card's own book" plain hint="Lore that travels inside the character card itself (exports with the card). Keys can be /regex/i.">
         {!book ? (

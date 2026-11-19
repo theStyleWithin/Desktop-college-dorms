@@ -87,6 +87,8 @@ export interface Character {
   order?: number | null;
   /** Library lorebooks attached to this character (besides the book inside the card). */
   lorebooks?: string[];
+  /** The playbook this character comes with (a chat can use another or none). */
+  playbook?: string;
   favorite: boolean;
   created_at: number;
   updated_at: number;
@@ -152,7 +154,7 @@ export interface Chat {
 export interface Message {
   id: number;
   chat_id: number;
-  role: "user" | "character" | "system" | "travel";
+  role: "user" | "character" | "system" | "travel" | "note";
   character_id: string | null;
   swipes: string[];
   swipe_index: number;
@@ -202,6 +204,9 @@ export interface Settings {
   stt_model: string;
   stt_language: string;
   stt_auto_send: boolean;
+  /** Novel writing: requests a day the model allows (0 = none set), and how many are kept for chatting. */
+  novel_daily_limit: number;
+  novel_reserve: number;
   /** The user's own profile decorations. */
   deco: UserDeco;
 }
@@ -242,6 +247,29 @@ export interface UserDeco { plate: string; bg: string; wreath: string; animate: 
 export const DEFAULT_DECO: UserDeco = { plate: "none", bg: "", wreath: "", animate: true, tag: "", tag_color: "#5865f2", tag_glyph: "", banner: "", ai_pick: false };
 /** A custom emoji (used inline as :name:) or a sticker (sent as a whole message, [sticker: name]). It works everywhere, or only in one room. */
 export interface EmojiItem { id: string; kind: "emoji" | "sticker"; name: string; meaning: string; file: string; room_id: number | null; created_at: number; /** where the picture is */ path: string }
+/** Playbooks: the events system. Variables hold the story's state, rules change it before and after each reply, and lorebook entries can be made available by it. */
+export interface PbBand { from: number; text: string }
+export interface PbVar { id: string; label: string; kind: "number" | "bool" | "text" | "choice"; default: unknown; min?: number | null; max?: number | null; options: string[]; note: string; bands: PbBand[] }
+export type PbCond =
+  | { type: "var"; var: string; op: string; value: unknown }
+  | { type: "user_says"; words: string[] }
+  | { type: "reply_says"; words: string[] }
+  | { type: "every_n"; n: number }
+  | { type: "chance"; percent: number };
+export interface PbAct { var: string; op: string; value?: unknown }
+export interface PbRule { id: string; name: string; phase: "before" | "after"; when: PbCond[]; when_any: PbCond[]; ask: string; fallback: PbCond[]; then: PbAct[] }
+export interface PbGate { entry: string; when: PbCond[] }
+export interface PbLore { book: string; default_on: boolean; gates: PbGate[] }
+export interface PbScenario { name: string; description: string; values: Record<string, unknown> }
+export interface Playbook { id: string; name: string; description: string; instructions: string; variables: PbVar[]; rules: PbRule[]; lorebooks: string[]; lore: PbLore[]; scenarios: PbScenario[]; created_at: number; updated_at: number }
+export interface PbValue { id: string; label: string; kind: PbVar["kind"]; value: unknown; meaning: string; note: string; min?: number | null; max?: number | null; options: string[] }
+export interface ChatPlaybook { mode: "inherit" | "none" | "set"; selected: string | null; active: Playbook | null; values: PbValue[]; turn: number; llm: boolean; from_character: boolean }
+/** Writing a novel: the plot, how far it has got, and what today's request allowance leaves. */
+export interface NovelPlan { plot: string; tone: string; pov: string; chapters: number; chapter_tokens: number; done: number }
+export interface NovelStatus { running: boolean; plan: NovelPlan | null; used_today: number; limit: number; reserve: number }
+export type NovelEvent = { chat_id: number; state: "writing" | "chapter" | "waiting" | "finished" | "stopped" | "budget" | "limit" | "error"; chapter: number; of: number; detail: string };
+export const onNovel = (cb: (e: NovelEvent) => void): Promise<UnlistenFn> => listen<NovelEvent>("dorms://novel", (ev) => cb(ev.payload));
+export const blankPlaybook = (): Playbook => ({ id: "", name: "", description: "", instructions: "", variables: [], rules: [], lorebooks: [], lore: [], scenarios: [], created_at: 0, updated_at: 0 });
 export interface CharStatus { character_id: string; text: string; source: "ai" | "user"; updated_at: number }
 export interface SavedPrompt { id: string; title: string; body: string; tag: string; created_at: number; updated_at: number }
 export interface DecorItem { id: string; name: string; file: string; bytes: number; share: boolean; created_at: number; /** absolute path of the .glb */ path: string }
@@ -362,11 +390,26 @@ export const api = {
   setRoomPictureCaption: (id: number, itemId: string, caption: string) => invoke<Room>("set_room_picture_caption", { id, itemId, caption }),
   removeRoomPicture: (id: number, itemId: string) => invoke<Room>("remove_room_picture", { id, itemId }),
   useRoomPictureAsBackdrop: (id: number, itemId: string) => invoke<Room>("use_room_picture_as_backdrop", { id, itemId }),
+  novelStatus: (chatId: number) => invoke<NovelStatus>("novel_status", { chatId }),
+  novelStart: (chatId: number, plot: string, tone: string, pov: string, chapters: number, chapterTokens: number, resume: boolean) => invoke<NovelPlan>("novel_start", { chatId, plot, tone, pov, chapters, chapterTokens, resume }),
+  novelStop: (chatId: number) => invoke<void>("novel_stop", { chatId }),
+  novelsRunning: () => invoke<number[]>("novels_running"),
+  trayAvailable: () => invoke<boolean>("tray_available"),
+  hideToTray: () => invoke<void>("hide_to_tray"),
+  quitApp: () => invoke<void>("quit_app"),
   listWorlds: () => invoke<World[]>("list_worlds"),
   createWorld: (name: string, description: string) => invoke<World>("create_world", { name, description }),
   updateWorld: (id: number, name: string, description: string, lore: string, lorebooks: string[]) => invoke<World>("update_world", { id, name, description, lore, lorebooks }),
   deleteWorld: (id: number) => invoke<void>("delete_world", { id }),
   moveRoomsToWorld: (ids: number[], worldId: number | null) => invoke<void>("move_rooms_to_world", { ids, worldId }),
+  listPlaybooks: () => invoke<Playbook[]>("list_playbooks"),
+  savePlaybook: (playbook: Playbook) => invoke<Playbook>("save_playbook", { playbook }),
+  deletePlaybook: (id: string) => invoke<void>("delete_playbook", { id }),
+  playbookTemplates: () => invoke<Playbook[]>("playbook_templates"),
+  getChatPlaybook: (chatId: number) => invoke<ChatPlaybook>("get_chat_playbook", { chatId }),
+  setChatPlaybook: (chatId: number, mode: "inherit" | "none" | "set", playbookId: string | null, scenario: string | null) => invoke<ChatPlaybook>("set_chat_playbook", { chatId, mode, playbookId, scenario }),
+  setPlaybookValues: (chatId: number, values: Record<string, unknown>) => invoke<ChatPlaybook>("set_playbook_values", { chatId, values }),
+  setPlaybookLlm: (chatId: number, on: boolean) => invoke<ChatPlaybook>("set_playbook_llm", { chatId, on }),
   listEmoji: () => invoke<EmojiItem[]>("list_emoji"),
   async addEmoji(file: File, kind: "emoji" | "sticker", name: string, meaning: string, roomId: number | null): Promise<EmojiItem> {
     return bin("add_emoji", new Uint8Array(await file.arrayBuffer()), { "x-kind": kind, "x-name": enc(name), "x-meaning": enc(meaning), "x-room-id": roomId == null ? "" : String(roomId), "x-file-name": enc(file.name) });

@@ -1,6 +1,7 @@
 import { applyTextScale } from "./lib/textScale";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type AppInfo, type Character, type Chat, type Dorm, type Folder, type Persona, type Room, type SessionState, type Settings, type World } from "./api";
+import { listen } from "@tauri-apps/api/event";
 import { StoreCtx, type Route, type Store } from "./store";
 import { Logo, ToastProvider, useToast } from "./components/ui";
 import { ProfileAvatar } from "./components/ProfileForms";
@@ -12,6 +13,7 @@ import Library from "./pages/Library";
 import Rooms from "./pages/Rooms";
 import Notes from "./pages/Notes";
 import Lorebooks from "./pages/Lorebooks";
+import Playbooks from "./pages/Playbooks";
 import Decor from "./pages/Decor";
 import PromptsMenu from "./components/PromptsMenu";
 import SideWidgets from "./components/SideWidgets";
@@ -27,7 +29,7 @@ const DEFAULTS: Settings = {
   temperature: 0.8, top_p: 0.95, local_model: "", local_gpu: true, openai_base_url: "https://api.openai.com/v1",
   openai_model: "gpt-4o-mini", anthropic_model: "claude-haiku-5-5", use_card_system_prompt: true,
   default_system: "", theme: "dusk",
-  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true, active_persona: "", deco: DEFAULT_DECO,
+  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true, active_persona: "", deco: DEFAULT_DECO, novel_daily_limit: 0, novel_reserve: 5,
 };
 
 const SIDE_DEF = 220, SIDE_MIN = 160, SIDE_MAX = 420;
@@ -42,6 +44,7 @@ const NAV: { page: Route["page"]; label: string; icon: string }[] = [
   { page: "decor", label: "Decorations", icon: "🪴" },
   { page: "chat", label: "Dorms", icon: "💬" },
   { page: "lorebooks", label: "Lorebooks", icon: "📚" },
+  { page: "playbooks", label: "Playbooks", icon: "🎲" },
   { page: "notes", label: "Notes", icon: "📝" },
   { page: "settings", label: "Settings", icon: "⚙️" },
 ];
@@ -98,6 +101,19 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
   };
   const [winW, setWinW] = useState(window.innerWidth);
   useEffect(() => { setDecoMotion(settings.deco?.animate !== false); }, [settings.deco?.animate]);
+  // closing the window while a novel is being written would stop it: offer to keep writing from the tray
+  useEffect(() => {
+    const u = listen("dorms://close-while-writing", async () => {
+      const tray = await api.trayAvailable().catch(() => false);
+      if (tray) {
+        if (window.confirm("A novel is still being written.\n\nOK: keep writing in the background. The app hides in your system tray, comes back by itself when the novel is finished, and you can open or quit it from the tray icon. (Some Linux desktops don't show tray icons: then just wait for the window to come back.)\nCancel: stay here.")) {
+          try { await api.hideToTray(); return; } catch (e) { window.alert(errText(e)); }
+        } else return;
+      }
+      if (window.confirm("A novel is still being written, and this device can't keep it going once the app is closed. It stops after the last finished chapter, and you can pick it up again later with Keep going.\n\nClose anyway?")) void api.quitApp();
+    });
+    return () => { void u.then((f) => f()); };
+  }, []);
   useEffect(() => { const f = () => setWinW(window.innerWidth); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
   const showMembers = membersOpen && winW > 1100;
   const MIN_MAIN = 480;
@@ -198,6 +214,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
               {route.page === "library" && <Library />}
               {route.page === "notes" && <Notes />}
               {route.page === "decor" && <Decor />}
+              {route.page === "playbooks" && <Playbooks key={String(route.edit ?? "list")} edit={route.edit} />}
               {route.page === "lorebooks" && <Lorebooks />}
               {route.page === "rooms" && <Rooms key={String(route.edit ?? "list") + ":" + String(route.world ?? "")} edit={route.edit} world={route.world} />}
               {route.page === "editor" && <Editor key={route.id ?? "new"} id={route.id} />}

@@ -96,6 +96,9 @@ pub struct Character {
     /// Shared lorebooks (ids from `lorebooks`) attached to this character, besides the book inside the card.
     #[serde(default)]
     pub lorebooks: Vec<String>,
+    /// The playbook this character comes with (an id from `playbooks`); a chat can override it. Empty = none.
+    #[serde(default)]
+    pub playbook: String,
     #[serde(default)]
     pub favorite: bool,
     #[serde(default)]
@@ -536,6 +539,9 @@ pub struct Settings {
     pub active_persona: String,
     /// The user's own profile decorations.
     pub deco: UserDeco,
+    /// Novel writing: how many requests a day the model's plan allows (0 = no limit set), and how many of them are kept for chatting.
+    pub novel_daily_limit: usize,
+    pub novel_reserve: usize,
 }
 
 impl Default for Settings {
@@ -563,6 +569,8 @@ impl Default for Settings {
             stt_auto_send: true,
             active_persona: String::new(),
             deco: UserDeco::default(),
+            novel_daily_limit: 0,
+            novel_reserve: 5,
         }
     }
 }
@@ -616,6 +624,13 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
             created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS char_status(
             id TEXT PRIMARY KEY, profile_id TEXT, text TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'ai', updated_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS playbooks(
+            id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS chat_playbook(
+            chat_id INTEGER PRIMARY KEY, mode TEXT NOT NULL DEFAULT 'inherit', playbook_id TEXT, state TEXT NOT NULL DEFAULT '{}', turn INTEGER NOT NULL DEFAULT 0,
+            llm INTEGER NOT NULL DEFAULT 1, start_state TEXT NOT NULL DEFAULT '{}', pending_state TEXT, pending_turn INTEGER);
+         CREATE TABLE IF NOT EXISTS playbook_snap(
+            message_id INTEGER PRIMARY KEY, chat_id INTEGER NOT NULL, before_state TEXT NOT NULL, after_state TEXT NOT NULL, turn INTEGER NOT NULL DEFAULT 0);
          CREATE TABLE IF NOT EXISTS emoji_items(
             id TEXT PRIMARY KEY, profile_id TEXT, kind TEXT NOT NULL, name TEXT NOT NULL, meaning TEXT NOT NULL DEFAULT '', file TEXT NOT NULL,
             room_id INTEGER, created_at INTEGER NOT NULL);
@@ -636,6 +651,7 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
             chat_id INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE, mech_id TEXT NOT NULL,
             enabled INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL DEFAULT '{}', PRIMARY KEY(chat_id, mech_id));",
     )?;
+    crate::novel::init(&conn)?;
     ensure_column(&conn, "folders", "parent", "TEXT")?;
     ensure_column(&conn, "folders", "cover_char", "TEXT")?;
     ensure_column(&conn, "dorms", "room_id", "INTEGER")?;
@@ -1647,6 +1663,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM char_status WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM char_deco WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM emoji_items WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM playbooks WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM mechanics WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM notes WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM folders WHERE profile_id IS ?1", [owner])?;
@@ -1665,7 +1682,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "emoji_items", "worlds"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "emoji_items", "worlds", "playbooks"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
@@ -1701,6 +1718,7 @@ mod tests {
             folder: None,
             order: None,
             lorebooks: vec![],
+            playbook: String::new(),
             favorite: false,
             created_at: 1,
             updated_at: 1,
