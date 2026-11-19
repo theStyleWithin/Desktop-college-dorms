@@ -275,7 +275,7 @@ try:
     d.execute_script("document.querySelector('[aria-label=\"Choose who hangs in the picture frame\"]').click()"); time.sleep(0.8)
     snap("desktop-picture-frame", DESK)
     d.execute_script("[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Cancel').click()"); time.sleep(0.4)
-    snap("desktop-side-bar", (1440, 1150))   # tall enough to show every side bar extra
+    snap("desktop-side-bar", (1440, 1340))   # tall enough to show every side bar extra
     d.set_window_size(*DESK); time.sleep(0.5)
 
     # profiles: the Profile tab, then the welcome screen you see once a profile exists
