@@ -171,7 +171,7 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
 ## Side bar extras (v0.10)
 
 - Under *Prompts* the side bar shows up to four sections, each foldable and switchable in Settings → Appearance (local storage; hidden below 820 px): **Recent chats** (by the chat's `updated_at`, five, ten with "Show more"), **Favorites** (the characters' existing `favorite` flag, all of them, sorted by name; a picker with a checkbox per character toggles it), **Most used** (`character_usage`: the number of messages written by each character across the profile's chats, counted from the stored messages so it covers history; the top five)
-  and the **picture frame** (the first character of the newest chat, showing the gallery picture chosen for them in that chat when there is one, else the main picture; view-only, a click opens that chat). Clicking a favorite or a most used character opens the newest chat that includes them (a one-to-one chat first), or starts one.
+  and the **picture frame** (a character the user chooses with the pencil, kept in `dorms.side.frame` on the device until changed; with nobody chosen, the first character of the newest chat. It shows the gallery picture chosen for them in their latest chat when there is one, else the main picture; view-only, a click opens that chat, or starts one). Clicking a favorite or a most used character opens the newest chat that includes them (a one-to-one chat first), or starts one.
 
 ## Character gallery and mood pictures (v0.10)
 
