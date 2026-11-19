@@ -40,6 +40,25 @@ if (!existsSync(join(src, "CMakeLists.txt"))) {
   run("git", ["clone", "--depth", "1", "--branch", TAG, "https://github.com/ggml-org/llama.cpp", src]);
 }
 
+// The engine's own web page is not used (the app only talks to its API), but its build insists on downloading the page's files by
+// version name. A shallow clone has no history, so the version comes out as "b1", which isn't published, and the fallback ("latest")
+// has moved on and no longer fits this pinned engine, so a fresh build fails. A small stand-in page keeps the build offline and repeatable.
+const uiDist = join(src, "tools", "ui", "dist");
+if (!existsSync(join(uiDist, "index.html"))) {
+  mkdirSync(uiDist, { recursive: true });
+  const stub = {
+    "index.html": "<!doctype html><meta charset=utf-8><title>llama-server</title><p>The engine's own web page is not included in Desktop College Dorms.</p>",
+    "manifest.webmanifest": "{}",
+    "sw.js": "/* not used */",
+    "build.json": "{}",
+    "version.json": "{}",
+    "bundle.stub.js": "/* not used */",
+    "bundle.stub.css": "/* not used */",
+    "workbox.stub.js": "/* not used */",
+  };
+  for (const [name, text] of Object.entries(stub)) writeFileSync(join(uiDist, name), text);
+}
+
 function build(dir, extra) {
   const flags = [
     "-DCMAKE_BUILD_TYPE=Release",
