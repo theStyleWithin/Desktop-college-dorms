@@ -107,6 +107,8 @@ export interface Room {
   backdrop_path?: string | null;
   /** background music: the file's original name, and where it is (use musicUrl()) */
   music?: string; music_name?: string; music_path?: string | null;
+  /** Pathways: the room this one is part of, and rooms joined to it (both ways) besides its parent and sub-rooms. */
+  parent_id?: number | null; links?: number[];
   /** An imported 3D scene that replaces the built-in room: its file name, where it is (use roomModelUrl()), how it is set, and whether its owner allowed sharing it. */
   model?: string; model_name?: string; model_path?: string | null; model_scale?: number; model_rot?: number; model_y?: number; model_share?: boolean;
 }
@@ -137,11 +139,13 @@ export interface Chat {
   updated_at: number;
   /** chat | phone (shown and written as texting) */
   style?: "chat" | "phone";
+  /** the room the story has moved into (a pathway taken); otherwise the chat is in its dorm's room */
+  room_id?: number | null;
 }
 export interface Message {
   id: number;
   chat_id: number;
-  role: "user" | "character" | "system";
+  role: "user" | "character" | "system" | "travel";
   character_id: string | null;
   swipes: string[];
   swipe_index: number;
@@ -395,6 +399,9 @@ export const api = {
   // rooms
   listRooms: () => invoke<Room[]>("list_rooms"),
   createRoom: (room: Omit<Room, "id" | "created_at" | "backdrop_path">) => invoke<Room>("create_room", { room: { ...room, id: 0, created_at: 0 } }),
+  setRoomLinks: (id: number, links: number[]) => invoke<Room>("set_room_links", { id, links }),
+  /** The story walks into another room; the chat carries on there. */
+  moveChat: (chatId: number, roomId: number) => invoke<Message>("move_chat", { chatId, roomId }),
   updateRoom: (room: Room) => invoke<Room>("update_room", { room }),
   deleteRoom: (id: number) => invoke<void>("delete_room", { id }),
   async setRoomBackdrop(id: number, file: File): Promise<Room> {

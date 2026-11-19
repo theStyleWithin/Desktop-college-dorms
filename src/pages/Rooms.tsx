@@ -3,11 +3,11 @@ import { api, displayName, type Room, type RoomKind } from "../api";
 import MusicField from "../components/MusicField";
 import RoomModelField, { type ModelDraft } from "../components/RoomModelField";
 import { Modal, useToast } from "../components/ui";
-import { PRESETS, ROOM_KINDS, kindLabel, roomBackground } from "../lib/rooms";
+import { PRESETS, ROOM_KINDS, kindLabel, roomBackground, isInside, pathName } from "../lib/rooms";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
 
-const blank = (): Omit<Room, "id" | "created_at"> => ({ name: "", kind: "living_room", description: "", owner_kind: "self", character_id: null, backdrop: "" });
+const blank = (): Omit<Room, "id" | "created_at"> => ({ name: "", kind: "living_room", description: "", owner_kind: "self", character_id: null, backdrop: "", parent_id: null, links: [] });
 
 /** Makes (or opens) the room, then a dorm set in it with a first chat, and goes there. */
 export async function enterRoom(room: Room, characterId: string | null, refresh: () => Promise<void>, go: (r: { page: "chat"; chatId?: number }) => void) {
@@ -48,12 +48,13 @@ export default function Rooms({ edit }: { edit?: number | "new" }) {
           {rooms.map((r) => {
             const owner = characters.find((c) => c.id === r.character_id);
             const n = dorms.filter((d) => d.room_id === r.id).length;
+            const inside = rooms.filter((x) => x.parent_id === r.id).length;
             return (
               <div className="room-card" key={r.id}>
                 <div className="room-art" style={{ background: roomBackground(r) ?? "linear-gradient(135deg, #2a2540, #3a2f55)" }} />
                 <div className="room-body">
                   <h3>{r.name}</h3>
-                  <div className="hint">{kindLabel(r.kind)} · {r.owner_kind === "character" && owner ? `${displayName(owner)}'s place` : "Your own space"} · {n} dorm{n === 1 ? "" : "s"}</div>
+                  <div className="hint">{kindLabel(r.kind)} · {r.owner_kind === "character" && owner ? `${displayName(owner)}'s place` : "Your own space"} · {n} dorm{n === 1 ? "" : "s"}{r.parent_id != null && rooms.some((x) => x.id === r.parent_id) ? ` · in ${pathName(rooms, r.parent_id)}` : ""}{inside ? ` · ${inside} room${inside === 1 ? "" : "s"} inside` : ""}</div>
                   {r.description && <p className="sub room-desc">{r.description}</p>}
                   <div className="row" style={{ marginTop: 10 }}>
                     <button className="btn primary sm" onClick={() => setStarting(r)}>Start a dorm here</button>
@@ -115,8 +116,9 @@ function RoomForm({ id }: { id: number | null }) {
     setBusy(true);
     try {
       let saved: Room;
-      const body = { name: r.name, kind: r.kind as RoomKind, description: r.description, owner_kind: r.owner_kind, character_id: r.owner_kind === "character" ? r.character_id : null, backdrop: pendingFile ? (existing?.backdrop.startsWith("file:") ? existing.backdrop : "") : r.backdrop };
+      const body = { name: r.name, kind: r.kind as RoomKind, description: r.description, owner_kind: r.owner_kind, character_id: r.owner_kind === "character" ? r.character_id : null, parent_id: r.parent_id ?? null, backdrop: pendingFile ? (existing?.backdrop.startsWith("file:") ? existing.backdrop : "") : r.backdrop };
       saved = existing ? await api.updateRoom({ ...existing, ...body }) : await api.createRoom(body);
+      if (JSON.stringify([...(r.links ?? [])].sort()) !== JSON.stringify([...(existing?.links ?? [])].sort())) saved = await api.setRoomLinks(saved.id, r.links ?? []);
       if (pendingFile) saved = await api.setRoomBackdrop(saved.id, pendingFile);
       if (music.file) saved = await api.setRoomMusic(saved.id, music.file);
       else if (music.remove && existing?.music) saved = await api.clearRoomMusic(saved.id);
@@ -145,6 +147,26 @@ function RoomForm({ id }: { id: number | null }) {
           </select>
         ) : <div className="hint">Create a character first, or choose “My own space”.</div>
       ) : <div className="hint">Your virtual house. Live in it solo — invite characters whenever you want.</div>}
+
+      <h3 className="step"><b>•</b> Pathways</h3>
+      <p className="sub" style={{ margin: "4px 0 10px" }}>Build a place out of rooms: "Our house" with a kitchen, a living room and an attic inside it. In a chat you can walk the story from room to room, and it carries on as the same conversation.</p>
+      <label className="field"><span>This room is part of</span>
+        <select value={r.parent_id ?? ""} onChange={(e) => set({ parent_id: e.target.value ? Number(e.target.value) : null })} aria-label="Part of" style={{ maxWidth: 360 }}>
+          <option value="">Nothing — it is a place of its own</option>
+          {rooms.filter((x) => x.id !== id && !isInside(rooms, x.id, id)).map((x) => <option key={x.id} value={x.id}>{pathName(rooms, x.id)}</option>)}
+        </select>
+        <div className="hint">Rooms in the same place (the kitchen and the living room of one house) can already walk to each other and to the house itself.</div></label>
+      <div className="field"><span>Also connects to</span>
+        {rooms.filter((x) => x.id !== id).length === 0 ? <div className="hint">Make another room first.</div> : (
+          <div className="chips" data-testid="room-links">
+            {rooms.filter((x) => x.id !== id).map((x) => {
+              const on = (r.links ?? []).includes(x.id);
+              return <button key={x.id} type="button" className={`chip ${on ? "on" : ""}`} aria-pressed={on} onClick={() => set({ links: on ? (r.links ?? []).filter((l) => l !== x.id) : [...(r.links ?? []), x.id] })}>{x.name}</button>;
+            })}
+          </div>
+        )}
+        <div className="hint">A door to somewhere else, such as the garden gate. It works both ways.</div>
+      </div>
 
       <h3 className="step"><b>2</b> Name, description &amp; background</h3>
       <label className="field"><span>Room name</span>

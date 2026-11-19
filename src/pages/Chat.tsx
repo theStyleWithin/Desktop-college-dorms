@@ -12,7 +12,7 @@ import MusicField from "../components/MusicField";
 import { PROMPT_DRAG } from "../components/PromptsMenu";
 import { detectMood, pickGalleryItem } from "../lib/mood";
 import { useTextScale, setTextScaleAnchored, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
-import { hideDirectives, roomBackground, roomScene, kindLabel } from "../lib/rooms";
+import { hideDirectives, roomBackground, roomScene, kindLabel, nearbyRooms, pathName } from "../lib/rooms";
 import { makeWardrobe } from "../components/WardrobePanel";
 import type { Speech } from "../components/SpeechBubble";
 import { Modal, useToast } from "../components/ui";
@@ -60,11 +60,16 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
   const byId = useMemo(() => new Map(characters.map((c) => [c.id, c])), [characters]);
   const chat = chats.find((c) => c.id === selected) ?? null;
   const members = useMemo(() => (chat?.character_ids ?? []).map((i) => byId.get(i)).filter(Boolean) as Character[], [chat, byId]);
-  const room = useMemo(() => { const d = dorms.find((x) => x.id === chat?.dorm_id); return d?.room_id != null ? rooms.find((r) => r.id === d.room_id) ?? null : null; }, [chat, dorms, rooms]);
+  // the room the story has walked into, else the dorm's room
+  const room = useMemo(() => {
+    const moved = chat?.room_id != null ? rooms.find((r) => r.id === chat.room_id) : undefined;
+    if (moved) return moved;
+    const d = dorms.find((x) => x.id === chat?.dorm_id); return d?.room_id != null ? rooms.find((r) => r.id === d.room_id) ?? null : null;
+  }, [chat, dorms, rooms]);
   const roomBg = roomBackground(room);
   const dormOfChat = dorms.find((x) => x.id === chat?.dorm_id);
   // the dorm's own music wins over its room's
-  const music = dormOfChat?.music_path ? { src: musicUrl(dormOfChat), name: dormOfChat.music_name || "Music" } : room?.music_path ? { src: musicUrl(room), name: room.music_name || "Music" } : null;
+  const music = dormOfChat?.music_path && !(chat?.room_id != null && room?.music_path) ? { src: musicUrl(dormOfChat), name: dormOfChat.music_name || "Music" } : room?.music_path ? { src: musicUrl(room), name: room.music_name || "Music" } : null;
   const phone = chat?.style === "phone";
   const stageChar = (focus && byId.get(focus)) || members[0] || null;
 
@@ -343,6 +348,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
             <div className="msgs" ref={scroller}>
               {msgs.length === 0 && !live && <div className="empty">{chat.kind === "channel" ? "A quiet channel. Say something, or press Next to let a character start." : "No messages yet."}</div>}
               {msgs.filter((m) => m.role !== "system").map((m, idx, arr) => {
+                if (m.role === "travel") return <div className="travel" key={m.id} data-testid="travel-line" role="separator"><span>➜ {m.swipes[0] ?? "Somewhere else"}</span></div>;
                 const c = m.character_id ? byId.get(m.character_id) : undefined;
                 const isLast = idx === arr.length - 1;
                 const saved = m.swipes[m.swipe_index] ?? m.swipes[m.swipes.length - 1] ?? "";
@@ -402,6 +408,21 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                   </select>
                 )}
                 <div className="grow" />
+                {rooms.length > 1 && (() => {
+                  const near = nearbyRooms(rooms, room), nearIds = new Set(near.map((r) => r.id));
+                  const far = rooms.filter((r) => r.id !== room?.id && !nearIds.has(r.id));
+                  return (
+                    <select style={{ width: "auto", maxWidth: 220 }} value="" disabled={busy} aria-label="Go to another room" title="Walk the story into another room. Same conversation, new setting."
+                      onChange={async (e) => {
+                        const rid = Number(e.target.value); if (!rid) return;
+                        try { const m = await api.moveChat(chat.id, rid); setMsgs((x) => (x.some((y) => y.id === m.id) ? x : [...x, m])); await refresh(); } catch (err) { toast(errText(err), "err"); }
+                      }}>
+                      <option value="">➜ Go to…{room ? "" : " (a room)"}</option>
+                      {near.length > 0 && <optgroup label="Nearby">{near.map((r) => <option key={r.id} value={r.id}>{pathName(rooms, r.id)}</option>)}</optgroup>}
+                      {far.length > 0 && <optgroup label={near.length ? "Elsewhere" : "Rooms"}>{far.map((r) => <option key={r.id} value={r.id}>{pathName(rooms, r.id)}</option>)}</optgroup>}
+                    </select>
+                  );
+                })()}
                 {chat.kind !== "dm" && <button className="btn sm" disabled={busy || members.length === 0} onClick={() => api.generate(chat.id, replyAs || null)}>⏭ Next</button>}
               </div>
               <div className="row" style={{ flexWrap: "nowrap", alignItems: "flex-end" }}>

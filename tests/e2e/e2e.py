@@ -10,6 +10,7 @@ from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import Select
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.options import ArgOptions
 from selenium.webdriver.remote.file_detector import UselessFileDetector
@@ -592,6 +593,42 @@ try:
     invoke("add_user_message", {"chatId": chat_r["id"], "text": "hello there"}); gen_and_wait(chat_r["id"])
     check("the room's name, kind and description reach the system prompt", "Setting: Mira's loft" in sysprompt() and "a living room" in sysprompt() and "crooked window" in sysprompt() and "own place" in sysprompt(), sysprompt()[-400:])
     check("a chat outside any room gets no setting", "Setting:" not in (lambda: (gen_and_wait(chat2["id"]), sysprompt())[1])())
+
+    # ---- pathways: rooms inside rooms, rooms joined to each other, and walking one chat from room to room ----
+    mk_room = lambda name, desc, **kw: invoke("create_room", {"room": dict(room_in, name=name, description=desc, owner_kind="self", character_id=None, id=0, created_at=0, **kw)})
+    house = mk_room("Our house", "A narrow blue house with a creaky porch.")
+    kitchen = mk_room("Kitchen", "Yellow tiles and a very loud kettle.", parent_id=house["id"])
+    livingr = mk_room("Living room", "A sagging sofa and a bookshelf.", parent_id=house["id"])
+    garden = mk_room("Garden gate", "A gate in a mossy wall.")
+    check("a room can be made part of another room", kitchen["parent_id"] == house["id"] and livingr["parent_id"] == house["id"] and house["parent_id"] is None, str(kitchen))
+    house_b = invoke("update_room", {"room": dict(house, parent_id=kitchen["id"])})
+    check("a room can't be put inside one of its own rooms", house_b["parent_id"] is None)
+    garden = invoke("set_room_links", {"id": garden["id"], "links": [kitchen["id"], garden["id"], 99999]})
+    check("a pathway joins two rooms (never to itself or to a room that isn't there)", garden["links"] == [kitchen["id"]], str(garden))
+    check("the pathway works from the other side too", [r for r in invoke("list_rooms") if r["id"] == kitchen["id"]][0]["links"] == [garden["id"]])
+    pdorm = invoke("create_dorm", {"name": "House dorm", "roomId": house["id"]})
+    pchat = invoke("create_chat", {"dormId": pdorm["id"], "name": "at home", "kind": "dm", "characterIds": [mira["id"]]})
+    invoke("add_user_message", {"chatId": pchat["id"], "text": "home sweet home"}); gen_and_wait(pchat["id"])
+    check("in the house, the characters are told where they are and where they can go", "Setting: Our house" in sysprompt() and "Kitchen" in sysprompt() and "Living room" in sysprompt(), sysprompt()[-500:])
+    reload_ui(); nav("Dorms"); time.sleep(1.0)
+    d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'at home')]").click(); time.sleep(1.2)
+    opts_ = d.execute_script("const s=document.querySelector('[aria-label=\"Go to another room\"]');return s?[...s.querySelectorAll('optgroup')].map(g=>g.label+': '+[...g.querySelectorAll('option')].map(o=>o.textContent).sort().join(', ')):null")
+    check("a Go to… menu in the chat lists nearby rooms first (the rooms inside the house)", opts_ is not None and opts_[0].startswith("Nearby") and "Our house › Kitchen" in opts_[0] and "Our house › Living room" in opts_[0] and "Garden gate" not in opts_[0], str(opts_))
+    Select(d.find_element(By.CSS_SELECTOR, "[aria-label='Go to another room']")).select_by_visible_text("Our house › Kitchen"); time.sleep(1.5)
+    moved = [c for c in invoke("list_chats") if c["id"] == pchat["id"]][0]
+    check("choosing a room moves the same chat there (no new chat)", moved["room_id"] == kitchen["id"] and len([c for c in invoke("list_chats") if c["dorm_id"] == pdorm["id"]]) == 1, str(moved))
+    check("the conversation shows the move and keeps its earlier messages", d.execute_script("return document.querySelector('[data-testid=travel-line]')?.textContent||''").endswith("Kitchen") and d.execute_script("return document.querySelectorAll('.msgs .msg').length") >= 2)
+    check("the chat header shows the new room", "Kitchen" in d.execute_script("return document.querySelector('.chathead .tok')?.textContent||''"))
+    gen_and_wait(pchat["id"])
+    check("after the move, the characters are told they are in the kitchen and the move is narrated", "Setting: Kitchen" in sysprompt() and "yellow tiles" in sysprompt().lower() and "It is part of Our house" in sysprompt() and any("[The scene moves to Kitchen.]" in m["content"] for m in seen["body"]["messages"]), sysprompt()[-500:])
+    check("the kitchen leads to the garden gate by its pathway", "Garden gate" in sysprompt())
+    check("moving to the room it is already in is refused", "already" in (inv_err("move_chat", {"chatId": pchat["id"], "roomId": kitchen["id"]}) or ""))
+    check("a chat can't move into a room that isn't there", bool(inv_err("move_chat", {"chatId": pchat["id"], "roomId": 99999})))
+    nroom = len(invoke("list_rooms"))
+    invoke("delete_room", {"id": kitchen["id"]})
+    after_ = [c for c in invoke("list_chats") if c["id"] == pchat["id"]][0]
+    check("deleting the room a chat is in puts it back in its dorm's room", after_["room_id"] is None and len(invoke("list_rooms")) == nroom - 1)
+    check("rooms that were inside a deleted room keep existing", [r for r in invoke("list_rooms") if r["id"] == livingr["id"]][0]["parent_id"] == house["id"])
 
     pack_json = json.dumps({"name": "Heartbeat", "description": "Two numbers.", "entries": [
         {"id": "e1", "name": "Stages", "content": "HEARTBEAT-LORE: read affection like this.", "alwaysSend": True},

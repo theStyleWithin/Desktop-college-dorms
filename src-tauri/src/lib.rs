@@ -161,6 +161,8 @@ pub fn run() {
             extras::delete_room,
             extras::set_room_backdrop,
             extras::set_dorm_room,
+            extras::set_room_links,
+            extras::move_chat,
             extras::set_room_music,
             extras::clear_room_music,
             extras::set_room_model,

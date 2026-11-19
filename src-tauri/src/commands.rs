@@ -1074,6 +1074,10 @@ async fn run_generation(
         .iter()
         .filter(|m| m.role != "system")
         .map(|m| {
+            // a move to another room is told to the characters as narration
+            if m.role == "travel" {
+                return HistoryItem { speaker_id: None, name: "Narrator".into(), text: format!("[The scene moves to {}.]", m.content()) };
+            }
             let is_user = m.role == "user";
             let name = if is_user {
                 settings.user_name.clone()

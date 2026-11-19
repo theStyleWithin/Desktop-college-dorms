@@ -60,3 +60,26 @@ export function roomScene(r?: Room | null): SceneCfg | null {
   const ext = r.model.split(".").pop()?.toLowerCase() ?? "glb";
   return { url, ext, scale: r.model_scale ?? 1, rot: r.model_rot ?? 0, y: r.model_y ?? 0 };
 }
+
+/** Where one can walk to from `cur`: the room it is part of, the rooms inside it, its neighbours in the same place, and rooms joined by a pathway. */
+export function nearbyRooms(rooms: Room[], cur: Room | null): Room[] {
+  if (!cur) return [];
+  const linked = new Set<number>([...(cur.links ?? []), ...rooms.filter((r) => (r.links ?? []).includes(cur.id)).map((r) => r.id)]);
+  return rooms.filter((r) => r.id !== cur.id && (r.id === cur.parent_id || r.parent_id === cur.id || (cur.parent_id != null && r.parent_id === cur.parent_id) || linked.has(r.id)));
+}
+
+/** Whether room `x` sits somewhere inside room `anc` (so `anc` can't be put inside it). */
+export function isInside(rooms: Room[], x: number, anc: number | null): boolean {
+  if (anc == null) return false;
+  let cur = rooms.find((r) => r.id === x)?.parent_id ?? null;
+  for (let i = 0; cur != null && i < 200; i++) { if (cur === anc) return true; cur = rooms.find((r) => r.id === cur)?.parent_id ?? null; }
+  return false;
+}
+
+/** "Our house › Kitchen" */
+export function pathName(rooms: Room[], id: number): string {
+  const names: string[] = [];
+  let cur: number | null | undefined = id;
+  for (let i = 0; cur != null && i < 200; i++) { const r = rooms.find((x) => x.id === cur); if (!r) break; names.unshift(r.name); cur = r.parent_id; }
+  return names.join(" › ");
+}

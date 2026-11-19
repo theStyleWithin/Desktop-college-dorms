@@ -440,6 +440,10 @@ button.chip { cursor: pointer; } button.chip.on { background: var(--accent); col
   .nav .caret { display: none; }
 }
 
+/* pathways: the line that says the story walked into another room */
+.msgs .travel { display: flex; align-items: center; gap: 10px; margin: 14px 0; color: var(--muted, #9a94b0); font-size: 0.85em; }
+.msgs .travel::before, .msgs .travel::after { content: ""; flex: 1; height: 1px; background: currentColor; opacity: 0.35; }
+.msgs .travel span { white-space: nowrap; max-width: 70%; overflow: hidden; text-overflow: ellipsis; }
 /* the characters list on the right (like a members list): round avatars, a presence light, a status bubble above each name */
 .members-wrap { display: contents; }
 .members { width: auto; min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-left: 1px solid var(--line); padding: 14px 10px 10px; gap: 8px; }
