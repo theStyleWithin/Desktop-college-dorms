@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, displayName, type Room, type RoomKind } from "../api";
+import RoomMap from "../components/RoomMap";
 import MusicField from "../components/MusicField";
 import RoomModelField, { type ModelDraft } from "../components/RoomModelField";
 import { Modal, useToast } from "../components/ui";
@@ -22,6 +23,8 @@ export default function Rooms({ edit }: { edit?: number | "new" }) {
   const { rooms, dorms, characters, go, refresh } = useStore();
   const toast = useToast();
   const [starting, setStarting] = useState<Room | null>(null);
+  const [view, setView] = useState<"cards" | "map">(() => { try { return localStorage.getItem("dorms.rooms.view") === "map" ? "map" : "cards"; } catch { return "cards"; } });
+  const pickView = (v: "cards" | "map") => { setView(v); try { localStorage.setItem("dorms.rooms.view", v); } catch { /* storage unavailable */ } };
   if (edit !== undefined) return <RoomForm id={edit === "new" ? null : edit} />;
 
   const remove = async (r: Room) => {
@@ -34,6 +37,12 @@ export default function Rooms({ edit }: { edit?: number | "new" }) {
     <div className="page">
       <div className="row" style={{ marginBottom: 6 }}>
         <h1 className="grow">Rooms</h1>
+        {rooms.length > 1 && (
+          <div className="view-switch" role="group" aria-label="How to show the rooms">
+            <button className={`chip ${view === "cards" ? "on" : ""}`} aria-pressed={view === "cards"} onClick={() => pickView("cards")}>Cards</button>
+            <button className={`chip ${view === "map" ? "on" : ""}`} aria-pressed={view === "map"} data-testid="rooms-map-tab" onClick={() => pickView("map")}>Pathways map</button>
+          </div>
+        )}
         <button className="btn primary" onClick={() => go({ page: "rooms", edit: "new" })}>＋ Make a room</button>
       </div>
       <p className="sub" style={{ marginBottom: 18 }}>A room is the place a dorm happens in. Characters know where they are, and the chat shows the room behind it.</p>
@@ -43,6 +52,8 @@ export default function Rooms({ edit }: { edit?: number | "new" }) {
           <p className="sub" style={{ margin: "6px 0 14px" }}>Make a room first and set up a dorm in it, or add rooms later to dorms you already have.</p>
           <button className="btn primary" onClick={() => go({ page: "rooms", edit: "new" })}>＋ Make your first room</button>
         </div>
+      ) : view === "map" && rooms.length > 1 ? (
+        <RoomMap rooms={rooms} onEdit={(r) => go({ page: "rooms", edit: r.id })} onStart={setStarting} />
       ) : (
         <div className="room-grid">
           {rooms.map((r) => {

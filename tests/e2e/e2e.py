@@ -629,6 +629,26 @@ try:
     after_ = [c for c in invoke("list_chats") if c["id"] == pchat["id"]][0]
     check("deleting the room a chat is in puts it back in its dorm's room", after_["room_id"] is None and len(invoke("list_rooms")) == nroom - 1)
     check("rooms that were inside a deleted room keep existing", [r for r in invoke("list_rooms") if r["id"] == livingr["id"]][0]["parent_id"] == house["id"])
+    # the pathways map on the Rooms page: rooms as cards, a line drawn from a round handle onto another room joins them
+    reload_ui(); nav("Rooms"); time.sleep(1.0)
+    d.execute_script("document.querySelector('[data-testid=rooms-map-tab]').click()"); time.sleep(0.8)
+    n_rooms_ = len(invoke("list_rooms"))
+    check("the Rooms page can show a pathways map with a card for every room", d.execute_script("return document.querySelectorAll('[data-room-node]').length") == n_rooms_ and n_rooms_ >= 3, str(n_rooms_))
+    def drag_line(a_id, b_id):
+        d.execute_script("""const port=document.querySelector('[data-port="'+arguments[0]+'"]'), tgt=document.querySelector('[data-room-node="'+arguments[1]+'"]');
+          const pr=port.getBoundingClientRect(), tr=tgt.getBoundingClientRect();
+          const mk=(t,x,y)=>new PointerEvent(t,{clientX:x,clientY:y,bubbles:true,pointerId:1,isPrimary:true});
+          port.dispatchEvent(mk('pointerdown',pr.x+5,pr.y+5)); window.dispatchEvent(mk('pointermove',tr.x+40,tr.y+40)); window.dispatchEvent(mk('pointerup',tr.x+40,tr.y+40));""", a_id, b_id)
+        time.sleep(1.0)
+    links_of = lambda rid: [r for r in invoke("list_rooms") if r["id"] == rid][0]["links"]
+    check("the garden gate and the living room are not joined yet", livingr["id"] not in links_of(garden["id"]))
+    drag_line(garden["id"], livingr["id"])
+    check("pulling a line from one room's handle onto another room joins them (both ways)", livingr["id"] in links_of(garden["id"]) and garden["id"] in links_of(livingr["id"]), str(links_of(garden["id"])))
+    check("the new pathway is drawn on the map", d.execute_script("return !!document.querySelector('[data-link=\"%d-%d\"]')" % (min(garden["id"], livingr["id"]), max(garden["id"], livingr["id"]))))
+    drag_line(garden["id"], garden["id"])
+    check("a line dropped back on the same room joins nothing", links_of(garden["id"]) == [livingr["id"]], str(links_of(garden["id"])))
+    d.execute_script("document.querySelector('[data-link=\"%d-%d\"] .unlink').dispatchEvent(new MouseEvent('click',{bubbles:true}))" % (min(garden["id"], livingr["id"]), max(garden["id"], livingr["id"]))); time.sleep(1.0)
+    check("the × on a line takes the pathway away again", links_of(garden["id"]) == [] and links_of(livingr["id"]) == [])
 
     pack_json = json.dumps({"name": "Heartbeat", "description": "Two numbers.", "entries": [
         {"id": "e1", "name": "Stages", "content": "HEARTBEAT-LORE: read affection like this.", "alwaysSend": True},

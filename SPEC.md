@@ -149,6 +149,8 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   refuses the room the chat is already in, and appends a message with role `travel` (its text is the room's name). The chat page shows it as a divider line;
   the prompt gets it as narration (`[The scene moves to Kitchen.]`) and the system prompt describes the current room, the room it is part of, and
   where one can go (its sub-rooms, its neighbours in the same parent and its pathways). Deleting the room a chat is in puts the chat back in its dorm's room.
+- The Rooms page has a Cards / Pathways map switch (kept on the device). The map draws each room as a card with a handle; dragging from a handle onto another room calls
+  `set_room_links` with the room's links plus the new one, and the ✕ on a line calls it without. Card positions are kept in `dorms.rooms.map` on the device; dashed lines are `parent_id`.
 - A moved chat prefers the new room's music over the dorm's. Backups carry parents, pathways and each chat's current room (numbers are remapped on import).
 
 ## Imported 3D rooms (v0.6)
