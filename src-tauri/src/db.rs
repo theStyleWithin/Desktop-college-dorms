@@ -166,12 +166,33 @@ pub struct Room {
     /// The room this one is part of (the kitchen of "our house"). Rooms without one are top-level places.
     #[serde(default)]
     pub parent_id: Option<i64>,
+    /// How the room is dressed, if the user wants: the same nameplate, background and wreath a profile can wear, and a tag beside its name.
+    #[serde(default)]
+    pub deco: RoomDeco,
     /// Its exits: rooms it leads to by a one-way pathway (at most 3), besides its parent and sub-rooms.
     #[serde(default)]
     pub links: Vec<i64>,
 }
 
 fn one() -> f64 { 1.0 }
+
+/// A room dressed like a server: optional decorations and a short tag (all empty by default).
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct RoomDeco {
+    pub plate: String,
+    pub bg: String,
+    pub wreath: String,
+    pub tag: String,
+    pub tag_color: String,
+    pub tag_glyph: String,
+}
+
+impl Default for RoomDeco {
+    fn default() -> Self {
+        RoomDeco { plate: "none".into(), bg: String::new(), wreath: String::new(), tag: String::new(), tag_color: "#5865f2".into(), tag_glyph: String::new() }
+    }
+}
 
 /// A decoration (a 3D prop such as furniture, a plant or food) in the profile's library, kept as a .glb inside the data folder.
 #[derive(Serialize, Deserialize, Clone)]
@@ -260,6 +281,48 @@ pub struct SavedPrompt {
     pub created_at: i64,
     #[serde(default)]
     pub updated_at: i64,
+}
+
+/// How a character is dressed: a nameplate behind their row in the characters list, an animated profile background and an avatar wreath.
+/// Chosen by the user or, when the user allows it, by the model to suit the character. (Ids come from `src/lib/decoData.json`.)
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+pub struct CharDeco {
+    /// The character's id.
+    pub character_id: String,
+    /// A nameplate id, or `none`.
+    pub plate: String,
+    /// A profile background id, or empty.
+    pub bg: String,
+    /// An avatar wreath id, or empty.
+    pub wreath: String,
+    /// `ai` or `user`.
+    pub source: String,
+    pub updated_at: i64,
+}
+
+/// The user's own profile decorations (nameplate, background, wreath), their name tag and banner, and whether the model may dress the characters.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct UserDeco {
+    pub plate: String,
+    pub bg: String,
+    pub wreath: String,
+    /// Things move a little (also switched off by the device's reduced-motion setting).
+    pub animate: bool,
+    /// A 2 to 4 letter tag shown beside the name, its colour (one of the listed ones) and a symbol.
+    pub tag: String,
+    pub tag_color: String,
+    pub tag_glyph: String,
+    /// A built-in banner id for the profile card, or empty.
+    pub banner: String,
+    /// Let the model choose decorations for characters that have none, to suit who they are.
+    pub ai_pick: bool,
+}
+
+impl Default for UserDeco {
+    fn default() -> Self {
+        UserDeco { plate: "none".into(), bg: String::new(), wreath: String::new(), animate: true, tag: String::new(), tag_color: "#5865f2".into(), tag_glyph: String::new(), banner: String::new(), ai_pick: false }
+    }
 }
 
 /// What is on a character's mind (a short line shown in the characters list), written by the model in their voice or by the user.
@@ -415,6 +478,8 @@ pub struct Settings {
     pub stt_auto_send: bool,
     /// The persona being played (an id from `personas`); empty means the plain name and description above.
     pub active_persona: String,
+    /// The user's own profile decorations.
+    pub deco: UserDeco,
 }
 
 impl Default for Settings {
@@ -441,6 +506,7 @@ impl Default for Settings {
             stt_language: String::new(),
             stt_auto_send: true,
             active_persona: String::new(),
+            deco: UserDeco::default(),
         }
     }
 }
@@ -494,6 +560,9 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
             created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS char_status(
             id TEXT PRIMARY KEY, profile_id TEXT, text TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'ai', updated_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS char_deco(
+            id TEXT PRIMARY KEY, profile_id TEXT, plate TEXT NOT NULL DEFAULT 'none', bg TEXT NOT NULL DEFAULT '', wreath TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT 'ai', updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS lorebooks(
             id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS folders(
@@ -524,6 +593,12 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
     ensure_column(&conn, "chats", "style", "TEXT NOT NULL DEFAULT 'chat'")?;
     // pathways: rooms inside rooms, rooms joined to each other, and the room a chat has moved into
     ensure_column(&conn, "rooms", "parent_id", "INTEGER")?;
+    ensure_column(&conn, "rooms", "deco_plate", "TEXT NOT NULL DEFAULT 'none'")?;
+    ensure_column(&conn, "rooms", "deco_bg", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "rooms", "deco_wreath", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "rooms", "deco_tag", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "rooms", "deco_tag_color", "TEXT NOT NULL DEFAULT '#5865f2'")?;
+    ensure_column(&conn, "rooms", "deco_tag_glyph", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "chats", "room_id", "INTEGER")?;
     conn.execute_batch("CREATE TABLE IF NOT EXISTS room_links(a INTEGER NOT NULL, b INTEGER NOT NULL, PRIMARY KEY(a,b));")?;
     for t in ["rooms", "mechanics", "notes", "folders", "lorebooks", "personas"] {
@@ -585,6 +660,7 @@ pub fn list_characters(c: &Connection, owner: &Owner) -> R<Vec<Character>> {
 pub fn delete_character(c: &Connection, id: &str, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM characters WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     c.execute("DELETE FROM char_status WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    c.execute("DELETE FROM char_deco WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     Ok(())
 }
 
@@ -631,9 +707,9 @@ pub fn get_dorm(c: &Connection, id: i64, owner: &Owner) -> R<Option<Dorm>> {
 // ----- rooms -----
 
 fn row_room(r: &rusqlite::Row) -> R<Room> {
-    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)?, model: r.get(10)?, model_name: r.get(11)?, model_scale: r.get(12)?, model_rot: r.get(13)?, model_y: r.get(14)?, model_share: r.get::<_, i64>(15)? != 0, parent_id: r.get(16)?, links: vec![] })
+    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)?, model: r.get(10)?, model_name: r.get(11)?, model_scale: r.get(12)?, model_rot: r.get(13)?, model_y: r.get(14)?, model_share: r.get::<_, i64>(15)? != 0, parent_id: r.get(16)?, links: vec![], deco: RoomDeco { plate: r.get(17)?, bg: r.get(18)?, wreath: r.get(19)?, tag: r.get(20)?, tag_color: r.get(21)?, tag_glyph: r.get(22)? } })
 }
-const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share,parent_id";
+const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share,parent_id,deco_plate,deco_bg,deco_wreath,deco_tag,deco_tag_color,deco_tag_glyph";
 
 pub fn list_rooms(c: &Connection, owner: &Owner) -> R<Vec<Room>> {
     let mut s = c.prepare(&format!("SELECT {ROOM_COLS} FROM rooms WHERE profile_id IS ?1 ORDER BY id DESC"))?;
@@ -696,16 +772,16 @@ pub fn set_room_parent(c: &Connection, id: i64, parent: Option<i64>, owner: &Own
 
 pub fn create_room(c: &Connection, r: &Room, owner: &Owner) -> R<Room> {
     c.execute(
-        "INSERT INTO rooms(profile_id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
-        params![owner, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, now(), r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64],
+        "INSERT INTO rooms(profile_id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share,deco_plate,deco_bg,deco_wreath,deco_tag,deco_tag_color,deco_tag_glyph) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
+        params![owner, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, now(), r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64, r.deco.plate, r.deco.bg, r.deco.wreath, r.deco.tag, r.deco.tag_color, r.deco.tag_glyph],
     )?;
     Ok(get_room(c, c.last_insert_rowid(), owner)?.expect("just inserted"))
 }
 
 pub fn update_room(c: &Connection, r: &Room, owner: &Owner) -> R<()> {
     c.execute(
-        "UPDATE rooms SET name=?2,kind=?3,description=?4,owner_kind=?5,character_id=?6,backdrop=?7,music=?9,music_name=?10,model=?11,model_name=?12,model_scale=?13,model_rot=?14,model_y=?15,model_share=?16 WHERE id=?1 AND profile_id IS ?8",
-        params![r.id, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, owner, r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64],
+        "UPDATE rooms SET name=?2,kind=?3,description=?4,owner_kind=?5,character_id=?6,backdrop=?7,music=?9,music_name=?10,model=?11,model_name=?12,model_scale=?13,model_rot=?14,model_y=?15,model_share=?16,deco_plate=?17,deco_bg=?18,deco_wreath=?19,deco_tag=?20,deco_tag_color=?21,deco_tag_glyph=?22 WHERE id=?1 AND profile_id IS ?8",
+        params![r.id, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, owner, r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64, r.deco.plate, r.deco.bg, r.deco.wreath, r.deco.tag, r.deco.tag_color, r.deco.tag_glyph],
     )?;
     set_room_parent(c, r.id, r.parent_id, owner)?;
     Ok(())
@@ -983,6 +1059,29 @@ pub fn save_status(c: &Connection, st: &CharStatus, owner: &Owner) -> R<()> {
 
 pub fn delete_status(c: &Connection, id: &str, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM char_status WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
+// ----- character decorations -----
+
+pub fn list_char_deco(c: &Connection, owner: &Owner) -> R<Vec<CharDeco>> {
+    let mut s = c.prepare("SELECT id,plate,bg,wreath,source,updated_at FROM char_deco WHERE profile_id IS ?1")?;
+    let rows = s.query_map([owner], |r| Ok(CharDeco { character_id: r.get(0)?, plate: r.get(1)?, bg: r.get(2)?, wreath: r.get(3)?, source: r.get(4)?, updated_at: r.get(5)? }))?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Insert or replace (only ever a record of this owner).
+pub fn save_char_deco(c: &Connection, d: &CharDeco, owner: &Owner) -> R<()> {
+    c.execute(
+        "INSERT INTO char_deco(id,profile_id,plate,bg,wreath,source,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7)
+         ON CONFLICT(id) DO UPDATE SET plate=excluded.plate, bg=excluded.bg, wreath=excluded.wreath, source=excluded.source, updated_at=excluded.updated_at WHERE char_deco.profile_id IS ?2",
+        params![d.character_id, owner, d.plate, d.bg, d.wreath, d.source, d.updated_at],
+    )?;
+    Ok(())
+}
+
+pub fn delete_char_deco(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM char_deco WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     Ok(())
 }
 
@@ -1340,6 +1439,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM decor WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM prompts WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM char_status WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM char_deco WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM mechanics WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM notes WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM folders WHERE profile_id IS ?1", [owner])?;
@@ -1358,7 +1458,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
@@ -1406,7 +1506,7 @@ mod tests {
     fn rooms_and_packs_belong_to_their_owner_and_dorms_can_only_use_their_own_rooms() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![] };
+        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default() };
         let ra = create_room(&c, &room("A's kitchen"), &a).unwrap();
         let rb = create_room(&c, &room("B's kitchen"), &b).unwrap();
         assert_eq!(list_rooms(&c, &a).unwrap().len(), 1);
@@ -1773,7 +1873,7 @@ mod tests {
     fn pathways_nest_rooms_link_them_and_move_a_chat() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let room = |n: &str| Room { id: 0, name: n.into(), kind: "other".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![] };
+        let room = |n: &str| Room { id: 0, name: n.into(), kind: "other".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default() };
         let house = create_room(&c, &room("House"), &a).unwrap();
         let kitchen = create_room(&c, &room("Kitchen"), &a).unwrap();
         let attic = create_room(&c, &room("Attic"), &a).unwrap();
@@ -1806,5 +1906,37 @@ mod tests {
         delete_room(&c, kitchen.id, &a).unwrap();
         assert_eq!(get_chat(&c, ch.id, &a).unwrap().unwrap().room_id, None, "deleting the room a chat is in puts it back in its dorm's");
         assert!(get_room(&c, attic.id, &a).unwrap().unwrap().links.is_empty(), "and the exits leading to it go with it");
+    }
+
+    #[test]
+    fn character_decorations_belong_to_their_owner_and_go_with_the_character() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        let d = CharDeco { character_id: "x".into(), plate: "embers".into(), bg: "boba".into(), wreath: "bobacup".into(), source: "ai".into(), updated_at: 1 };
+        save_char_deco(&c, &d, &a).unwrap();
+        assert_eq!(list_char_deco(&c, &a).unwrap(), vec![d.clone()]);
+        assert!(list_char_deco(&c, &b).unwrap().is_empty(), "another profile sees none of them");
+        save_char_deco(&c, &CharDeco { plate: "stolen".into(), ..d.clone() }, &b).unwrap();
+        assert_eq!(list_char_deco(&c, &a).unwrap()[0].plate, "embers", "another profile can't overwrite them");
+        save_char_deco(&c, &CharDeco { plate: "tide".into(), source: "user".into(), updated_at: 2, ..d.clone() }, &a).unwrap();
+        assert_eq!((list_char_deco(&c, &a).unwrap()[0].plate.as_str(), list_char_deco(&c, &a).unwrap()[0].source.as_str()), ("tide", "user"));
+        delete_char_deco(&c, "x", &b).unwrap();
+        assert_eq!(list_char_deco(&c, &a).unwrap().len(), 1, "another profile can't remove them");
+        delete_char_deco(&c, "x", &a).unwrap();
+        assert!(list_char_deco(&c, &a).unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_users_decorations_are_saved_with_their_settings_and_old_settings_still_load() {
+        let c = fresh();
+        let a = me("a");
+        let mut s = get_settings(&c, &a);
+        assert_eq!((s.deco.plate.as_str(), s.deco.animate, s.deco.ai_pick), ("none", true, false));
+        s.deco.wreath = "lotus".into(); s.deco.ai_pick = true;
+        save_settings(&c, &s, &a).unwrap();
+        assert_eq!((get_settings(&c, &a).deco.wreath, get_settings(&c, &a).deco.ai_pick), ("lotus".to_string(), true));
+        // settings saved before decorations existed have no such field: they get the defaults
+        let old: Settings = serde_json::from_str(r#"{"provider":"local","user_name":"Old"}"#).unwrap();
+        assert_eq!(old.deco, UserDeco::default());
     }
 }

@@ -96,6 +96,22 @@ fn part_of_day() -> &'static str {
     match h { 5..=11 => "morning", 12..=16 => "afternoon", 17..=21 => "evening", _ => "late at night" }
 }
 
+/// The endpoint for a small, optional model request (a status, a choice of decorations): a remote one if that is what is set up,
+/// otherwise the local model, but only if it is already running (these are not worth loading a model for).
+pub(crate) async fn quick_endpoint(st: &Shared, o: &db::Owner, settings: &db::Settings) -> R<llm::Endpoint> {
+    Ok(match remote_endpoint(st, o, settings) {
+        Some(r) => r?,
+        None => {
+            let s = llama::status(st).await;
+            if !s.running {
+                return Err("The local model isn't running right now. Open a chat to start it, or use a cloud model.".into());
+            }
+            let port = st.llama.lock().await.port;
+            llm::Endpoint::openai(format!("http://127.0.0.1:{port}/v1"), None, "local".into())
+        }
+    })
+}
+
 /// Ask the model for what is on this character's mind right now, in their own voice, and keep it as their status.
 /// A local model is only used if it is already running (a status is not worth loading a model for).
 #[tauri::command]
@@ -106,17 +122,7 @@ pub async fn generate_status(state: State<'_, Shared>, character_id: String) -> 
         let db = st.db.lock().unwrap();
         (db::get_character(&db, &character_id, &o).map_err(e)?.ok_or("That character doesn't exist any more.")?, db::get_settings(&db, &o))
     };
-    let ep = match remote_endpoint(&st, &o, &settings) {
-        Some(r) => r?,
-        None => {
-            let s = llama::status(&st).await;
-            if !s.running {
-                return Err("The local model isn't running right now. Open a chat to start it, or use a cloud model.".into());
-            }
-            let port = st.llama.lock().await.port;
-            llm::Endpoint::openai(format!("http://127.0.0.1:{port}/v1"), None, "local".into())
-        }
-    };
+    let ep = quick_endpoint(&st, &o, &settings).await?;
     let c = &ch.card;
     let cut = |t: &str, n: usize| t.chars().take(n).collect::<String>();
     let msgs = vec![

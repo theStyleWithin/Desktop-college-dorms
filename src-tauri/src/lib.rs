@@ -4,6 +4,7 @@ mod db;
 mod extras;
 mod llama;
 mod llm;
+mod deco;
 mod presence;
 mod secrets;
 mod unitypkg;
@@ -175,6 +176,10 @@ pub fn run() {
             presence::list_statuses,
             presence::set_status,
             presence::generate_status,
+            deco::list_char_deco,
+            deco::set_char_deco,
+            deco::clear_char_deco,
+            deco::generate_char_deco,
             extras::list_prompts,
             extras::save_prompt,
             extras::delete_prompt,

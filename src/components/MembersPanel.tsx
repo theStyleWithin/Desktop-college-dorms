@@ -1,6 +1,7 @@
 import { type CSSProperties } from "react";
 import type { Frame } from "../api";
 import { ProfileAvatar } from "./ProfileForms";
+import { Wreathed, plateProps } from "../lib/deco";
 
 /** How the AI behind the characters is doing: it decides the colour of the little light beside each character. */
 export type Presence = "local" | "ok" | "warn" | "down" | "none" | "checking";
@@ -13,6 +14,9 @@ export interface MemberRow {
   frame?: Frame | null;
   /** what is on their mind (their own words), if they have said something */
   status?: string;
+  /** how they are dressed: a nameplate behind the row and a wreath around the picture */
+  plate?: string;
+  wreath?: string;
 }
 
 const LIGHT: Record<Presence, { cls: string; label: string }> = {
@@ -28,7 +32,7 @@ export const presenceLabel = (p: Presence) => LIGHT[p].label;
 
 /** The members list itself (a round avatar, a light, and a status bubble above each name); the connected panel gives it real data. */
 export function MembersList({
-  rows, total, presence, detail, modelLabel, expandedId, query, onQuery, onToggle, expanded, autoStatus, onAutoStatus, onCollapse, busyIds, note,
+  rows, total, presence, detail, modelLabel, expandedId, query, onQuery, onToggle, expanded, autoStatus, onAutoStatus, autoDeco, onAutoDeco, animate = true, onCollapse, busyIds, note,
 }: {
   rows: MemberRow[];
   /** how many characters there are in all, when `rows` is only the ones that match a search */
@@ -45,6 +49,11 @@ export function MembersList({
   expanded?: (r: MemberRow) => React.ReactNode;
   autoStatus?: boolean;
   onAutoStatus?: (on: boolean) => void;
+  /** let the model choose decorations for characters that have none */
+  autoDeco?: boolean;
+  onAutoDeco?: (on: boolean) => void;
+  /** whether the decorations move */
+  animate?: boolean;
   onCollapse?: () => void;
   busyIds?: Set<string>;
   /** a short message under the options (why statuses aren't being written, for example) */
@@ -67,13 +76,20 @@ export function MembersList({
           <input type="checkbox" checked={!!autoStatus} onChange={(e) => onAutoStatus(e.target.checked)} /> Let characters write their status
         </label>
       )}
+      {onAutoDeco && (
+        <label className="m-auto" title="Characters with no decorations get a nameplate, background and wreath that suit them. This uses your model (and your tokens, if it is a paid one).">
+          <input type="checkbox" data-testid="members-auto-deco" checked={!!autoDeco} onChange={(e) => onAutoDeco(e.target.checked)} /> Let characters choose their decorations
+        </label>
+      )}
       {note && <div className="m-note" role="status">{note}</div>}
       {onQuery && rows.length > 8 && <input className="m-search" type="search" placeholder="Search characters…" aria-label="Search characters" value={query ?? ""} onChange={(e) => onQuery(e.target.value)} />}
       <div className="m-list">
-        {rows.map((r) => (
-          <div key={r.id} className={`m-row${expandedId === r.id ? " open" : ""}`} data-member={r.name} data-id={r.id}>
+        {rows.map((r) => {
+          const pl = plateProps(r.plate, animate);
+          return (
+          <div key={r.id} className={`m-row${expandedId === r.id ? " open" : ""} ${pl.className}`} data-member={r.name} data-id={r.id} {...(pl["data-plate"] ? { "data-plate": pl["data-plate"], "data-anim": pl["data-anim"] } : {})} data-wreath-of={r.wreath || undefined}>
             <button className="m-main" onClick={() => onToggle?.(r.id)} aria-expanded={expandedId === r.id}>
-              <span className="m-av"><ProfileAvatar name={r.name} size={38} src={r.avatar} frame={r.frame} /><span className={`m-dot ${L.cls}`} title={L.label} data-testid="member-light" /></span>
+              <span className="m-av"><Wreathed wreath={r.wreath} size="sm"><ProfileAvatar name={r.name} size={38} src={r.avatar} frame={r.frame} /></Wreathed><span className={`m-dot ${L.cls}`} title={L.label} data-testid="member-light" /></span>
               <span className="m-text">
                 {r.status ? <span className="m-status" data-testid="member-status" style={{ "--lines": expandedId === r.id ? 6 : 2 } as CSSProperties}>{r.status}</span>
                   : busyIds?.has(r.id) ? <span className="m-status ghost">thinking…</span> : null}
@@ -82,7 +98,8 @@ export function MembersList({
             </button>
             {expandedId === r.id && expanded && <div className="m-more">{expanded(r)}</div>}
           </div>
-        ))}
+          );
+        })}
       </div>
     </aside>
   );

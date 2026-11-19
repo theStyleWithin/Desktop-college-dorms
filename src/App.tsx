@@ -4,7 +4,8 @@ import { api, type AppInfo, type Character, type Chat, type Dorm, type Folder, t
 import { StoreCtx, type Route, type Store } from "./store";
 import { Logo, ToastProvider, useToast } from "./components/ui";
 import { ProfileAvatar } from "./components/ProfileForms";
-import { personaAvatar, profileAvatar } from "./api";
+import { DEFAULT_DECO, personaAvatar, profileAvatar } from "./api";
+import { TagChip, Wreathed, plateProps, setDecoMotion } from "./lib/deco";
 import Welcome from "./pages/Welcome";
 import Home from "./pages/Home";
 import Library from "./pages/Library";
@@ -26,7 +27,7 @@ const DEFAULTS: Settings = {
   temperature: 0.8, top_p: 0.95, local_model: "", local_gpu: true, openai_base_url: "https://api.openai.com/v1",
   openai_model: "gpt-4o-mini", anthropic_model: "claude-haiku-5-5", use_card_system_prompt: true,
   default_system: "", theme: "dusk",
-  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true, active_persona: "",
+  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true, active_persona: "", deco: DEFAULT_DECO,
 };
 
 const SIDE_DEF = 220, SIDE_MIN = 160, SIDE_MAX = 420;
@@ -95,6 +96,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
     try { localStorage.setItem(NAV_KEY, JSON.stringify(next)); } catch { /* storage unavailable */ }
   };
   const [winW, setWinW] = useState(window.innerWidth);
+  useEffect(() => { setDecoMotion(settings.deco?.animate !== false); }, [settings.deco?.animate]);
   useEffect(() => { const f = () => setWinW(window.innerWidth); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
   const showMembers = membersOpen && winW > 1100;
   const MIN_MAIN = 480;
@@ -175,10 +177,17 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
           <PromptsMenu />
           <SideWidgets />
           <div className="grow" />
-          <button className="nav" style={{ gap: 8 }} onClick={() => setRoute({ page: "settings", tab: "profile" })} title="Profile settings">
-            <ProfileAvatar name={session.profile?.handle ?? "Guest"} size={26} src={profileAvatar(session.profile)} frame={session.profile?.avatar_frame} />
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.profile?.handle ?? "Guest"}</span>
-          </button>
+          {(() => {
+            // the user's own decorations: nameplate behind the row, wreath around the picture, name tag beside the name
+            const dz = settings.deco ?? DEFAULT_DECO, pl = plateProps(dz.plate, dz.animate);
+            return (
+              <button className={`nav me-row ${pl.className}`} {...(pl["data-plate"] ? { "data-plate": pl["data-plate"], "data-anim": pl["data-anim"] } : {})} data-testid="me-row" style={{ gap: 8 }} onClick={() => setRoute({ page: "settings", tab: "profile" })} title="Profile settings">
+                <Wreathed wreath={dz.wreath} size="sm"><ProfileAvatar name={session.profile?.handle ?? "Guest"} size={26} src={profileAvatar(session.profile)} frame={session.profile?.avatar_frame} /></Wreathed>
+                <span className="m-name" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.profile?.handle ?? "Guest"}</span>
+                <TagChip tag={dz.tag} color={dz.tag_color} glyph={dz.tag_glyph} />
+              </button>
+            );
+          })()}
           <small>v{info?.version ?? "…"}{info?.portable ? " · portable" : ""}</small>
         </nav>
         <main className={route.page === "chat" ? "main" : "main"} style={route.page === "chat" ? { overflow: "hidden" } : undefined}>

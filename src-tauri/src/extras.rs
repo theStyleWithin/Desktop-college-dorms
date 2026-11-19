@@ -63,6 +63,8 @@ fn clean_room(mut r: Room, o: &db::Owner, db: &Connection) -> R<Room> {
             r.owner_kind = "self".into();
         }
     }
+    // the room's decorations and tag: known ones only
+    r.deco = crate::deco::clean_room_deco(r.deco);
     // a backdrop is either one of the built-in scenes or a file the app itself saved: never an arbitrary path
     if !(r.backdrop.is_empty() || r.backdrop.starts_with("preset:") && r.backdrop.len() < 40 || r.backdrop.starts_with("file:media/room-") && !r.backdrop.contains("..")) {
         r.backdrop.clear();

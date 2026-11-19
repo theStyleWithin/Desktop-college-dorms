@@ -3,6 +3,7 @@ import { api, displayName, mediaUrl, type CharStatus, type ProviderHealth } from
 import { useStore } from "../store";
 import { errText } from "../lib/util";
 import { MembersList, type MemberRow, type Presence } from "./MembersPanel";
+import { putCharDeco, useCharDeco } from "../lib/deco";
 import { useToast } from "./ui";
 
 const AUTO_KEY = "dorms.members.auto";
@@ -25,7 +26,9 @@ export function useHealth(deps: unknown[]): ProviderHealth | null {
 
 /** The characters list, connected to the real characters, the model's health and their statuses. */
 export default function MembersRail({ onCollapse }: { onCollapse: () => void }) {
-  const { characters, settings, go, refresh } = useStore();
+  const { characters, settings, setSettings, go, refresh } = useStore();
+  const decoMap = useCharDeco();
+  const autoDeco = !!settings.deco?.ai_pick;
   const toast = useToast();
   const health = useHealth([settings.provider, settings.openai_base_url, settings.openai_model, settings.anthropic_model, JSON.stringify(settings.profiles.map((p) => [p.id, p.base_url, p.model]))]);
   const [statuses, setStatuses] = useState<Map<string, CharStatus>>(new Map());
@@ -37,6 +40,7 @@ export default function MembersRail({ onCollapse }: { onCollapse: () => void }) 
   const [draft, setDraft] = useState("");
   const [note, setNote] = useState("");
   const tried = useRef(new Set<string>());
+  const triedDeco = useRef(new Set<string>());
   const pausedUntil = useRef(0);
   const visible = useRef(new Set<string>());
 
@@ -58,17 +62,26 @@ export default function MembersRail({ onCollapse }: { onCollapse: () => void }) 
     } finally { setBusy((b) => { const n = new Set(b); n.delete(id); return n; }); }
   }, [toast]);
 
+  const makeDeco = useCallback(async (id: string, quiet = false) => {
+    setBusy((b) => new Set(b).add(id));
+    try { putCharDeco(id, await api.generateCharDeco(id)); setNote(""); }
+    catch (e) {
+      if (quiet) { pausedUntil.current = Date.now() + 5 * 60_000; setNote(`Couldn't choose decorations just now: ${errText(e)}`); }
+      else toast(errText(e), "err");
+    } finally { setBusy((b) => { const n = new Set(b); n.delete(id); return n; }); }
+  }, [toast]);
+
   const rows: MemberRow[] = useMemo(() => {
     const s = q.trim().toLowerCase();
     return characters
       .filter((c) => !s || displayName(c).toLowerCase().includes(s))
-      .map((c) => ({ id: c.id, name: displayName(c), avatar: c.media?.kind === "image" || c.media?.kind === "gif" ? mediaUrl(c) : null, frame: c.frame, status: statuses.get(c.id)?.text }));
-  }, [characters, statuses, q]);
+      .map((c) => ({ id: c.id, name: displayName(c), avatar: c.media?.kind === "image" || c.media?.kind === "gif" ? mediaUrl(c) : null, frame: c.frame, status: statuses.get(c.id)?.text, plate: decoMap.get(c.id)?.plate, wreath: decoMap.get(c.id)?.wreath }));
+  }, [characters, statuses, q, decoMap]);
 
   // when "let characters write their status" is on: the ones in view that have none (or an old one), one at a time, never in a burst
   const rowsKey = rows.map((r) => r.id).join(",");
   useEffect(() => {
-    if (!auto || !upNow) return;
+    if ((!auto && !autoDeco) || !upNow) return;
     const root = document.querySelector(".members .m-list");
     if (!root) return;
     visible.current = new Set();
@@ -77,15 +90,16 @@ export default function MembersRail({ onCollapse }: { onCollapse: () => void }) 
     let stop = false;
     const tick = async () => {
       if (stop || document.hidden || Date.now() < pausedUntil.current) return;
-      const id = [...visible.current].find((i) => { if (tried.current.has(i)) return false; const s = statuses.get(i); return !s || (s.source === "ai" && Date.now() - s.updated_at > STALE_MS); });
-      if (!id) return;
-      tried.current.add(id);
-      await makeStatus(id, true);
+      const id = auto ? [...visible.current].find((i) => { if (tried.current.has(i)) return false; const s = statuses.get(i); return !s || (s.source === "ai" && Date.now() - s.updated_at > STALE_MS); }) : undefined;
+      if (id) { tried.current.add(id); await makeStatus(id, true); return; }
+      // then the ones in view that have no decorations at all (a look chosen by hand, or by the model before, is never replaced)
+      const dec = autoDeco ? [...visible.current].find((i) => !triedDeco.current.has(i) && !decoMap.has(i)) : undefined;
+      if (dec) { triedDeco.current.add(dec); await makeDeco(dec, true); }
     };
     const t = window.setInterval(() => { void tick(); }, 2500);
     return () => { stop = true; window.clearInterval(t); io.disconnect(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auto, upNow, rowsKey, statuses.size]);
+  }, [auto, autoDeco, upNow, rowsKey, statuses.size, decoMap.size]);
 
   const chat = async (id: string) => {
     const c = characters.find((x) => x.id === id); if (!c) return;
@@ -100,6 +114,8 @@ export default function MembersRail({ onCollapse }: { onCollapse: () => void }) 
       <MembersList rows={rows} total={characters.length} presence={presence} detail={health?.detail} modelLabel={health?.model}
         expandedId={open} onToggle={(id) => { setOpen(open === id ? null : id); setWriting(null); }} query={q} onQuery={setQ}
         autoStatus={auto} onAutoStatus={(on) => { setAuto(on); tried.current = new Set(); pausedUntil.current = 0; setNote(""); try { localStorage.setItem(AUTO_KEY, on ? "1" : "0"); } catch { /* storage unavailable */ } }}
+        autoDeco={autoDeco} animate={settings.deco?.animate !== false}
+        onAutoDeco={(on) => { triedDeco.current = new Set(); pausedUntil.current = 0; setNote(""); void setSettings({ ...settings, deco: { ...settings.deco, ai_pick: on } }).catch((e) => toast(errText(e), "err")); }}
         onCollapse={onCollapse} busyIds={busy} note={note}
         expanded={(r) => writing === r.id ? (
           <div className="m-write">
@@ -112,6 +128,7 @@ export default function MembersRail({ onCollapse }: { onCollapse: () => void }) 
           <button className="btn" onClick={() => void chat(r.id)}>💬 Chat</button>
           <button className="btn" onClick={() => go({ page: "editor", id: r.id })}>✎ Edit</button>
           <button className="btn" disabled={busy.has(r.id)} onClick={() => void makeStatus(r.id)}>↻ New status</button>
+          <button className="btn" disabled={busy.has(r.id)} onClick={() => void makeDeco(r.id)} title="Let the model choose a new nameplate, background and wreath for them">✨ New look</button>
           <button className="btn" onClick={() => { setDraft(statuses.get(r.id)?.text ?? ""); setWriting(r.id); }}>✏ Write status</button>
         </>)} />
     </div>

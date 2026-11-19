@@ -3,6 +3,7 @@ import { api, type Room } from "../api";
 import { MAX_EXITS, kindLabel, roomBackground } from "../lib/rooms";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
+import RoomTitle from "./RoomTitle";
 import { useToast } from "./ui";
 
 const KEY = "dorms.rooms.map";
@@ -125,7 +126,7 @@ export default function RoomMap({ rooms, onEdit, onStart }: { rooms: Room[]; onE
             style={{ left: p.x, top: p.y, width: W, height: H }} onPointerDown={(e) => startMove(e, r, p)}>
             <div className="room-node-art" style={{ background: roomBackground(r) ?? "linear-gradient(135deg, #2a2540, #3a2f55)" }} />
             <div className="room-node-body">
-              <b title={r.name}>{r.name}</b>
+              <RoomTitle room={r} size={20} />
               <small>{kindLabel(r.kind)}</small>
               <div className="row" style={{ gap: 6, marginTop: 6 }}>
                 <button className="btn primary sm" onClick={() => onStart(r)}>Start a dorm</button>

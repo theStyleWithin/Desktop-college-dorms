@@ -724,6 +724,7 @@ pub fn save_settings(state: State<'_, Shared>, mut settings: Settings) -> R<Sett
     settings.max_tokens = settings.max_tokens.clamp(16, 8192);
     settings.temperature = settings.temperature.clamp(0.0, 2.0);
     settings.top_p = settings.top_p.clamp(0.0, 1.0);
+    settings.deco = crate::deco::clean_user(settings.deco);
     for p in settings.profiles.iter_mut() {
         p.id = p.id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
         if p.id.is_empty() {

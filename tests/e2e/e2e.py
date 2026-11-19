@@ -1094,6 +1094,100 @@ try:
     check("clearing the status removes it", invoke("set_status", {"characterId": cid, "text": ""}) is None and invoke("list_statuses") == [])
     set_provider(provider=st0["provider"], openai_base_url=st0["openai_base_url"], openai_model=st0["openai_model"])
 
+    # -- profile decorations: a nameplate, a moving background and a wreath for the user and for each character, chosen by hand or by the model
+    chars_d = invoke("list_characters"); dcid, dcid2 = chars_d[0]["id"], chars_d[1]["id"]
+    r_ = invoke("set_char_deco", {"characterId": dcid, "plate": "bubbletea", "bg": "boba", "wreath": "bobacup"})
+    check("a character can be dressed (nameplate, background and wreath), marked as the user's", (r_["plate"], r_["bg"], r_["wreath"], r_["source"]) == ("bubbletea", "boba", "bobacup", "user"), str(r_))
+    r_ = invoke("set_char_deco", {"characterId": dcid, "plate": "evil", "bg": "../x", "wreath": "lotus"})
+    check("anything that isn't a known decoration is dropped", (r_["plate"], r_["bg"], r_["wreath"]) == ("none", "", "lotus"), str(r_))
+    check("choosing nothing takes the decorations off", invoke("set_char_deco", {"characterId": dcid, "plate": "none", "bg": "", "wreath": ""}) is None and invoke("list_char_deco") == [])
+    check("a character that doesn't exist can't be dressed", "doesn't exist" in (inv_err("set_char_deco", {"characterId": "nope", "plate": "embers", "bg": "", "wreath": ""}) or ""))
+    set_provider(provider="openai", openai_base_url="http://127.0.0.1:18999/v1", openai_model="fake-model")
+    old_pieces = seen.get("pieces"); seen["pieces"] = ['Sure! {"plate": "sparkleanime", "bg": "animenight", "wreath": "magicgirl"}']
+    g_ = invoke("generate_char_deco", {"characterId": dcid})
+    check("the model chooses decorations for a character, kept as theirs", (g_["source"], g_["plate"], g_["bg"], g_["wreath"]) == ("ai", "sparkleanime", "animenight", "magicgirl"), str(g_))
+    sysd = seen["body"]["messages"][0]["content"]
+    check("the model is shown the choices and who the character is", "bubbletea (Bubble Tea" in sysd and "magicgirl (Magical Girl" in sysd and invoke("get_character", {"id": dcid})["card"]["name"] in seen["body"]["messages"][1]["content"])
+    seen["pieces"] = ["Hmm, something pink."]
+    check("a reply with nothing usable in it is refused, and changes nothing", "usable" in (inv_err("generate_char_deco", {"characterId": dcid}) or "") and invoke("list_char_deco")[0]["plate"] == "sparkleanime")
+    seen["pieces"] = old_pieces
+    st_ = invoke("get_settings"); st_["deco"] = dict(st_["deco"], plate="nonsense", wreath="catears", tag="koi!", tag_color="red", tag_glyph="?", banner="nowhere")
+    sv_ = invoke("save_settings", {"settings": st_})["deco"]
+    check("your own decorations are cleaned when saved (known ids, a 2 to 4 letter tag, a listed colour)", (sv_["plate"], sv_["wreath"], sv_["tag"], sv_["tag_color"], sv_["tag_glyph"], sv_["banner"]) == ("none", "catears", "KOI", "#5865f2", "", ""), str(sv_))
+    d.execute_script("localStorage.setItem('dorms.members.open','1')")
+    reload_ui(); nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Decorations').click()"); time.sleep(1.0)
+    check("Settings has a Decorations tab with the picker and your profile card", d.execute_script("return !!document.querySelector('[data-testid=deco-picker]') && !!document.querySelector('[data-testid=profile-card]')"))
+    d.execute_script("document.querySelector('[data-theme-pick=boba]').click()"); time.sleep(1.2)
+    sd_ = invoke("get_settings")["deco"]
+    check("choosing a theme sets a nameplate, a background and a wreath together", (sd_["plate"], sd_["bg"], sd_["wreath"]) == ("bubbletea", "boba", "bobacup"), str(sd_))
+    check("the nameplate and the wreath show at the bottom left of the side bar, where your profile sits", d.execute_script("const r=document.querySelector('[data-testid=me-row]');return !!r && r.dataset.plate==='bubbletea' && !!r.querySelector('.dw[data-wreath=bobacup]')"))
+    check("your profile card shows the moving background", d.execute_script("return !!document.querySelector('[data-testid=profile-card] .deco-bg[data-bg=boba]')"))
+    check("the art is drawn by the page (one moving set, one still set)", d.execute_script("const s=document.getElementById('deco-art');return !!s && s.textContent.includes('data-wreath=\"bobacup\"') && s.textContent.includes('data-deco-anim=\"off\"')"))
+    d.execute_script("[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('Name tag and banner')).click()"); time.sleep(0.7)
+    tag_in_ = d.find_element(By.CSS_SELECTOR, "input[aria-label='Name tag']"); tag_in_.clear(); tag_in_.send_keys("koi!")   # (it opens holding the tag you already have)
+    d.execute_script("document.querySelector('.modal [aria-label=Green]').click()"); d.execute_script("[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Save').click()"); time.sleep(1.2)
+    sd_ = invoke("get_settings")["deco"]
+    check("a name tag can be made (letters only, in capitals, in a chosen colour)", (sd_["tag"], sd_["tag_color"]) == ("KOI", "#23a55a"), str(sd_))
+    check("the tag sits beside your name at the bottom left", d.execute_script("const t=document.querySelector('[data-testid=me-row] .srv-tag');return !!t && t.textContent.includes('KOI')"))
+    d.execute_script("const c=document.querySelector('[data-testid=deco-tab] input[type=checkbox]');c.click()"); time.sleep(0.8)
+    check("animation can be switched off", invoke("get_settings")["deco"]["animate"] is False and d.execute_script("return document.documentElement.dataset.decoAnim") == "off")
+    d.execute_script("document.querySelector('[data-testid=deco-tab] input[type=checkbox]').click()"); time.sleep(0.6)
+    # a character's own editor
+    cname_ = invoke("get_character", {"id": dcid2})["card"]["name"]
+    nav("Characters"); time.sleep(0.8)
+    d.execute_script("[...document.querySelectorAll('.ccard h3')].find(x=>x.textContent===arguments[0]).click()", cname_); time.sleep(1.5)
+    d.execute_script("[...document.querySelectorAll('[data-testid=char-deco] button')].find(b=>b.textContent.includes('Choose myself')).click()"); time.sleep(0.6)
+    d.execute_script("document.querySelector('[data-testid=char-deco] [data-wreath-pick=lotus]').click()"); time.sleep(1.0)
+    ld_ = [x for x in invoke("list_char_deco") if x["character_id"] == dcid2]
+    check("a character's editor can dress them by hand", len(ld_) == 1 and ld_[0]["wreath"] == "lotus" and ld_[0]["source"] == "user", str(ld_))
+    check("and says who chose", "you" in d.execute_script("return document.querySelector('[data-testid=char-deco-source]').textContent").lower())
+    seen["pieces"] = ['{"plate":"embers","bg":"","wreath":"catears"}']
+    d.execute_script("[...document.querySelectorAll('[data-testid=char-deco] button')].find(b=>b.textContent.includes('Let the model choose')).click()"); time.sleep(3.0)
+    ld_ = [x for x in invoke("list_char_deco") if x["character_id"] == dcid2]
+    check("the editor can ask the model to dress them", len(ld_) == 1 and ld_[0]["source"] == "ai" and ld_[0]["plate"] == "embers" and ld_[0]["wreath"] == "catears", str(ld_))
+    nav("Characters"); time.sleep(1.2)
+    check("a nameplate sits behind their row in the characters list, and a wreath on their picture", d.execute_script("const r=document.querySelector('[data-testid=members] .m-row[data-id=\"'+arguments[0]+'\"]');return !!r && r.dataset.plate==='embers' && !!r.querySelector('.dw[data-wreath=catears]')", dcid2))
+    # the model dresses characters that have nothing, on its own, once that is switched on (never replacing a look somebody chose)
+    for x_ in invoke("list_char_deco"): invoke("clear_char_deco", {"characterId": x_["character_id"]})
+    invoke("set_char_deco", {"characterId": dcid, "plate": "tide", "bg": "", "wreath": ""})
+    seen["pieces"] = ['{"plate":"lanternglow","bg":"lantern","wreath":"redlantern"}']
+    reload_ui(); nav("Characters"); time.sleep(1.5)
+    d.execute_script("document.querySelector('[data-testid=members-auto-deco]').click()"); time.sleep(0.8)
+    check("the characters list has a switch for letting the model choose decorations", invoke("get_settings")["deco"]["ai_pick"] is True)
+    dressed_ = lambda: {x["character_id"]: x for x in invoke("list_char_deco")}
+    try: wait(60).until(lambda x: any(v["source"] == "ai" for v in dressed_().values()))
+    except Exception: pass
+    dv_ = dressed_()
+    check("characters with no decorations get some chosen by the model, by themselves", any(v["source"] == "ai" and v["plate"] == "lanternglow" for v in dv_.values()), str(dv_))
+    check("a look chosen by hand is never replaced", dv_.get(dcid, {}).get("source") == "user" and dv_[dcid]["plate"] == "tide", str(dv_.get(dcid)))
+    d.execute_script("document.querySelector('[data-testid=members-auto-deco]').click()"); time.sleep(0.6)
+    seen["pieces"] = old_pieces
+    for x_ in invoke("list_char_deco"): invoke("clear_char_deco", {"characterId": x_["character_id"]})
+    sd_ = dict(invoke("get_settings")["deco"], plate="none", bg="", wreath="", tag="", animate=True, ai_pick=False)
+    st_ = invoke("get_settings"); st_["deco"] = sd_; invoke("save_settings", {"settings": st_})
+    # rooms can be dressed like servers: a tag, and the same nameplate, background and wreath a profile can wear (all optional)
+    rd_ = invoke("create_room", {"room": dict(room_in, name="Deco room", description="A room with a look.", owner_kind="self", character_id=None, id=0, created_at=0, deco={"plate": "evil", "bg": "boba", "wreath": "lotus", "tag": "inn!", "tag_color": "zzz", "tag_glyph": "\u2605"})})
+    check("a room keeps only known decorations and a clean tag", (rd_["deco"]["plate"], rd_["deco"]["bg"], rd_["deco"]["wreath"], rd_["deco"]["tag"], rd_["deco"]["tag_color"], rd_["deco"]["tag_glyph"]) == ("none", "boba", "lotus", "INN", "#5865f2", "\u2605"), str(rd_["deco"]))
+    check("a room made without any decorations has none", invoke("create_room", {"room": dict(room_in, name="Plain room", owner_kind="self", character_id=None, id=0, created_at=0)})["deco"]["tag"] == "")
+    rd_ = invoke("update_room", {"room": dict(rd_, deco=dict(rd_["deco"], plate="tide"))})
+    check("a room's look can be changed", rd_["deco"]["plate"] == "tide" and rd_["deco"]["wreath"] == "lotus")
+    d.execute_script("localStorage.setItem('dorms.rooms.view','cards')")
+    reload_ui(); nav("Rooms"); time.sleep(1.2)
+    check("the room's card shows its tag, its wreath and its moving background", d.execute_script("const t=[...document.querySelectorAll('[data-testid=room-title]')].find(x=>x.textContent.includes('Deco room'));return !!t && t.dataset.plate==='tide' && !!t.querySelector('.srv-tag') && t.querySelector('.srv-tag').textContent.includes('INN') && !!t.querySelector('.dw[data-wreath=lotus]')") and d.execute_script("return !!document.querySelector('.room-art .deco-bg[data-bg=boba]')"))
+    rdorm_ = invoke("create_dorm", {"name": "Deco dorm", "roomId": rd_["id"]}); rchat_ = invoke("create_chat", {"dormId": rdorm_["id"], "name": "in the deco room", "kind": "dm", "characterIds": [dcid]})
+    reload_ui(); nav("Dorms"); time.sleep(0.8); click_text("button.it", "in the deco room"); time.sleep(1.5)
+    check("the chat's header shows the room's tag", d.execute_script("const t=document.querySelector('.chathead .srv-tag');return !!t && t.textContent.includes('INN')"))
+    st_ = invoke("get_settings"); st_["deco"] = dict(st_["deco"], plate="embers", wreath="catears", tag="zen", tag_color="#23a55a"); invoke("save_settings", {"settings": st_})
+    reload_ui(); nav("Rooms"); time.sleep(1.0)   # (the page has to hear about the settings that were just saved behind its back)
+    d.execute_script("const c=[...document.querySelectorAll('.room-card')].find(x=>x.textContent.includes('Deco room'));[...c.querySelectorAll('button')].find(b=>b.textContent.trim()==='Edit').click()"); time.sleep(1.2)
+    d.execute_script("document.querySelector('[data-testid=room-deco-same]').click()"); time.sleep(0.6)
+    d.execute_script("[...document.querySelectorAll('button.btn.primary')].find(b=>/Save/.test(b.textContent)).click()"); time.sleep(1.5)
+    rd2_ = [x for x in invoke("list_rooms") if x["id"] == rd_["id"]][0]["deco"]
+    check("'Same as my profile' gives the room the nameplate, wreath and tag you wear", (rd2_["plate"], rd2_["wreath"], rd2_["tag"], rd2_["tag_color"]) == ("embers", "catears", "ZEN", "#23a55a"), str(rd2_))
+    invoke("delete_room", {"id": rd_["id"]})
+    st_ = invoke("get_settings"); st_["deco"] = dict(st_["deco"], plate="none", wreath="", tag=""); invoke("save_settings", {"settings": st_})
+    set_provider(provider=st0["provider"], openai_base_url=st0["openai_base_url"], openai_model=st0["openai_model"])
+
     # -- a character's gallery: more pictures, tagged with moods; the chat shows the one that fits the reply (or a random one)
     from PIL import Image as _Img
     def png_file(name, rgb):
