@@ -166,12 +166,33 @@ pub struct Room {
     /// The room this one is part of (the kitchen of "our house"). Rooms without one are top-level places.
     #[serde(default)]
     pub parent_id: Option<i64>,
+    /// How the room is dressed, if the user wants: the same nameplate, background and wreath a profile can wear, and a tag beside its name.
+    #[serde(default)]
+    pub deco: RoomDeco,
     /// Its exits: rooms it leads to by a one-way pathway (at most 3), besides its parent and sub-rooms.
     #[serde(default)]
     pub links: Vec<i64>,
 }
 
 fn one() -> f64 { 1.0 }
+
+/// A room dressed like a server: optional decorations and a short tag (all empty by default).
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct RoomDeco {
+    pub plate: String,
+    pub bg: String,
+    pub wreath: String,
+    pub tag: String,
+    pub tag_color: String,
+    pub tag_glyph: String,
+}
+
+impl Default for RoomDeco {
+    fn default() -> Self {
+        RoomDeco { plate: "none".into(), bg: String::new(), wreath: String::new(), tag: String::new(), tag_color: "#5865f2".into(), tag_glyph: String::new() }
+    }
+}
 
 /// A decoration (a 3D prop such as furniture, a plant or food) in the profile's library, kept as a .glb inside the data folder.
 #[derive(Serialize, Deserialize, Clone)]
@@ -572,6 +593,12 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
     ensure_column(&conn, "chats", "style", "TEXT NOT NULL DEFAULT 'chat'")?;
     // pathways: rooms inside rooms, rooms joined to each other, and the room a chat has moved into
     ensure_column(&conn, "rooms", "parent_id", "INTEGER")?;
+    ensure_column(&conn, "rooms", "deco_plate", "TEXT NOT NULL DEFAULT 'none'")?;
+    ensure_column(&conn, "rooms", "deco_bg", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "rooms", "deco_wreath", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "rooms", "deco_tag", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "rooms", "deco_tag_color", "TEXT NOT NULL DEFAULT '#5865f2'")?;
+    ensure_column(&conn, "rooms", "deco_tag_glyph", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "chats", "room_id", "INTEGER")?;
     conn.execute_batch("CREATE TABLE IF NOT EXISTS room_links(a INTEGER NOT NULL, b INTEGER NOT NULL, PRIMARY KEY(a,b));")?;
     for t in ["rooms", "mechanics", "notes", "folders", "lorebooks", "personas"] {
@@ -680,9 +707,9 @@ pub fn get_dorm(c: &Connection, id: i64, owner: &Owner) -> R<Option<Dorm>> {
 // ----- rooms -----
 
 fn row_room(r: &rusqlite::Row) -> R<Room> {
-    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)?, model: r.get(10)?, model_name: r.get(11)?, model_scale: r.get(12)?, model_rot: r.get(13)?, model_y: r.get(14)?, model_share: r.get::<_, i64>(15)? != 0, parent_id: r.get(16)?, links: vec![] })
+    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)?, model: r.get(10)?, model_name: r.get(11)?, model_scale: r.get(12)?, model_rot: r.get(13)?, model_y: r.get(14)?, model_share: r.get::<_, i64>(15)? != 0, parent_id: r.get(16)?, links: vec![], deco: RoomDeco { plate: r.get(17)?, bg: r.get(18)?, wreath: r.get(19)?, tag: r.get(20)?, tag_color: r.get(21)?, tag_glyph: r.get(22)? } })
 }
-const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share,parent_id";
+const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share,parent_id,deco_plate,deco_bg,deco_wreath,deco_tag,deco_tag_color,deco_tag_glyph";
 
 pub fn list_rooms(c: &Connection, owner: &Owner) -> R<Vec<Room>> {
     let mut s = c.prepare(&format!("SELECT {ROOM_COLS} FROM rooms WHERE profile_id IS ?1 ORDER BY id DESC"))?;
@@ -745,16 +772,16 @@ pub fn set_room_parent(c: &Connection, id: i64, parent: Option<i64>, owner: &Own
 
 pub fn create_room(c: &Connection, r: &Room, owner: &Owner) -> R<Room> {
     c.execute(
-        "INSERT INTO rooms(profile_id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
-        params![owner, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, now(), r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64],
+        "INSERT INTO rooms(profile_id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share,deco_plate,deco_bg,deco_wreath,deco_tag,deco_tag_color,deco_tag_glyph) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
+        params![owner, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, now(), r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64, r.deco.plate, r.deco.bg, r.deco.wreath, r.deco.tag, r.deco.tag_color, r.deco.tag_glyph],
     )?;
     Ok(get_room(c, c.last_insert_rowid(), owner)?.expect("just inserted"))
 }
 
 pub fn update_room(c: &Connection, r: &Room, owner: &Owner) -> R<()> {
     c.execute(
-        "UPDATE rooms SET name=?2,kind=?3,description=?4,owner_kind=?5,character_id=?6,backdrop=?7,music=?9,music_name=?10,model=?11,model_name=?12,model_scale=?13,model_rot=?14,model_y=?15,model_share=?16 WHERE id=?1 AND profile_id IS ?8",
-        params![r.id, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, owner, r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64],
+        "UPDATE rooms SET name=?2,kind=?3,description=?4,owner_kind=?5,character_id=?6,backdrop=?7,music=?9,music_name=?10,model=?11,model_name=?12,model_scale=?13,model_rot=?14,model_y=?15,model_share=?16,deco_plate=?17,deco_bg=?18,deco_wreath=?19,deco_tag=?20,deco_tag_color=?21,deco_tag_glyph=?22 WHERE id=?1 AND profile_id IS ?8",
+        params![r.id, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, owner, r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64, r.deco.plate, r.deco.bg, r.deco.wreath, r.deco.tag, r.deco.tag_color, r.deco.tag_glyph],
     )?;
     set_room_parent(c, r.id, r.parent_id, owner)?;
     Ok(())
@@ -1479,7 +1506,7 @@ mod tests {
     fn rooms_and_packs_belong_to_their_owner_and_dorms_can_only_use_their_own_rooms() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![] };
+        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default() };
         let ra = create_room(&c, &room("A's kitchen"), &a).unwrap();
         let rb = create_room(&c, &room("B's kitchen"), &b).unwrap();
         assert_eq!(list_rooms(&c, &a).unwrap().len(), 1);
@@ -1846,7 +1873,7 @@ mod tests {
     fn pathways_nest_rooms_link_them_and_move_a_chat() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let room = |n: &str| Room { id: 0, name: n.into(), kind: "other".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![] };
+        let room = |n: &str| Room { id: 0, name: n.into(), kind: "other".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default() };
         let house = create_room(&c, &room("House"), &a).unwrap();
         let kitchen = create_room(&c, &room("Kitchen"), &a).unwrap();
         let attic = create_room(&c, &room("Attic"), &a).unwrap();

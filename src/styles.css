@@ -659,3 +659,9 @@ body.resizing * { cursor: col-resize !important; }
 .profile-card-row .m-name { font-size: 1.1rem; }
 .bg-prev-wrap { display: block; }
 .me-row.plated { padding-left: 8px; padding-right: 8px; }
+.room-title { display: inline-flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 8px; max-width: 100%; min-width: 0; }
+.room-title .m-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-weight: 700; }
+.room-icon { display: inline-block; border-radius: 50%; flex: none; background-size: cover !important; border: 2px solid var(--line); }
+.room-art { position: relative; }
+.room-deco-tag summary { cursor: pointer; margin: 6px 0; color: var(--muted); }
+.room-node-body .room-title { padding: 2px 6px; }

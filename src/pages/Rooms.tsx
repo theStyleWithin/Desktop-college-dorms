@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api, displayName, type Room, type RoomKind } from "../api";
 import RoomMap from "../components/RoomMap";
+import RoomTitle from "../components/RoomTitle";
+import RoomDecoEditor from "../components/RoomDecoEditor";
+import { ensureDecoArt } from "../lib/deco";
 import MusicField from "../components/MusicField";
 import RoomModelField, { type ModelDraft } from "../components/RoomModelField";
 import { Modal, useToast } from "../components/ui";
@@ -8,7 +11,7 @@ import { PRESETS, ROOM_KINDS, kindLabel, roomBackground, isInside, pathName, MAX
 import { errText } from "../lib/util";
 import { useStore } from "../store";
 
-const blank = (): Omit<Room, "id" | "created_at"> => ({ name: "", kind: "living_room", description: "", owner_kind: "self", character_id: null, backdrop: "", parent_id: null, links: [] });
+const blank = (): Omit<Room, "id" | "created_at"> => ({ name: "", kind: "living_room", description: "", owner_kind: "self", character_id: null, backdrop: "", parent_id: null, links: [], deco: { plate: "none", bg: "", wreath: "", tag: "", tag_color: "#5865f2", tag_glyph: "" } });
 
 /** Makes (or opens) the room, then a dorm set in it with a first chat, and goes there. */
 export async function enterRoom(room: Room, characterId: string | null, refresh: () => Promise<void>, go: (r: { page: "chat"; chatId?: number }) => void) {
@@ -62,9 +65,9 @@ export default function Rooms({ edit }: { edit?: number | "new" }) {
             const inside = rooms.filter((x) => x.parent_id === r.id).length;
             return (
               <div className="room-card" key={r.id}>
-                <div className="room-art" style={{ background: roomBackground(r) ?? "linear-gradient(135deg, #2a2540, #3a2f55)" }} />
+                <div className="room-art" style={{ background: roomBackground(r) ?? "linear-gradient(135deg, #2a2540, #3a2f55)" }}>{r.deco?.bg ? (ensureDecoArt(), <span className="deco-bg" data-bg={r.deco.bg} />) : null}</div>
                 <div className="room-body">
-                  <h3>{r.name}</h3>
+                  <h3><RoomTitle room={r} /></h3>
                   <div className="hint">{kindLabel(r.kind)} · {r.owner_kind === "character" && owner ? `${displayName(owner)}'s place` : "Your own space"} · {n} dorm{n === 1 ? "" : "s"}{r.parent_id != null && rooms.some((x) => x.id === r.parent_id) ? ` · in ${pathName(rooms, r.parent_id)}` : ""}{inside ? ` · ${inside} room${inside === 1 ? "" : "s"} inside` : ""}</div>
                   {r.description && <p className="sub room-desc">{r.description}</p>}
                   <div className="row" style={{ marginTop: 10 }}>
@@ -127,7 +130,7 @@ function RoomForm({ id }: { id: number | null }) {
     setBusy(true);
     try {
       let saved: Room;
-      const body = { name: r.name, kind: r.kind as RoomKind, description: r.description, owner_kind: r.owner_kind, character_id: r.owner_kind === "character" ? r.character_id : null, parent_id: r.parent_id ?? null, backdrop: pendingFile ? (existing?.backdrop.startsWith("file:") ? existing.backdrop : "") : r.backdrop };
+      const body = { name: r.name, kind: r.kind as RoomKind, description: r.description, owner_kind: r.owner_kind, character_id: r.owner_kind === "character" ? r.character_id : null, parent_id: r.parent_id ?? null, deco: r.deco, backdrop: pendingFile ? (existing?.backdrop.startsWith("file:") ? existing.backdrop : "") : r.backdrop };
       saved = existing ? await api.updateRoom({ ...existing, ...body }) : await api.createRoom(body);
       if (JSON.stringify([...(r.links ?? [])].sort()) !== JSON.stringify([...(existing?.links ?? [])].sort())) saved = await api.setRoomLinks(saved.id, r.links ?? []);
       if (pendingFile) saved = await api.setRoomBackdrop(saved.id, pendingFile);
@@ -178,6 +181,10 @@ function RoomForm({ id }: { id: number | null }) {
         )}
         <div className="hint">Where this room leads: a door, a gate, a staircase. Each exit goes one way, so choose the exits on the other room too if you want to come back. A room with no exits is a dead end, unless it is part of a place with other rooms in it.</div>
       </div>
+
+      <h3 className="step"><b>•</b> Decorations (optional)</h3>
+      <p className="sub" style={{ margin: "4px 0 10px" }}>Dress the room like a server: a short tag beside its name, and the same nameplates, moving backgrounds and wreaths a profile can wear.</p>
+      <RoomDecoEditor room={{ ...(r as Room), id: existing?.id ?? 0, created_at: existing?.created_at ?? 0 }} value={r.deco ?? { plate: "none", bg: "", wreath: "", tag: "", tag_color: "#5865f2", tag_glyph: "" }} onChange={(deco) => set({ deco })} />
 
       <h3 className="step"><b>2</b> Name, description &amp; background</h3>
       <label className="field"><span>Room name</span>

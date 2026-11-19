@@ -83,6 +83,12 @@ pub fn clean_user(mut u: UserDeco) -> UserDeco {
     u
 }
 
+/// A room's decorations and tag, made safe the same way a profile's are.
+pub fn clean_room_deco(r: db::RoomDeco) -> db::RoomDeco {
+    let u = clean_user(UserDeco { plate: r.plate, bg: r.bg, wreath: r.wreath, tag: r.tag, tag_color: r.tag_color, tag_glyph: r.tag_glyph, ..UserDeco::default() });
+    db::RoomDeco { plate: u.plate, bg: u.bg, wreath: u.wreath, tag: u.tag, tag_color: u.tag_color, tag_glyph: u.tag_glyph }
+}
+
 #[tauri::command]
 pub fn list_char_deco(state: State<'_, Shared>) -> R<Vec<CharDeco>> {
     db::list_char_deco(&state.db.lock().unwrap(), &owner(&state)?).map_err(e)
@@ -212,6 +218,13 @@ mod tests {
         assert_eq!(u.tag_glyph, "");
         assert_eq!(u.banner, "");
         assert!(clean_user(UserDeco { tag_color: "#23a55a".into(), tag_glyph: "★".into(), banner: "dusk".into(), ..UserDeco::default() }).banner == "dusk");
+    }
+
+    #[test]
+    fn a_rooms_decorations_and_tag_are_made_safe_too() {
+        let r = clean_room_deco(db::RoomDeco { plate: "evil".into(), bg: "boba".into(), wreath: "lotus".into(), tag: "inn!".into(), tag_color: "x".into(), tag_glyph: "★".into() });
+        assert_eq!((r.plate.as_str(), r.bg.as_str(), r.wreath.as_str(), r.tag.as_str(), r.tag_color.as_str(), r.tag_glyph.as_str()), ("none", "boba", "lotus", "INN", "#5865f2", "★"));
+        assert_eq!(clean_room_deco(db::RoomDeco::default()), db::RoomDeco::default(), "an undecorated room stays undecorated");
     }
 
     #[test]

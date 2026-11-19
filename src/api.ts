@@ -109,6 +109,8 @@ export interface Room {
   music?: string; music_name?: string; music_path?: string | null;
   /** Pathways: the room this one is part of, and rooms joined to it (both ways) besides its parent and sub-rooms. */
   parent_id?: number | null; links?: number[];
+  /** Optional decorations and a tag, like a server's: the same nameplate, background and wreath a profile can wear. */
+  deco?: RoomDeco;
   /** An imported 3D scene that replaces the built-in room: its file name, where it is (use roomModelUrl()), how it is set, and whether its owner allowed sharing it. */
   model?: string; model_name?: string; model_path?: string | null; model_scale?: number; model_rot?: number; model_y?: number; model_share?: boolean;
 }
@@ -227,6 +229,8 @@ export interface PackageExtract {
 export interface ProviderHealth { state: "local" | "ok" | "warn" | "down" | "none"; detail: string; model: string; checked_at: number }
 /** How a character (or the user) is dressed: a nameplate, an animated profile background and an avatar wreath (ids from lib/decoData.json). */
 export interface CharDeco { character_id: string; plate: string; bg: string; wreath: string; source: "ai" | "user"; updated_at: number }
+export interface RoomDeco { plate: string; bg: string; wreath: string; tag: string; tag_color: string; tag_glyph: string }
+export const DEFAULT_ROOM_DECO: RoomDeco = { plate: "none", bg: "", wreath: "", tag: "", tag_color: "#5865f2", tag_glyph: "" };
 export interface UserDeco { plate: string; bg: string; wreath: string; animate: boolean; tag: string; tag_color: string; tag_glyph: string; banner: string; ai_pick: boolean }
 export const DEFAULT_DECO: UserDeco = { plate: "none", bg: "", wreath: "", animate: true, tag: "", tag_color: "#5865f2", tag_glyph: "", banner: "", ai_pick: false };
 export interface CharStatus { character_id: string; text: string; source: "ai" | "user"; updated_at: number }

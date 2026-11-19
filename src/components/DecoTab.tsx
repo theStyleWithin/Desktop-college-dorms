@@ -92,10 +92,7 @@ function TagModal({ deco, handle, onClose, onSave }: { deco: UserDeco; handle: s
         <div className="srv-prev-banner" style={css ? { background: css } : undefined}><b>Your profile</b></div>
         <div className="srv-prev-me"><b>{handle} <TagChip tag={DecoCore.tagOk(d.tag) ? DecoCore.cleanTag(d.tag) : ""} color={d.tag_color} glyph={d.tag_glyph} /></b><small>{DecoCore.tagOk(d.tag) ? `Wearing the ${DecoCore.cleanTag(d.tag)} tag` : "No tag"}</small></div>
       </div>
-      <label className="field"><span>Name tag (2 to 4 letters or numbers)</span>
-        <input value={d.tag} maxLength={4} placeholder="e.g. KOI" aria-label="Name tag" autoComplete="off" spellCheck={false} onChange={(e) => setD({ ...d, tag: DecoCore.cleanTag(e.target.value) })} /></label>
-      <div className="deco-row" role="group" aria-label="Tag colour">{DecoCore.TAG_COLORS.map(([c, n]) => <button key={c} className="ck-swatch" type="button" style={{ background: c }} aria-label={n} title={n} aria-pressed={d.tag_color === c} onClick={() => setD({ ...d, tag_color: c })} />)}</div>
-      <div className="deco-row" role="group" aria-label="Tag symbol">{DecoCore.TAG_GLYPHS.map(([g, n]) => <button key={n} className="btn glyph" type="button" aria-label={n} title={n} aria-pressed={d.tag_glyph === g} onClick={() => setD({ ...d, tag_glyph: g })}>{g || "—"}</button>)}</div>
+      <TagFields value={d} onChange={(p) => setD({ ...d, ...p })} />
       <h4>Banner</h4>
       <div className="deco-row" role="group" aria-label="Banner">
         {[{ id: "", name: "None", css: "" }, ...DecoCore.BANNERS].map((b) => <button key={b.id || "none"} className="bn-pick" type="button" aria-label={b.name} title={b.name} aria-pressed={d.banner === b.id} style={b.css ? { background: b.css } : undefined} onClick={() => setD({ ...d, banner: b.id })}>{b.id ? "" : "None"}</button>)}
@@ -106,5 +103,18 @@ function TagModal({ deco, handle, onClose, onSave }: { deco: UserDeco; handle: s
         <button className="btn" type="button" onClick={onClose}>Cancel</button>
       </div>
     </Modal>
+  );
+}
+
+/** A tag (2 to 4 letters or numbers), its colour and its symbol. Used for the name tag and for a room's tag. */
+export function TagFields({ value, onChange }: { value: { tag: string; tag_color: string; tag_glyph: string }; onChange: (p: Partial<{ tag: string; tag_color: string; tag_glyph: string }>) => void }) {
+  const d = value;
+  return (
+    <>
+      <label className="field"><span>Name tag (2 to 4 letters or numbers)</span>
+        <input value={d.tag} maxLength={4} placeholder="e.g. KOI" aria-label="Name tag" autoComplete="off" spellCheck={false} onChange={(e) => onChange({ tag: DecoCore.cleanTag(e.target.value) })} /></label>
+      <div className="deco-row" role="group" aria-label="Tag colour">{DecoCore.TAG_COLORS.map(([c, n]) => <button key={c} className="ck-swatch" type="button" style={{ background: c }} aria-label={n} title={n} aria-pressed={d.tag_color === c} onClick={() => onChange({ tag_color: c })} />)}</div>
+      <div className="deco-row" role="group" aria-label="Tag symbol">{DecoCore.TAG_GLYPHS.map(([g, n]) => <button key={n} className="btn glyph" type="button" aria-label={n} title={n} aria-pressed={d.tag_glyph === g} onClick={() => onChange({ tag_glyph: g })}>{g || "—"}</button>)}</div>
+    </>
   );
 }

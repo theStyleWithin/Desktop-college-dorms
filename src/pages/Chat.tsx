@@ -12,7 +12,7 @@ import MusicField from "../components/MusicField";
 import { PROMPT_DRAG } from "../components/PromptsMenu";
 import { detectMood, pickGalleryItem } from "../lib/mood";
 import { useTextScale, setTextScaleAnchored, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
-import { Wreathed, useCharDeco } from "../lib/deco";
+import { TagChip, Wreathed, useCharDeco } from "../lib/deco";
 import { hideDirectives, roomBackground, roomScene, kindLabel, nearbyRooms, roomExits, pathName } from "../lib/rooms";
 import { makeWardrobe } from "../components/WardrobePanel";
 import type { Speech } from "../components/SpeechBubble";
@@ -303,7 +303,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               <button className="btn sm only-mobile" onClick={() => setListOpen(true)} aria-label="Chats">☰</button>
               <div>
                 <h3>{KIND_ICON[chat.kind]} {chat.name}</h3>
-                <div className="tok">{members.map((m) => displayName(m)).join(", ") || "No characters"}{room ? <> · <button className="linklike" onClick={() => go({ page: "rooms", edit: room.id })} title={`${kindLabel(room.kind)} — edit this room`}>🛋️ {room.name}</button></> : null}</div>
+                <div className="tok">{members.map((m) => displayName(m)).join(", ") || "No characters"}{room ? <> · <button className="linklike" onClick={() => go({ page: "rooms", edit: room.id })} title={`${kindLabel(room.kind)} — edit this room`}>🛋️ {room.name}</button> <TagChip tag={room.deco?.tag} color={room.deco?.tag_color} glyph={room.deco?.tag_glyph} /></> : null}</div>
               </div>
               <div className="grow" />
               {music?.src && <MusicPlayer key={music.src} src={music.src} name={music.name} />}

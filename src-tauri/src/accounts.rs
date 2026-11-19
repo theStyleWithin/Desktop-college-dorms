@@ -1159,6 +1159,7 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             let mut room = r.clone();
             room.character_id = room.character_id.as_ref().and_then(|c| char_map.get(c).cloned());
             if room.character_id.is_none() { room.owner_kind = "self".into(); }
+            room.deco = crate::deco::clean_room_deco(room.deco);
             let had_file = room.backdrop.starts_with("file:");
             if had_file { room.backdrop.clear(); }
             let music = std::mem::take(&mut room.music);
