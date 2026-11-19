@@ -110,6 +110,8 @@ def inv_err_file(cmd, path, headers):
 def inv_err(cmd, args=None):
     try: invoke(cmd, args); return None
     except RuntimeError as ex: return str(ex)
+def click_exact(sel, text):
+    return d.execute_script("const el=[...document.querySelectorAll(arguments[0])].find(b=>b.textContent.trim()===arguments[1]&&!b.disabled);if(!el)return false;el.scrollIntoView({block:'center'});el.click();return true", sel, text)
 def click_text(sel, text):
     return d.execute_script("const el=[...document.querySelectorAll(arguments[0])].find(b=>b.textContent.includes(arguments[1])&&!b.disabled);if(!el)return false;el.scrollIntoView({block:'center'});el.click();return true", sel, text)
 def set_value(sel, value):
@@ -1107,7 +1109,8 @@ try:
     check("the characters list can be hidden, and a small tab brings it back", not d.execute_script("return !!document.querySelector('.members')") and d.execute_script("return !!document.querySelector('.members-tab')"))
 
     # the side bar's items can be dragged into your own order; Prompts stays last
-    labels = lambda: d.execute_script("return [...document.querySelectorAll('nav.side button.nav[data-nav]')].map(b=>b.textContent.trim())")
+    # the label is the text of the button itself (its icon sits in a span of its own)
+    labels = lambda: d.execute_script("return [...document.querySelectorAll('nav.side button.nav[data-nav]')].map(b=>[...b.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join('').trim())")
     order0 = labels()
     check("the side bar starts in its normal order, with Prompts after them", order0[0] == "Home" and order0[-1] == "Settings" and d.execute_script("return document.querySelector('nav.side .prompts').previousElementSibling.dataset.nav") == "settings")
     drag_nav = """
@@ -1141,11 +1144,11 @@ try:
     check("the size is applied to the whole app (chats read it)", d.execute_script("return getComputedStyle(document.documentElement).getPropertyValue('--chat-scale').trim()") == "1.5")
     reload_ui(); nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Appearance"); time.sleep(0.6)
     check("it is remembered after a restart", d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "150%" and abs(px() / base_px - 1.5) < 0.02)
-    click_text("button", "Reset"); time.sleep(0.4)
+    click_exact("button", "Reset"); time.sleep(0.4)
     check("Reset puts it back to normal", d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "100%" and abs(px() - base_px) < 0.5)
     set_value("input[aria-label='Text size']", "300"); time.sleep(0.3)
     check("it can't go past 200%", d.execute_script("return document.querySelector('[data-testid=text-size-value]').textContent") == "200%")
-    click_text("button", "Reset"); time.sleep(0.3)
+    click_exact("button", "Reset"); time.sleep(0.3)
 
     # -- controllers: any pad, named the way the pad names its buttons, with bindings you can change
     fake_pad = """
