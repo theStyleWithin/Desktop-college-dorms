@@ -502,6 +502,7 @@ pub fn import_card(request: Request<'_>, state: State<'_, Shared>) -> R<ImportOu
         folder: None,
         order: None,
         lorebooks: vec![],
+        playbook: String::new(),
         favorite: false,
         created_at: now,
         updated_at: now,
@@ -685,7 +686,11 @@ pub fn delete_message(state: State<'_, Shared>, id: i64) -> R<()> {
     if !db::message_owned(&db, id, &o).map_err(e)? {
         return Err("Message not found".into());
     }
-    db::delete_message(&db, id).map_err(e)
+    let chat_id = db::get_message(&db, id).map_err(e)?.map(|m| m.chat_id);
+    db::delete_message(&db, id).map_err(e)?;
+    // the story's state goes back to what the newest remaining reply left
+    if let Some(c) = chat_id { crate::playbook::rewind(&db, c); }
+    Ok(())
 }
 
 #[tauri::command]
@@ -706,7 +711,9 @@ pub fn clear_chat(state: State<'_, Shared>, chat_id: i64) -> R<()> {
     let o = owner(&state)?;
     let db = state.db.lock().unwrap();
     db::get_chat(&db, chat_id, &o).map_err(e)?.ok_or("Chat not found")?;
-    db::clear_messages(&db, chat_id).map_err(e)
+    db::clear_messages(&db, chat_id).map_err(e)?;
+    crate::playbook::rewind(&db, chat_id);
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1100,6 +1107,9 @@ async fn run_generation(
         .collect();
     emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "loading", "continue_of": cont }));
     let (endpoint, context_tokens) = resolve_endpoint(st, o, &settings).await?;
+    // the playbook's rules that run before the reply (a continued reply does not advance the story; nor does regenerating the opening message)
+    let user_text = history.iter().rev().find(|m| m.role == "user").map(|m| m.content().to_string()).unwrap_or_default();
+    let pturn = if continuing { None } else { crate::playbook::before_turn(st, o, &chat, &endpoint, &user_text, regen, !user_text.is_empty()).await };
     // the room, the texting style and the switched-on packs
     let extra = {
         let db = st.db.lock().unwrap();
@@ -1120,7 +1130,16 @@ async fn run_generation(
     let speaker_card = {
         let db = st.db.lock().unwrap();
         let world_books = db::chat_world(&db, &chat, o).ok().flatten().map(|w| w.lorebooks).unwrap_or_default();
-        crate::extras::card_with_lorebooks(&db, o, speaker_char, &world_books)
+        let mut card = crate::extras::card_with_lorebooks(&db, o, speaker_char, &world_books);
+        // and the entries of the playbook's lorebooks that its state makes available right now
+        let pe = crate::playbook::lore_for_chat(&db, &chat, o);
+        if !pe.is_empty() {
+            match card.character_book.as_mut() {
+                Some(b) => b.entries.extend(pe),
+                None => { let mut b = dorms_core::CharacterBook::from_value(&json!({ "entries": [] }), &mut vec![]); b.entries = pe; card.character_book = Some(b); }
+            }
+        }
+        card
     };
     let prompt = build_prompt(&PromptInput {
         speaker_id: &speaker_id,
@@ -1157,6 +1176,8 @@ async fn run_generation(
     if text.trim().is_empty() {
         return Err("The model returned an empty reply. Try again, or raise the max length in Settings.".into());
     }
+    // the playbook's rules that run after the reply, which can look at what was just written
+    let after_state = match &pturn { Some(t) => Some(crate::playbook::after_turn(st, o, &chat, &endpoint, t, &user_text, &text).await), None => None };
 
     let msg = {
         let db = st.db.lock().unwrap();
@@ -1187,6 +1208,10 @@ async fn run_generation(
             c.last_used = db::now();
             let _ = db::save_character(&db, &c, o);
         }
+        // the state is kept with the reply, so regenerating it reruns from before, and deleting it rewinds
+        if let (Some(t), Some(a)) = (&pturn, &after_state) {
+            let _ = crate::playbook::save_snapshot(&db, m.id, chat_id, &t.before, a, t.turn);
+        }
         m
     };
     emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "character_id": speaker_id, "kind": "done", "message": msg, "continue_of": cont }));
@@ -1205,6 +1230,8 @@ async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option
     let _guard = BusyGuard { st: st.clone(), chat_id, rid: rid.clone() };
     let res = run_generation(st, o, &rid, chat_id, speaker, regen, cont, &cancel).await;
     if let Err(err) = &res {
+        // a reply that didn't come must not have moved the story on
+        crate::playbook::restore_pending(&st.db.lock().unwrap(), chat_id);
         emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "kind": "error", "error": err }));
     }
     res
