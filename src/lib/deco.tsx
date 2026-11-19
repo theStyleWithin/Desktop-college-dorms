@@ -54,8 +54,10 @@ export function plateProps(plate: string | undefined, animate = true): { classNa
 
 /** The little name tag (2 to 4 letters, a colour and maybe a symbol) shown beside a name. */
 export function TagChip({ tag, color, glyph }: { tag?: string; color?: string; glyph?: string }) {
-  if (!tag) return null;
-  return <span className="srv-tag" style={{ "--tag": color || "#5865f2" } as React.CSSProperties} title="Name tag">{glyph ? <i aria-hidden="true">{glyph}</i> : null}{tag}</span>;
+  // what is typed is cleaned here (letters and numbers only, in capitals, 2 to 4 of them), not in the box while it is being typed in
+  const t = tag && DecoCore.tagOk(tag) ? DecoCore.cleanTag(tag) : "";
+  if (!t) return null;
+  return <span className="srv-tag" style={{ "--tag": color || "#5865f2" } as React.CSSProperties} title="Name tag">{glyph ? <i aria-hidden="true">{glyph}</i> : null}{t}</span>;
 }
 
 /** A moving profile background (a strip of scenery behind a name and a picture). */

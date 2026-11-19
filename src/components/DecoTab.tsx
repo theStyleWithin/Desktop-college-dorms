@@ -112,7 +112,7 @@ export function TagFields({ value, onChange }: { value: { tag: string; tag_color
   return (
     <>
       <label className="field"><span>Name tag (2 to 4 letters or numbers)</span>
-        <input value={d.tag} maxLength={4} placeholder="e.g. KOI" aria-label="Name tag" autoComplete="off" spellCheck={false} onChange={(e) => onChange({ tag: DecoCore.cleanTag(e.target.value) })} /></label>
+        <input value={d.tag} maxLength={4} placeholder="e.g. KOI" aria-label="Name tag" autoComplete="off" spellCheck={false} onChange={(e) => onChange({ tag: e.target.value })} style={{ textTransform: "uppercase" }} /></label>
       <div className="deco-row" role="group" aria-label="Tag colour">{DecoCore.TAG_COLORS.map(([c, n]) => <button key={c} className="ck-swatch" type="button" style={{ background: c }} aria-label={n} title={n} aria-pressed={d.tag_color === c} onClick={() => onChange({ tag_color: c })} />)}</div>
       <div className="deco-row" role="group" aria-label="Tag symbol">{DecoCore.TAG_GLYPHS.map(([g, n]) => <button key={n} className="btn glyph" type="button" aria-label={n} title={n} aria-pressed={d.tag_glyph === g} onClick={() => onChange({ tag_glyph: g })}>{g || "—"}</button>)}</div>
     </>
