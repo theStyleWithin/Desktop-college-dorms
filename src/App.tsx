@@ -1,6 +1,6 @@
 import { applyTextScale } from "./lib/textScale";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type AppInfo, type Character, type Chat, type Dorm, type Folder, type Persona, type Room, type SessionState, type Settings } from "./api";
+import { api, type AppInfo, type Character, type Chat, type Dorm, type Folder, type Persona, type Room, type SessionState, type Settings, type World } from "./api";
 import { StoreCtx, type Route, type Store } from "./store";
 import { Logo, ToastProvider, useToast } from "./components/ui";
 import { ProfileAvatar } from "./components/ProfileForms";
@@ -69,6 +69,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
   const [chats, setChats] = useState<Chat[]>([]);
   const [dorms, setDorms] = useState<Dorm[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [worlds, setWorlds] = useState<World[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [settings, setSettingsState] = useState<Settings>(DEFAULTS);
@@ -105,10 +106,10 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
 
   const refresh = useCallback(async () => {
     try {
-      const [c, ch, d, s, m, rm, fo, pe] = await Promise.all([
-        api.listCharacters(), api.listChats(), api.listDorms(), api.getSettings(), api.listModels(), api.listRooms(), api.listFolders(), api.listPersonas(),
+      const [c, ch, d, s, m, rm, fo, pe, wo] = await Promise.all([
+        api.listCharacters(), api.listChats(), api.listDorms(), api.getSettings(), api.listModels(), api.listRooms(), api.listFolders(), api.listPersonas(), api.listWorlds(),
       ]);
-      setCharacters(c); setChats(ch); setDorms(d); setRooms(rm); setFolders(fo); setPersonas(pe); setSettingsState(s); setModelCount(m.length);
+      setCharacters(c); setChats(ch); setDorms(d); setRooms(rm); setWorlds(wo); setFolders(fo); setPersonas(pe); setSettingsState(s); setModelCount(m.length);
     } catch (e) {
       toast(`Could not load your data: ${errText(e)}`, "err");
     } finally {
@@ -131,8 +132,8 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
   }, [personas, settings.active_persona, settings.user_name, session.profile]);
 
   const store: Store = useMemo(
-    () => ({ characters, chats, dorms, rooms, folders, personas, me, settings, info, modelCount, go, refresh, setSettings, session, setSession }),
-    [characters, chats, dorms, rooms, folders, personas, me, settings, info, modelCount, go, refresh, setSettings, session, setSession],
+    () => ({ characters, chats, dorms, rooms, worlds, folders, personas, me, settings, info, modelCount, go, refresh, setSettings, session, setSession }),
+    [characters, chats, dorms, rooms, worlds, folders, personas, me, settings, info, modelCount, go, refresh, setSettings, session, setSession],
   );
 
   return (
@@ -198,7 +199,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
               {route.page === "notes" && <Notes />}
               {route.page === "decor" && <Decor />}
               {route.page === "lorebooks" && <Lorebooks />}
-              {route.page === "rooms" && <Rooms key={String(route.edit ?? "list")} edit={route.edit} />}
+              {route.page === "rooms" && <Rooms key={String(route.edit ?? "list") + ":" + String(route.world ?? "")} edit={route.edit} world={route.world} />}
               {route.page === "editor" && <Editor key={route.id ?? "new"} id={route.id} />}
               {route.page === "chat" && <ChatPage key={chatNav} initialChatId={route.chatId} />}
               {route.page === "settings" && <SettingsPage initialTab={route.tab} />}

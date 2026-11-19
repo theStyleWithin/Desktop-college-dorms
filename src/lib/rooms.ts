@@ -92,3 +92,20 @@ export function pathName(rooms: Room[], id: number): string {
   for (let i = 0; cur != null && i < 200; i++) { const r = rooms.find((x) => x.id === cur); if (!r) break; names.unshift(r.name); cur = r.parent_id; }
   return names.join(" › ");
 }
+
+/** Every room joined to this one by "part of" links or exits, in either direction (the room itself included): what moves along with it into a world. */
+export function connectedRooms(rooms: Room[], id: number): number[] {
+  const seen = new Set<number>([id]);
+  const queue = [id];
+  while (queue.length) {
+    const cur = queue.pop()!, room = rooms.find((r) => r.id === cur);
+    if (!room) continue;
+    const next = [
+      ...(room.parent_id != null ? [room.parent_id] : []),
+      ...(room.links ?? []),
+      ...rooms.filter((r) => r.parent_id === cur || (r.links ?? []).includes(cur)).map((r) => r.id),
+    ];
+    for (const n of next) if (!seen.has(n)) { seen.add(n); queue.push(n); }
+  }
+  return [...seen];
+}

@@ -484,6 +484,9 @@ struct Data {
     /// Added in v0.8: saved prompts.
     #[serde(default)]
     prompts: Vec<db::SavedPrompt>,
+    /// Worlds: folders of rooms, with their lorebooks (a room carries its world's number).
+    #[serde(default)]
+    worlds: Vec<db::World>,
     /// Custom emoji and stickers (pictures travel in the archive's media folder).
     #[serde(default)]
     emoji: Vec<db::EmojiItem>,
@@ -598,7 +601,7 @@ pub struct ExportInfo {
 }
 
 fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
-    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji) = {
+    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji, worlds) = {
         let db = st.db.lock().unwrap();
         let characters = db::list_characters(&db, o).map_err(e)?;
         let dorms = db::list_dorms(&db, o).map_err(e)?;
@@ -615,6 +618,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
         let decor = db::list_decor(&db, o).map_err(e)?;
         let char_deco = db::list_char_deco(&db, o).map_err(e)?;
         let emoji = db::list_emoji(&db, o).map_err(e)?;
+        let worlds = db::list_worlds(&db, o).map_err(e)?;
         let prompts = db::list_prompts(&db, o).map_err(e)?;
         let mechanics = db::list_mechanics(&db, o).map_err(e)?;
         let notes = db::list_notes(&db, o).map_err(e)?;
@@ -627,7 +631,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
             Some(id) => db::get_profile(&db, id).map_err(e)?,
             None => None,
         };
-        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji)
+        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji, worlds)
     };
     let mut chats = chats;
     for c in chats.iter_mut() {
@@ -803,7 +807,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     // API keys, passcodes and per-device model choices are deliberately not part of the file.
     let mut exported_settings = settings;
     exported_settings.local_model = String::new();
-    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, emoji, profile_avatar };
+    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, emoji, worlds, profile_avatar };
     zip.start_file("manifest.json", deflated).map_err(e)?;
     zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(e)?).map_err(e)?;
     zip.start_file("data.json", deflated).map_err(e)?;
@@ -1175,6 +1179,16 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             }
         }
 
+        // worlds first, so each room can be put in its own (their lorebooks are the new copies)
+        let mut world_map: HashMap<i64, i64> = HashMap::new();
+        for w in &parsed.data.worlds {
+            let name: String = w.name.chars().filter(|c| !c.is_control()).take(60).collect();
+            if name.trim().is_empty() { continue; }
+            let nw = db::create_world(&db, name.trim(), &w.description.chars().take(4000).collect::<String>(), &o).map_err(e)?;
+            let books: Vec<String> = w.lorebooks.iter().filter_map(|b| book_map.get(b).cloned()).collect();
+            db::update_world(&db, nw.id, &nw.name, &nw.description, &books, &o).map_err(e)?;
+            world_map.insert(w.id, nw.id);
+        }
         // rooms (after the characters, since a room can belong to one) and the dorms' place in them
         let mut room_map: HashMap<i64, i64> = HashMap::new();
         for (i, r) in parsed.data.rooms.iter().enumerate() {
@@ -1182,6 +1196,7 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             room.character_id = room.character_id.as_ref().and_then(|c| char_map.get(c).cloned());
             if room.character_id.is_none() { room.owner_kind = "self".into(); }
             room.deco = crate::deco::clean_room_deco(room.deco);
+            room.world_id = room.world_id.and_then(|w| world_map.get(&w).copied());
             let had_file = room.backdrop.starts_with("file:");
             if had_file { room.backdrop.clear(); }
             let music = std::mem::take(&mut room.music);

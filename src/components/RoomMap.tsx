@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type Room } from "../api";
 import { MAX_EXITS, kindLabel, roomBackground } from "../lib/rooms";
 import { errText } from "../lib/util";
@@ -14,17 +14,30 @@ const loadPos = (): Record<string, Pos> => { try { return JSON.parse(localStorag
 const savePos = (p: Record<string, Pos>) => { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* storage unavailable */ } };
 
 /**
- * A map of the rooms. Each room is a card with a round handle: drag from the handle onto another room to draw an exit
+ * The pathways editor: the rooms as cards on a canvas. Each room is a card with a round handle: drag from the handle onto another room to draw an exit
  * (a one-way pathway, an arrow; a room can have up to three). Draw one back for a way home. Click the x on an arrow to remove it.
- * Drag a card to move it; the layout is kept on this device.
+ * Drag a card to move it. Nothing is kept until you press **Save pathways** (the exits go into your rooms; the layout is kept on this device);
+ * **Discard** puts the map back the way it was saved.
  */
-export default function RoomMap({ rooms, onEdit, onStart }: { rooms: Room[]; onEdit: (r: Room) => void; onStart: (r: Room) => void }) {
+export default function RoomMap({ rooms, onEdit, onStart, onDirty }: { rooms: Room[]; onEdit: (r: Room) => void; onStart: (r: Room) => void; onDirty?: (dirty: boolean) => void }) {
   const { refresh } = useStore();
   const toast = useToast();
   const [pos, setPos] = useState<Record<string, Pos>>(loadPos);
   const [line, setLine] = useState<{ from: number; x: number; y: number } | null>(null);
   const [over, setOver] = useState<number | null>(null);
   const canvas = useRef<HTMLDivElement>(null);
+  // the changes made here wait as a draft until Save pathways: the exits that were changed (by room), and whether a card was moved
+  const [draft, setDraft] = useState<Record<number, number[]>>({});
+  const [moved, setMoved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const linksOf = (r: Room) => draft[r.id] ?? r.links ?? [];
+  const same = (a: number[], b: number[]) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
+  const changedRooms = rooms.filter((r) => draft[r.id] && !same(draft[r.id], r.links ?? []));
+  const dirty = changedRooms.length > 0 || moved;
+  const savedKey = JSON.stringify(rooms.map((r) => [r.id, r.links ?? []]));
+  useEffect(() => { setDraft({}); }, [savedKey]);
+  useEffect(() => { onDirty?.(dirty); }, [dirty]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onDirty?.(false), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // rooms that were never placed get a spot on a grid
   const at = (r: Room, i: number): Pos => pos[r.id] ?? { x: 24 + (i % 3) * (W + 70), y: 24 + Math.floor(i / 3) * (H + 80) };
@@ -38,25 +51,36 @@ export default function RoomMap({ rooms, onEdit, onStart }: { rooms: Room[]; onE
     return { x: e.clientX - b.left, y: e.clientY - b.top };
   };
 
-  const link = useCallback(async (a: number, b: number) => {
+  const link = (a: number, b: number) => {
     const ra = rooms.find((r) => r.id === a);
     if (!ra || a === b) return;
-    if ((ra.links ?? []).includes(b)) { toast("That exit is already there.", "ok"); return; }
-    if ((ra.links ?? []).length >= MAX_EXITS) { toast(`${ra.name} already has ${MAX_EXITS} exits. Remove one first.`, "err"); return; }
-    try { await api.setRoomLinks(a, [...(ra.links ?? []), b]); await refresh(); } catch (e) { toast(errText(e), "err"); }
-  }, [rooms, refresh, toast]);
+    if (linksOf(ra).includes(b)) { toast("That exit is already there.", "ok"); return; }
+    if (linksOf(ra).length >= MAX_EXITS) { toast(`${ra.name} already has ${MAX_EXITS} exits. Remove one first.`, "err"); return; }
+    setDraft((d) => ({ ...d, [a]: [...linksOf(ra), b] }));
+  };
 
-  const unlink = async (a: number, b: number) => {
+  const unlink = (a: number, b: number) => {
     const ra = rooms.find((r) => r.id === a);
     if (!ra) return;
-    try { await api.setRoomLinks(a, (ra.links ?? []).filter((l) => l !== b)); await refresh(); } catch (e) { toast(errText(e), "err"); }
+    setDraft((d) => ({ ...d, [a]: linksOf(ra).filter((l) => l !== b) }));
   };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      for (const r of changedRooms) await api.setRoomLinks(r.id, draft[r.id]);
+      savePos(pos); setMoved(false);
+      await refresh(); setDraft({});
+      toast("Pathways saved.", "ok");
+    } catch (e) { toast(errText(e), "err"); } finally { setSaving(false); }
+  };
+  const discard = () => { setDraft({}); setPos(loadPos()); setMoved(false); };
 
   // drawing a line from a room's handle
   const startLine = (e: React.PointerEvent, from: number) => {
     e.preventDefault(); e.stopPropagation();
     const fr = rooms.find((r) => r.id === from);
-    if (fr && (fr.links ?? []).length >= MAX_EXITS) { toast(`${fr.name} already has ${MAX_EXITS} exits. Remove one first.`, "err"); return; }
+    if (fr && linksOf(fr).length >= MAX_EXITS) { toast(`${fr.name} already has ${MAX_EXITS} exits. Remove one first.`, "err"); return; }
     const first = local(e);
     setLine({ from, ...first });
     const move = (ev: PointerEvent) => {
@@ -69,7 +93,7 @@ export default function RoomMap({ rooms, onEdit, onStart }: { rooms: Room[]; onE
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
       const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest("[data-room-node]") as HTMLElement | null;
       setLine(null); setOver(null);
-      if (el) void link(from, Number(el.dataset.roomNode));
+      if (el) link(from, Number(el.dataset.roomNode));
     };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   };
@@ -84,7 +108,7 @@ export default function RoomMap({ rooms, onEdit, onStart }: { rooms: Room[]; onE
       latest = { ...latest, [r.id]: { x: Math.max(0, p0.x + ev.clientX - sx), y: Math.max(0, p0.y + ev.clientY - sy) } };
       setPos(latest);
     };
-    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); savePos(latest); };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); setMoved(true); };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   };
   useEffect(() => { setPos((p) => p); }, [rooms.length]);
@@ -101,7 +125,7 @@ export default function RoomMap({ rooms, onEdit, onStart }: { rooms: Room[]; onE
   };
   // every exit is an arrow; two rooms leading to each other show as two arcs side by side
   const exits: { a: number; b: number }[] = [];
-  for (const r of rooms) for (const l of r.links ?? []) if (rooms.some((x) => x.id === l) && l !== r.id) exits.push({ a: r.id, b: l });
+  for (const r of rooms) for (const l of linksOf(r)) if (rooms.some((x) => x.id === l) && l !== r.id) exits.push({ a: r.id, b: l });
   const geom = exits.flatMap(({ a, b }) => {
     const ca = centre(a), cb = centre(b); if (!ca || !cb) return [];
     const p0 = edge(a, cb)!, p1 = edge(b, ca)!;
@@ -113,7 +137,12 @@ export default function RoomMap({ rooms, onEdit, onStart }: { rooms: Room[]; onE
 
   return (
     <div className="room-map-wrap" data-testid="room-map">
-      <p className="hint" style={{ margin: "0 0 8px" }}>Drag from the round handle under a room onto another room to give it an exit there (an arrow, one way; up to 3 exits per room). Click the × on an arrow to remove it. Drag a room to move it. Dashed lines show which rooms are inside another room.</p>
+      <div className="map-bar" data-testid="map-bar">
+        <span className={`tok${dirty ? " warn" : ""}`} data-testid="map-status" role="status">{dirty ? "Unsaved changes" : "Saved"}</span>
+        <button className="btn primary" data-testid="map-save" disabled={!dirty || saving} onClick={() => void save()}>💾 Save pathways</button>
+        <button className="btn" data-testid="map-discard" disabled={!dirty || saving} onClick={discard}>Discard</button>
+      </div>
+      <p className="hint" style={{ margin: "0 0 8px" }}>Drag from the round handle under a room onto another room to give it an exit there (an arrow, one way; up to 3 exits per room). Click the × on an arrow to remove it. Drag a room to move it. Your changes are kept when you press Save pathways. Dashed lines show which rooms are inside another room.</p>
       <div className="room-map" ref={canvas} style={{ width, height }}>
         <svg className="room-map-lines" width={width} height={height} aria-hidden="false">
           <defs><marker id="room-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor" /></marker></defs>
@@ -138,8 +167,8 @@ export default function RoomMap({ rooms, onEdit, onStart }: { rooms: Room[]; onE
         ))}
         <svg className="room-map-controls" width={width} height={height}>
           {geom.map(({ a, b, mx, my }) => (
-            <g key={`${a}>${b}`} className="unlink" data-unlink={`${a}-${b}`} transform={`translate(${mx},${my})`} onClick={() => void unlink(a, b)} role="button" aria-label="Remove this exit" tabIndex={0}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") void unlink(a, b); }}>
+            <g key={`${a}>${b}`} className="unlink" data-unlink={`${a}-${b}`} transform={`translate(${mx},${my})`} onClick={() => unlink(a, b)} role="button" aria-label="Remove this exit" tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") unlink(a, b); }}>
               <circle r="10" /><text textAnchor="middle" dy="4">×</text>
             </g>
           ))}

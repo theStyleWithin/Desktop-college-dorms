@@ -546,6 +546,57 @@ pub fn set_room_links(state: State<'_, Shared>, id: i64, links: Vec<i64>) -> R<R
     Ok(room_out(&state, db::get_room(&db, id, &o).map_err(e)?.ok_or("Room not found")?))
 }
 
+/// Worlds: folders of connected rooms, kept apart from each other, with lorebooks attached that apply to every chat in them.
+#[tauri::command]
+pub fn list_worlds(state: State<'_, Shared>) -> R<Vec<db::World>> {
+    db::list_worlds(&state.db.lock().unwrap(), &owner(&state)?).map_err(e)
+}
+
+fn clean_world_text(name: &str, description: &str) -> R<(String, String)> {
+    let name: String = name.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(60).collect();
+    if name.is_empty() {
+        return Err("Give the world a name.".into());
+    }
+    Ok((name, description.trim().chars().take(4000).collect()))
+}
+
+#[tauri::command]
+pub fn create_world(state: State<'_, Shared>, name: String, description: String) -> R<db::World> {
+    let (name, description) = clean_world_text(&name, &description)?;
+    db::create_world(&state.db.lock().unwrap(), &name, &description, &owner(&state)?).map_err(e)
+}
+
+#[tauri::command]
+pub fn update_world(state: State<'_, Shared>, id: i64, name: String, description: String, lorebooks: Vec<String>) -> R<db::World> {
+    let (name, description) = clean_world_text(&name, &description)?;
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    if db::get_world(&db, id, &o).map_err(e)?.is_none() {
+        return Err("That world doesn't exist any more.".into());
+    }
+    db::update_world(&db, id, &name, &description, &lorebooks, &o).map_err(e)?;
+    Ok(db::get_world(&db, id, &o).map_err(e)?.ok_or("That world doesn't exist any more.")?)
+}
+
+/// Deleting a world never deletes its rooms: they are just not in a world any more.
+#[tauri::command]
+pub fn delete_world(state: State<'_, Shared>, id: i64) -> R<()> {
+    db::delete_world(&state.db.lock().unwrap(), id, &owner(&state)?).map_err(e)
+}
+
+/// Put rooms in a world (empty = none). Links that would join two different worlds are dropped.
+#[tauri::command]
+pub fn move_rooms_to_world(state: State<'_, Shared>, ids: Vec<i64>, world_id: Option<i64>) -> R<()> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    if let Some(w) = world_id {
+        if db::get_world(&db, w, &o).map_err(e)?.is_none() {
+            return Err("That world doesn't exist any more.".into());
+        }
+    }
+    db::move_rooms_to_world(&db, &ids, world_id, &o).map_err(e)
+}
+
 /// The story walks into another room: the same chat carries on there. A line in the conversation records the move,
 /// and from now on the characters are told they are in the new room.
 #[tauri::command]
@@ -586,6 +637,12 @@ fn room_block(db: &Connection, chat: &db::Chat, o: &db::Owner) -> String {
     }
     if !room.description.trim().is_empty() {
         s.push_str(&format!("\n{}", room.description.trim()));
+    }
+    if let Some(w) = room.world_id.and_then(|w| db::get_world(db, w, o).ok().flatten()) {
+        s.push_str(&format!("\nThis place is in the world of {}.", w.name));
+        if !w.description.trim().is_empty() {
+            s.push_str(&format!(" About that world: {}", w.description.trim()));
+        }
     }
     // where this place sits and where it leads, so the story can walk on
     let all = db::list_rooms(db, o).unwrap_or_default();
@@ -1221,13 +1278,16 @@ pub fn delete_lorebook(state: State<'_, Shared>, id: String) -> R<()> {
 }
 
 /// The character's card with every attached lorebook's entries added to the book inside the card.
-pub fn card_with_lorebooks(db: &Connection, o: &db::Owner, c: &db::Character) -> dorms_core::CharacterData {
+pub fn card_with_lorebooks(db: &Connection, o: &db::Owner, c: &db::Character, world_books: &[String]) -> dorms_core::CharacterData {
     let mut card = c.card.clone();
-    if c.lorebooks.is_empty() {
+    if c.lorebooks.is_empty() && world_books.is_empty() {
         return card;
     }
     let books = db::list_lorebooks(db, o).unwrap_or_default();
-    for id in &c.lorebooks {
+    // the character's own books, then the world's (each book once)
+    let mut ids: Vec<&String> = c.lorebooks.iter().collect();
+    for w in world_books { if !ids.contains(&w) { ids.push(w); } }
+    for id in ids {
         let Some(b) = books.iter().find(|b| &b.id == id) else { continue };
         let mut w = vec![];
         let extra = dorms_core::CharacterBook::from_value(&b.book, &mut w);

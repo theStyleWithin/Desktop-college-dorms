@@ -1116,10 +1116,11 @@ async fn run_generation(
         default_scan_depth: 4,
         continue_last: continuing,
     };
-    // lorebooks attached to the speaker work together with the book inside her card
+    // lorebooks attached to the speaker work together with the book inside her card, and so do the ones attached to the world the chat is in
     let speaker_card = {
         let db = st.db.lock().unwrap();
-        crate::extras::card_with_lorebooks(&db, o, speaker_char)
+        let world_books = db::chat_world(&db, &chat, o).ok().flatten().map(|w| w.lorebooks).unwrap_or_default();
+        crate::extras::card_with_lorebooks(&db, o, speaker_char, &world_books)
     };
     let prompt = build_prompt(&PromptInput {
         speaker_id: &speaker_id,

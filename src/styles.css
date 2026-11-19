@@ -682,3 +682,5 @@ body.resizing * { cursor: col-resize !important; }
 .emoji-picker button.pick { border: 1px solid transparent; background: var(--hover, #ffffff12); border-radius: 8px; padding: 4px; cursor: pointer; }
 .emoji-picker button.pick:hover { border-color: var(--accent); }
 .emoji-picker button.pick img { display: block; height: 36px; width: auto; max-width: 96px; margin: 0; }
+.map-bar { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; position: sticky; top: 0; z-index: 4; }
+.map-bar .tok.warn { color: var(--accent); font-weight: 700; }
