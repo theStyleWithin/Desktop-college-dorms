@@ -262,6 +262,48 @@ pub struct SavedPrompt {
     pub updated_at: i64,
 }
 
+/// How a character is dressed: a nameplate behind their row in the characters list, an animated profile background and an avatar wreath.
+/// Chosen by the user or, when the user allows it, by the model to suit the character. (Ids come from `src/lib/decoData.json`.)
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+pub struct CharDeco {
+    /// The character's id.
+    pub character_id: String,
+    /// A nameplate id, or `none`.
+    pub plate: String,
+    /// A profile background id, or empty.
+    pub bg: String,
+    /// An avatar wreath id, or empty.
+    pub wreath: String,
+    /// `ai` or `user`.
+    pub source: String,
+    pub updated_at: i64,
+}
+
+/// The user's own profile decorations (nameplate, background, wreath), their name tag and banner, and whether the model may dress the characters.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct UserDeco {
+    pub plate: String,
+    pub bg: String,
+    pub wreath: String,
+    /// Things move a little (also switched off by the device's reduced-motion setting).
+    pub animate: bool,
+    /// A 2 to 4 letter tag shown beside the name, its colour (one of the listed ones) and a symbol.
+    pub tag: String,
+    pub tag_color: String,
+    pub tag_glyph: String,
+    /// A built-in banner id for the profile card, or empty.
+    pub banner: String,
+    /// Let the model choose decorations for characters that have none, to suit who they are.
+    pub ai_pick: bool,
+}
+
+impl Default for UserDeco {
+    fn default() -> Self {
+        UserDeco { plate: "none".into(), bg: String::new(), wreath: String::new(), animate: true, tag: String::new(), tag_color: "#5865f2".into(), tag_glyph: String::new(), banner: String::new(), ai_pick: false }
+    }
+}
+
 /// What is on a character's mind (a short line shown in the characters list), written by the model in their voice or by the user.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct CharStatus {
@@ -415,6 +457,8 @@ pub struct Settings {
     pub stt_auto_send: bool,
     /// The persona being played (an id from `personas`); empty means the plain name and description above.
     pub active_persona: String,
+    /// The user's own profile decorations.
+    pub deco: UserDeco,
 }
 
 impl Default for Settings {
@@ -441,6 +485,7 @@ impl Default for Settings {
             stt_language: String::new(),
             stt_auto_send: true,
             active_persona: String::new(),
+            deco: UserDeco::default(),
         }
     }
 }
@@ -494,6 +539,9 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
             created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS char_status(
             id TEXT PRIMARY KEY, profile_id TEXT, text TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'ai', updated_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS char_deco(
+            id TEXT PRIMARY KEY, profile_id TEXT, plate TEXT NOT NULL DEFAULT 'none', bg TEXT NOT NULL DEFAULT '', wreath TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT 'ai', updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS lorebooks(
             id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS folders(
@@ -585,6 +633,7 @@ pub fn list_characters(c: &Connection, owner: &Owner) -> R<Vec<Character>> {
 pub fn delete_character(c: &Connection, id: &str, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM characters WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     c.execute("DELETE FROM char_status WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    c.execute("DELETE FROM char_deco WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     Ok(())
 }
 
@@ -986,6 +1035,29 @@ pub fn delete_status(c: &Connection, id: &str, owner: &Owner) -> R<()> {
     Ok(())
 }
 
+// ----- character decorations -----
+
+pub fn list_char_deco(c: &Connection, owner: &Owner) -> R<Vec<CharDeco>> {
+    let mut s = c.prepare("SELECT id,plate,bg,wreath,source,updated_at FROM char_deco WHERE profile_id IS ?1")?;
+    let rows = s.query_map([owner], |r| Ok(CharDeco { character_id: r.get(0)?, plate: r.get(1)?, bg: r.get(2)?, wreath: r.get(3)?, source: r.get(4)?, updated_at: r.get(5)? }))?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Insert or replace (only ever a record of this owner).
+pub fn save_char_deco(c: &Connection, d: &CharDeco, owner: &Owner) -> R<()> {
+    c.execute(
+        "INSERT INTO char_deco(id,profile_id,plate,bg,wreath,source,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7)
+         ON CONFLICT(id) DO UPDATE SET plate=excluded.plate, bg=excluded.bg, wreath=excluded.wreath, source=excluded.source, updated_at=excluded.updated_at WHERE char_deco.profile_id IS ?2",
+        params![d.character_id, owner, d.plate, d.bg, d.wreath, d.source, d.updated_at],
+    )?;
+    Ok(())
+}
+
+pub fn delete_char_deco(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM char_deco WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
 // ----- mechanic packs -----
 
 pub fn list_mechanics(c: &Connection, owner: &Owner) -> R<Vec<MechanicRow>> {
@@ -1340,6 +1412,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM decor WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM prompts WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM char_status WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM char_deco WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM mechanics WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM notes WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM folders WHERE profile_id IS ?1", [owner])?;
@@ -1358,7 +1431,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
@@ -1806,5 +1879,37 @@ mod tests {
         delete_room(&c, kitchen.id, &a).unwrap();
         assert_eq!(get_chat(&c, ch.id, &a).unwrap().unwrap().room_id, None, "deleting the room a chat is in puts it back in its dorm's");
         assert!(get_room(&c, attic.id, &a).unwrap().unwrap().links.is_empty(), "and the exits leading to it go with it");
+    }
+
+    #[test]
+    fn character_decorations_belong_to_their_owner_and_go_with_the_character() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        let d = CharDeco { character_id: "x".into(), plate: "embers".into(), bg: "boba".into(), wreath: "bobacup".into(), source: "ai".into(), updated_at: 1 };
+        save_char_deco(&c, &d, &a).unwrap();
+        assert_eq!(list_char_deco(&c, &a).unwrap(), vec![d.clone()]);
+        assert!(list_char_deco(&c, &b).unwrap().is_empty(), "another profile sees none of them");
+        save_char_deco(&c, &CharDeco { plate: "stolen".into(), ..d.clone() }, &b).unwrap();
+        assert_eq!(list_char_deco(&c, &a).unwrap()[0].plate, "embers", "another profile can't overwrite them");
+        save_char_deco(&c, &CharDeco { plate: "tide".into(), source: "user".into(), updated_at: 2, ..d.clone() }, &a).unwrap();
+        assert_eq!((list_char_deco(&c, &a).unwrap()[0].plate.as_str(), list_char_deco(&c, &a).unwrap()[0].source.as_str()), ("tide", "user"));
+        delete_char_deco(&c, "x", &b).unwrap();
+        assert_eq!(list_char_deco(&c, &a).unwrap().len(), 1, "another profile can't remove them");
+        delete_char_deco(&c, "x", &a).unwrap();
+        assert!(list_char_deco(&c, &a).unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_users_decorations_are_saved_with_their_settings_and_old_settings_still_load() {
+        let c = fresh();
+        let a = me("a");
+        let mut s = get_settings(&c, &a);
+        assert_eq!((s.deco.plate.as_str(), s.deco.animate, s.deco.ai_pick), ("none", true, false));
+        s.deco.wreath = "lotus".into(); s.deco.ai_pick = true;
+        save_settings(&c, &s, &a).unwrap();
+        assert_eq!((get_settings(&c, &a).deco.wreath, get_settings(&c, &a).deco.ai_pick), ("lotus".to_string(), true));
+        // settings saved before decorations existed have no such field: they get the defaults
+        let old: Settings = serde_json::from_str(r#"{"provider":"local","user_name":"Old"}"#).unwrap();
+        assert_eq!(old.deco, UserDeco::default());
     }
 }

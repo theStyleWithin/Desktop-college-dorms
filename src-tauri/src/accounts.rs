@@ -484,6 +484,9 @@ struct Data {
     /// Added in v0.8: saved prompts.
     #[serde(default)]
     prompts: Vec<db::SavedPrompt>,
+    /// Profile decorations of the characters (the user's own are part of the settings).
+    #[serde(default)]
+    char_deco: Vec<db::CharDeco>,
     /// The profile's own picture (file name inside the archive's media folder) and its framing.
     #[serde(default)]
     profile_avatar: Option<(String, Option<db::Frame>)>,
@@ -592,7 +595,7 @@ pub struct ExportInfo {
 }
 
 fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
-    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar) = {
+    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco) = {
         let db = st.db.lock().unwrap();
         let characters = db::list_characters(&db, o).map_err(e)?;
         let dorms = db::list_dorms(&db, o).map_err(e)?;
@@ -607,6 +610,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
         }
         let rooms = db::list_rooms(&db, o).map_err(e)?;
         let decor = db::list_decor(&db, o).map_err(e)?;
+        let char_deco = db::list_char_deco(&db, o).map_err(e)?;
         let prompts = db::list_prompts(&db, o).map_err(e)?;
         let mechanics = db::list_mechanics(&db, o).map_err(e)?;
         let notes = db::list_notes(&db, o).map_err(e)?;
@@ -619,7 +623,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
             Some(id) => db::get_profile(&db, id).map_err(e)?,
             None => None,
         };
-        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar)
+        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco)
     };
     let mut chats = chats;
     for c in chats.iter_mut() {
@@ -778,7 +782,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     // API keys, passcodes and per-device model choices are deliberately not part of the file.
     let mut exported_settings = settings;
     exported_settings.local_model = String::new();
-    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar };
+    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, profile_avatar };
     zip.start_file("manifest.json", deflated).map_err(e)?;
     zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(e)?).map_err(e)?;
     zip.start_file("data.json", deflated).map_err(e)?;
@@ -1231,6 +1235,12 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
                 db::set_dorm_room(&db, *nd, Some(*rid), &o).map_err(e)?;
             }
         }
+        // how the characters were dressed (only for characters that came along)
+        for d in &parsed.data.char_deco {
+            let Some(cid) = char_map.get(&d.character_id) else { continue };
+            let (plate, bg, wreath) = crate::deco::clean_look(&d.plate, &d.bg, &d.wreath);
+            db::save_char_deco(&db, &db::CharDeco { character_id: cid.clone(), plate, bg, wreath, source: if d.source == "user" { "user".into() } else { "ai".into() }, updated_at: db::now() }, &o).map_err(e)?;
+        }
         let mut mech_map: HashMap<String, String> = HashMap::new();
         for m in &parsed.data.mechanics {
             let id = uid();
@@ -1278,6 +1288,7 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
         if settings.provider == "local" && !crate::llama::engine_supported() { settings.provider = "openai".into(); }
         settings.active_persona = persona_map.get(&settings.active_persona).cloned().unwrap_or_default();
         settings.user_name = display;
+        settings.deco = crate::deco::clean_user(settings.deco);
         db::save_settings(&db, &settings, &o).map_err(e)?;
         Ok(())
     })();
