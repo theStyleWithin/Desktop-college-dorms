@@ -964,3 +964,216 @@ fn templates() -> Vec<Playbook> {
     ];
     defs.iter().filter_map(|d| serde_json::from_str::<Playbook>(d).ok()).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    fn block_on<F: Future>(f: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)
+    }
+    fn pb(j: &str) -> Playbook {
+        clean_playbook(serde_json::from_str(j).unwrap(), &[]).expect("a valid playbook")
+    }
+    fn ctx(user: &str, reply: &str, turn: i64) -> Ctx {
+        Ctx { user: user.into(), reply: reply.into(), turn, seed: 7 }
+    }
+    const BASIC: &str = r#"{"name":"T","variables":[
+        {"id":"n","label":"N","kind":"number","default":0,"min":0,"max":5,"bands":[{"from":0,"text":"low"},{"from":3,"text":"high"}]},
+        {"id":"flag","kind":"bool","default":false},{"id":"place","kind":"text","default":"home"},
+        {"id":"mood","kind":"choice","default":"calm","options":["calm","angry"]}],
+        "rules":[
+        {"id":"r1","phase":"before","when":[{"type":"user_says","words":["hello"]}],"then":[{"var":"n","op":"add","value":2}]},
+        {"id":"r3","phase":"before","when":[{"type":"var","var":"n","op":">=","value":2}],"then":[{"var":"n","op":"add","value":9}]},
+        {"id":"r2","phase":"after","when":[{"type":"reply_says","words":["goodbye"]}],"then":[{"var":"flag","op":"toggle"},{"var":"place","op":"append","value":"the road"},{"var":"mood","op":"set","value":"ANGRY"}]}]}"#;
+
+    #[test]
+    fn values_fit_their_variables() {
+        let p = pb(BASIC);
+        let v = |id: &str| p.variables.iter().find(|v| v.id == id).unwrap().clone();
+        assert_eq!(coerce(&v("n"), &json!(99)), json!(5), "a number stays inside its range");
+        assert_eq!(coerce(&v("n"), &json!("3")), json!(3));
+        assert_eq!(coerce(&v("n"), &json!("junk")), json!(0), "nonsense becomes the default");
+        assert_eq!(coerce(&v("flag"), &json!("yes")), json!(true));
+        assert_eq!(coerce(&v("mood"), &json!("angry")), json!("angry"));
+        assert_eq!(coerce(&v("mood"), &json!("sleepy")), json!("calm"), "only the listed choices");
+        assert_eq!(coerce(&v("place"), &json!("x".repeat(500))).as_str().unwrap().len(), 200);
+        assert_eq!(clean_id(" Trust Level! ").as_deref(), Some("trust_level"));
+        assert_eq!(clean_id("9lives"), None, "a name starts with a letter");
+    }
+
+    #[test]
+    fn rules_run_in_their_phase_and_in_order() {
+        let p = pb(BASIC);
+        let mut st = starting_state(&p, None);
+        block_on(run_phase(&p, "before", &mut st, &ctx("Hello there", "", 1), true, |_, _| async { false }));
+        assert_eq!(values(&p, &st)["n"], json!(5), "the first rule added 2 and the next saw it and added more, up to the top of the range");
+        let mut st2 = starting_state(&p, None);
+        let ran = block_on(run_phase(&p, "before", &mut st2, &ctx("nothing", "goodbye", 1), true, |_, _| async { false }));
+        assert!(ran.is_empty() && values(&p, &st2)["n"] == json!(0), "an 'after' rule or a missing word does nothing before the reply");
+        let ran = block_on(run_phase(&p, "after", &mut st2, &ctx("x", "Goodbye!", 1), true, |_, _| async { false }));
+        let v = values(&p, &st2);
+        assert_eq!((ran.len(), &v["flag"], &v["place"], &v["mood"]), (1, &json!(true), &json!("home, the road"), &json!("angry")));
+    }
+
+    #[test]
+    fn turns_and_chances_are_counted() {
+        let p = pb(r#"{"name":"T","variables":[{"id":"n","kind":"number","default":0,"min":0,"max":100}],"rules":[
+            {"id":"e","phase":"before","when":[{"type":"every_n","n":3}],"then":[{"var":"n","op":"add","value":1}]},
+            {"id":"never","phase":"before","when":[{"type":"chance","percent":0}],"then":[{"var":"n","op":"add","value":10}]},
+            {"id":"always","phase":"before","when":[{"type":"chance","percent":100}],"then":[{"var":"n","op":"add","value":100}]}]}"#);
+        let mut st = starting_state(&p, None);
+        block_on(run_phase(&p, "before", &mut st, &ctx("", "", 2), true, |_, _| async { false }));
+        assert_eq!(values(&p, &st)["n"], json!(100), "turn 2 is not a third turn; 0% never; 100% always (and the value stops at 100)");
+        let mut st = starting_state(&p, None);
+        block_on(run_phase(&p, "before", &mut st, &ctx("", "", 3), true, |_, _| async { false }));
+        assert_eq!(values(&p, &st)["n"], json!(100));
+        // a chance in between comes out both ways over many different turns
+        let half = pb(r#"{"name":"T","variables":[{"id":"n","kind":"number","default":0}],"rules":[{"id":"c","phase":"before","when":[{"type":"chance","percent":50}],"then":[{"var":"n","op":"add","value":1}]}]}"#);
+        let hits = (0..200u64).filter(|s| { let mut st = starting_state(&half, None); block_on(run_phase(&half, "before", &mut st, &Ctx { seed: *s * 7919 + 1, ..ctx("", "", 1) }, true, |_, _| async { false })); values(&half, &st)["n"] == json!(1) }).count();
+        assert!((60..=140).contains(&hits), "about half the time, got {hits}");
+    }
+
+    #[test]
+    fn a_rule_that_asks_uses_the_model_or_else_its_fallback() {
+        let p = pb(r#"{"name":"T","variables":[{"id":"n","kind":"number","default":0,"min":0,"max":9}],"rules":[
+            {"id":"a","phase":"after","ask":"Was that kind?","fallback":[{"type":"user_says","words":["thanks"]}],"then":[{"var":"n","op":"add","value":1}]},
+            {"id":"b","phase":"after","ask":"Another?","then":[{"var":"n","op":"add","value":4}]}]}"#);
+        let asked = Cell::new(0);
+        let mut st = starting_state(&p, None);
+        block_on(run_phase(&p, "after", &mut st, &ctx("", "", 1), true, |_, _| { asked.set(asked.get() + 1); async { true } }));
+        assert_eq!((values(&p, &st)["n"].clone(), asked.get()), (json!(5), 2), "the model said yes to both");
+        let mut st = starting_state(&p, None);
+        block_on(run_phase(&p, "after", &mut st, &ctx("", "", 1), true, |_, _| async { false }));
+        assert_eq!(values(&p, &st)["n"], json!(0), "the model said no");
+        asked.set(0);
+        let mut st = starting_state(&p, None);
+        block_on(run_phase(&p, "after", &mut st, &ctx("thanks a lot", "", 1), false, |_, _| { asked.set(asked.get() + 1); async { true } }));
+        assert_eq!((values(&p, &st)["n"].clone(), asked.get()), (json!(1), 0), "with the model's judgment off the fallback decides, and nothing is asked; a rule with no fallback doesn't run");
+    }
+
+    #[test]
+    fn lore_is_available_by_the_state() {
+        let book = db::Lorebook { id: "b1".into(), name: "Lore".into(), created_at: 0, updated_at: 0,
+            book: json!({"entries": [{"name":"Open","keys":["a"],"content":"open lore","enabled":true},{"name":"Secret","keys":["b"],"content":"secret lore","enabled":true},{"keys":["c"],"content":"third","enabled":true}]}) };
+        let mine = vec!["b1".to_string()];
+        let mk = |default_on: bool| clean_playbook(serde_json::from_value::<Playbook>(json!({"name":"T","variables":[{"id":"n","kind":"number","default":0,"min":0,"max":9}],
+            "lorebooks":["b1"],"lore":[{"book":"b1","default_on":default_on,"gates":[{"entry":"Secret","when":[{"type":"var","var":"n","op":">=","value":3}]},{"entry":"#3","when":[{"type":"var","var":"n","op":">=","value":6}]}]}]})).unwrap(), &mine).unwrap();
+        let names = |p: &Playbook, n: i64| { let mut st = starting_state(p, None); st.set("n", json!(n), 0); lore_entries(p, &[book.clone()], &st).iter().map(|e| e.content.clone()).collect::<Vec<_>>() };
+        let p = mk(true);
+        assert_eq!(names(&p, 0), vec!["open lore"], "the gated entries wait for their state");
+        assert_eq!(names(&p, 3), vec!["open lore", "secret lore"]);
+        assert_eq!(names(&p, 6), vec!["open lore", "secret lore", "third"], "an entry can be named by its place");
+        assert!(names(&mk(false), 0).is_empty(), "with the book off by default only what the state opens is available");
+        assert_eq!(names(&mk(false), 3), vec!["secret lore"]);
+        let none_attached = clean_playbook(serde_json::from_value::<Playbook>(json!({"name":"T","lorebooks":["b1"]})).unwrap(), &[]).unwrap();
+        assert!(none_attached.lorebooks.is_empty(), "only the owner's own lorebooks can be attached");
+    }
+
+    #[test]
+    fn what_is_told_to_the_characters_carries_the_meaning_of_the_numbers() {
+        let p = pb(BASIC);
+        let mut st = starting_state(&p, None);
+        st.set("n", json!(4), 1);
+        let t = prompt_block(&p, &st);
+        assert!(t.contains("N: 4 (from 0 to 5), meaning: high") && t.contains("flag: no") && t.contains("place: home") && t.contains("never mention"), "{t}");
+        assert_eq!(prompt_block(&pb(r#"{"name":"Empty"}"#), &PState::default()), "", "a playbook with no variables says nothing");
+    }
+
+    #[test]
+    fn mistakes_and_limits_are_caught() {
+        let ok = |j: &str| clean_playbook(serde_json::from_str(j).unwrap(), &[]);
+        assert!(ok(r#"{"name":"  "}"#).is_err(), "a name is needed");
+        let many = |n: usize| format!(r#"{{"name":"T","variables":[{}]}}"#, (0..n).map(|i| format!(r#"{{"id":"v{i}","kind":"number"}}"#)).collect::<Vec<_>>().join(","));
+        assert!(ok(&many(10)).is_ok() && ok(&many(11)).unwrap_err().contains("10 variables"));
+        let rules = |n: usize, ask: bool| format!(r#"{{"name":"T","variables":[{{"id":"a","kind":"number"}}],"rules":[{}]}}"#, (0..n).map(|i| format!(r#"{{"id":"r{i}","then":[{{"var":"a","op":"add","value":1}}]{}}}"#, if ask && i < 4 { r#","ask":"q?""# } else { "" })).collect::<Vec<_>>().join(","));
+        assert!(ok(&rules(15, false)).is_ok() && ok(&rules(16, false)).unwrap_err().contains("15 rules"));
+        assert!(ok(&rules(4, true)).unwrap_err().contains("At most 3"), "no more than three rules can ask the model");
+        assert!(ok(r#"{"name":"T","variables":[{"id":"a","kind":"number"},{"id":"A","kind":"number"}]}"#).unwrap_err().contains("Two variables"));
+        assert!(ok(r#"{"name":"T","variables":[{"id":"a","kind":"choice"}]}"#).unwrap_err().contains("option"));
+        assert!(ok(r#"{"name":"T","variables":[{"id":"a","kind":"number"}],"rules":[{"id":"x","then":[{"var":"ghost","op":"add","value":1}]}]}"#).unwrap_err().contains("ghost"));
+        assert!(ok(r#"{"name":"T","variables":[{"id":"a","kind":"number"}],"rules":[{"id":"x","when":[{"type":"var","var":"ghost","op":">","value":1}],"then":[{"var":"a","op":"add","value":1}]}]}"#).unwrap_err().contains("ghost"));
+        assert!(ok(r#"{"name":"T","variables":[{"id":"a","kind":"number"}],"rules":[{"id":"x","then":[]}]}"#).unwrap_err().contains("doesn't change anything"));
+        let cleaned = ok(r#"{"name":"T","variables":[{"id":"a","kind":"number","default":50,"min":10,"max":1}],"rules":[{"id":"x","phase":"before","when":[{"type":"reply_says","words":["x"]}],"then":[{"var":"a","op":"set","value":1}]}]}"#).unwrap();
+        assert_eq!((cleaned.variables[0].min, cleaned.variables[0].max, cleaned.variables[0].default.clone()), (Some(1.0), Some(10.0), json!(10)), "a swapped range is put right and the default fits it");
+        assert!(cleaned.rules[0].when.is_empty(), "a rule that runs before the reply can't wait for a reply to say something");
+    }
+
+    #[test]
+    fn the_starter_playbooks_are_all_valid_and_playable() {
+        let all = templates();
+        assert_eq!(all.len(), 4);
+        for t in &all {
+            let cleaned = clean_playbook(t.clone(), &[]).unwrap_or_else(|e| panic!("{}: {e}", t.name));
+            assert_eq!(cleaned.rules.len(), t.rules.len(), "{} keeps all its rules", t.name);
+            assert!(!t.instructions.is_empty() && !t.description.is_empty());
+            // run a few turns of each one: it must not panic and must stay inside its ranges
+            let mut st = starting_state(&cleaned, None);
+            for turn in 1..=12 {
+                let c = Ctx { user: "I walk onward, search the room, and thank you; honestly, I care".into(), reply: "Goodbye".into(), turn, seed: turn as u64 * 31 };
+                block_on(run_phase(&cleaned, "before", &mut st, &c, false, |_, _| async { false }));
+                block_on(run_phase(&cleaned, "after", &mut st, &c, false, |_, _| async { false }));
+            }
+            for v in &cleaned.variables { assert_eq!(st.get(v), coerce(v, &st.get(v)), "{}: {} stays a valid value", t.name, v.id); }
+            for s in &cleaned.scenarios { starting_state(&cleaned, Some(&s.name)); }
+        }
+        let slow = clean_playbook(all[0].clone(), &[]).unwrap();
+        assert_eq!(values(&slow, &starting_state(&slow, Some("old friends")))["trust"], json!(6), "a scenario sets the starting values (its name is not case sensitive)");
+    }
+
+    #[test]
+    fn a_state_keeps_at_most_fifty_values_and_the_active_ones_stay() {
+        let mut st = PState::default();
+        for i in 0..60 { st.set(&format!("v{i:02}"), json!(i), i as i64); }
+        let keep: HashSet<String> = ["v00".to_string()].into_iter().collect();
+        st.trim(&keep);
+        assert_eq!(st.vars.len(), MAX_STATE);
+        assert!(st.vars.contains_key("v00"), "the active playbook's values are never let go");
+        assert!(!st.vars.contains_key("v01") && st.vars.contains_key("v59"), "the oldest unused go first");
+        assert!(st.touched.keys().all(|k| st.vars.contains_key(k)));
+    }
+
+    #[test]
+    fn a_chat_keeps_its_story_and_can_rerun_and_rewind_it() {
+        let c = db::open(std::path::Path::new(":memory:")).unwrap();
+        let o: Owner = Some("a".to_string());
+        let p = pb(BASIC);
+        let mut p1 = p.clone(); p1.id = "p1".into(); save(&c, &p1, &o).unwrap();
+        let mut p2 = pb(r#"{"name":"Other","variables":[{"id":"n","kind":"number","default":1,"min":0,"max":5}]}"#); p2.id = "p2".into(); save(&c, &p2, &o).unwrap();
+        assert_eq!(list(&c, &o).unwrap().len(), 2);
+        assert!(list(&c, &Some("b".to_string())).unwrap().is_empty(), "another profile has none of them");
+        let ch = db::Character { id: "c1".into(), card: dorms_core::CharacterData { name: "C".into(), ..Default::default() }, media: None, outfits: vec![], gallery: vec![], gallery_mode: String::new(), outfit: None, frame: None, folder: None, order: None, lorebooks: vec![], playbook: "p1".into(), favorite: false, created_at: 1, updated_at: 1, last_used: 0, trusted: true };
+        db::save_character(&c, &ch, &o).unwrap();
+        let chat = db::create_chat(&c, None, "x", "dm", &["c1".to_string()], &o).unwrap();
+        assert_eq!(effective(&c, &chat, &o).unwrap().0.id, "p1", "a chat uses its character's playbook unless told otherwise");
+        let mut row = chat_row(&c, chat.id);
+        row.mode = "none".into(); save_row(&c, chat.id, &row).unwrap();
+        assert!(effective(&c, &chat, &o).is_none(), "none means none");
+        row.mode = "set".into(); row.playbook_id = Some("p2".into()); save_row(&c, chat.id, &row).unwrap();
+        assert_eq!(effective(&c, &chat, &o).unwrap().0.id, "p2", "a chat can use another one");
+        row.playbook_id = Some("gone".into()); save_row(&c, chat.id, &row).unwrap();
+        assert!(effective(&c, &chat, &o).is_none(), "a playbook that is gone means none");
+        // the story: state, start, pending
+        row.mode = "inherit".into(); row.playbook_id = None;
+        row.start = starting_state(&p1, Some("nothing")); row.state = starting_state(&p1, None); row.state.set("n", json!(2), 1); row.turn = 1;
+        save_row(&c, chat.id, &row).unwrap();
+        assert_eq!(chat_row(&c, chat.id), row, "it all comes back as it was saved");
+        let (u1, u2) = (db::add_message(&c, chat.id, "character", Some("c1"), &["one".into()]).unwrap(), db::add_message(&c, chat.id, "character", Some("c1"), &["two".into()]).unwrap());
+        let (mut s0, mut s1, mut s2) = (starting_state(&p1, None), starting_state(&p1, None), starting_state(&p1, None));
+        s1.set("n", json!(1), 1); s2.set("n", json!(3), 2);
+        save_snapshot(&c, u1.id, chat.id, &s0, &s1, 1).unwrap(); save_snapshot(&c, u2.id, chat.id, &s1, &s2, 2).unwrap();
+        s0.set("n", json!(0), 0);
+        assert_eq!(snapshot(&c, u2.id).unwrap(), (s1.clone(), s2.clone(), 2), "regenerating the second reply starts from the state before it");
+        row.state = s2.clone(); row.turn = 2; save_row(&c, chat.id, &row).unwrap();
+        db::delete_message(&c, u2.id).unwrap(); rewind(&c, chat.id);
+        assert_eq!((chat_row(&c, chat.id).state, chat_row(&c, chat.id).turn), (s1.clone(), 1), "deleting the newest reply rewinds the story to what the one before left");
+        db::delete_message(&c, u1.id).unwrap(); rewind(&c, chat.id);
+        assert_eq!((chat_row(&c, chat.id).state, chat_row(&c, chat.id).turn), (row.start.clone(), 0), "with no replies left it is back at the start");
+        // a reply that fails puts the state back
+        let mut r = chat_row(&c, chat.id); let before = r.state.clone(); r.pending = Some((before.clone(), 4)); r.state.set("n", json!(5), 9); r.turn = 5; save_row(&c, chat.id, &r).unwrap();
+        restore_pending(&c, chat.id);
+        let r = chat_row(&c, chat.id);
+        assert_eq!((r.state, r.turn, r.pending), (before, 4, None));
+    }
+}
