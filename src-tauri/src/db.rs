@@ -640,11 +640,11 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
     // pathways: rooms inside rooms, rooms joined to each other, and the room a chat has moved into
     ensure_column(&conn, "rooms", "parent_id", "INTEGER")?;
     ensure_column(&conn, "rooms", "world_id", "INTEGER")?;
-    ensure_column(&conn, "worlds", "lore", "TEXT NOT NULL DEFAULT ''")?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS worlds(id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id TEXT, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS world_lorebooks(world_id INTEGER NOT NULL, book_id TEXT NOT NULL, PRIMARY KEY(world_id, book_id));",
     )?;
+    ensure_column(&conn, "worlds", "lore", "TEXT NOT NULL DEFAULT ''")?; // after the table exists (worlds made before this had no lore)
     ensure_column(&conn, "rooms", "deco_plate", "TEXT NOT NULL DEFAULT 'none'")?;
     ensure_column(&conn, "rooms", "deco_bg", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "rooms", "deco_wreath", "TEXT NOT NULL DEFAULT ''")?;
