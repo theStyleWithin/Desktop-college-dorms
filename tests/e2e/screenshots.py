@@ -20,7 +20,7 @@ shutil.rmtree(WORK, ignore_errors=True); os.makedirs(OUT, exist_ok=True)
 DATA = os.path.join(WORK, "data", "io.github.thestylewithin.dorms")
 
 # ---------------------------------------------------------------- original demo art (procedural)
-def portrait(seed, c1, c2, accent, kind):
+def portrait(seed, c1, c2, accent, kind, mood=None):
     rnd = random.Random(seed); W, H = 640, 960
     im = Image.new("RGB", (W, H)); px = im.load()
     for y in range(H):
@@ -51,8 +51,18 @@ def portrait(seed, c1, c2, accent, kind):
         d.pieslice((180, 120, 460, 380), 180, 360, fill=hair)         # hair cap
         if kind == "a": d.rectangle((180, 250, 215, 520), fill=hair); d.rectangle((425, 250, 460, 520), fill=hair)
         for cx in (270, 370):
-            d.ellipse((cx - 14, 340, cx + 14, 372), fill=(50, 40, 60))
-        d.arc((275, 400, 365, 450), 20, 160, fill=(150, 80, 80), width=5)
+            if mood == "happy": d.arc((cx - 16, 342, cx + 16, 376), 200, 340, fill=(50, 40, 60), width=6)   # eyes closed in a smile
+            else: d.ellipse((cx - 14, 340, cx + 14, 372), fill=(50, 40, 60))
+        if mood == "happy":
+            d.arc((258, 385, 382, 468), 10, 170, fill=(150, 70, 80), width=7)
+            for cx in (252, 388): d.ellipse((cx - 22, 392, cx + 22, 420), fill=(255, 150, 150))
+        elif mood == "sad":
+            d.arc((268, 425, 372, 485), 200, 340, fill=(150, 80, 80), width=6); d.ellipse((246, 380, 262, 412), fill=(150, 200, 255))
+            d.arc((250, 318, 292, 338), 200, 340, fill=(60, 50, 70), width=4); d.arc((348, 318, 390, 338), 200, 340, fill=(60, 50, 70), width=4)
+        elif mood == "surprised":
+            d.ellipse((300, 405, 340, 455), fill=(110, 50, 60))
+        else:
+            d.arc((275, 400, 365, 450), 20, 160, fill=(150, 80, 80), width=5)
         if kind == "b": d.rounded_rectangle((235, 325, 305, 385), 14, outline=(240, 220, 120), width=6); d.rounded_rectangle((335, 325, 405, 385), 14, outline=(240, 220, 120), width=6); d.line((305, 350, 335, 350), fill=(240, 220, 120), width=6)
     out = io.BytesIO(); im.convert("RGB").save(out, "PNG", optimize=True); return out.getvalue()
 
@@ -83,8 +93,12 @@ CHANNEL = {  # the late-night channel conversation, in speaking order
  "Professor Quill": ["*peers over spectacles* Hoo. A Grignard reagent adds carbon where you least expect it, much like Mondays. You know more than you fear."],
 }
 seen_counts = {}
+override = {}  # one reply to say next, word for word
 class Fake(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
+    def do_GET(self):
+        data = json.dumps({"data": [{"id": "demo"}]}).encode()
+        self.send_response(200); self.send_header("content-type", "application/json"); self.send_header("content-length", str(len(data))); self.end_headers(); self.wfile.write(data)
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))))
         sys_msg = body["messages"][0]["content"]
@@ -95,6 +109,7 @@ class Fake(BaseHTTPRequestHandler):
         i = seen_counts.get(key, 0); seen_counts[key] = i + 1
         pool = CHANNEL.get(who) if grp and who in CHANNEL else REPLIES.get(who, ["Hello!"])
         text = pool[i % len(pool)]
+        if override.get("text"): text = override.pop("text")
         self.send_response(200); self.send_header("content-type", "text/event-stream"); self.end_headers()
         for w in re.findall(r"\S+\s*", text):
             self.wfile.write(("data: " + json.dumps({"choices": [{"delta": {"content": w}}]}) + "\n\n").encode()); self.wfile.flush(); time.sleep(0.01)
@@ -125,7 +140,7 @@ def snap(name, size, scroll=0, bottom=False):
     tmp = os.path.join(WORK, name + ".png"); d.get_screenshot_as_file(tmp)
     im = Image.open(tmp).convert("RGB"); im.save(os.path.join(OUT, name + ".png"), "PNG", optimize=True)
     print("saved", name, im.size, os.path.getsize(os.path.join(OUT, name + ".png")) // 1024, "KB", flush=True)
-DESK, PHONE = (1280, 820), (390, 844)
+DESK, PHONE = (1440, 860), (390, 844)
 
 try:
     time.sleep(3)
@@ -138,7 +153,9 @@ try:
         b64 = base64.b64encode(portrait(*c["art"])).decode()
         d.execute_async_script("const done=arguments[arguments.length-1];const b=Uint8Array.from(atob(arguments[0]),c=>c.charCodeAt(0));window.__TAURI_INTERNALS__.invoke('set_media', b, {headers:{'x-char-id':arguments[1],'x-file-name':'a.png'}}).then(()=>done(1)).catch(e=>done(String(e)));", b64, ch["id"])
         ids[c["name"]] = ch["id"]
-    inv("set_favorite", {"id": ids["Mira Okafor"], "favorite": True})
+    for who in ["Mira Okafor", "Hiro Tanaka", "Juno Reyes"]: inv("set_favorite", {"id": ids[who], "favorite": True})
+    STATUS = {"Mira Okafor": "Kettle's on. Come find me.", "Hiro Tanaka": "Reviewing flashcards. Send snacks.", "Professor Quill": "Office hours: knock twice, then wait.", "Juno Reyes": "On air till 3. Requests open."}
+    for who, t in STATUS.items(): inv("set_status", {"characterId": ids[who], "text": t})
     prof = dict(id="demo", name="Demo server", format="openai", base_url="http://127.0.0.1:18998/v1", model="demo", chat_path="/chat/completions", auth="none", auth_header="", headers=[], extra_body="")
     st = inv("get_settings"); st.update(provider="custom:demo", profiles=[prof], user_name="Alex", max_tokens=200); inv("save_settings", {"settings": st})
 
@@ -163,6 +180,7 @@ try:
     for who in ["Mira Okafor", "Hiro Tanaka", "Professor Quill", "Hiro Tanaka"]:
         reply(chan["id"], who)
 
+    d.execute_script("localStorage.setItem('dorms.members.open','true'); localStorage.setItem('dorms.side.frame', arguments[0])", ids["Juno Reyes"])
     reload_ui()
     snap("desktop-home", DESK)
     nav("Characters"); snap("desktop-library", DESK)
@@ -200,6 +218,61 @@ try:
     nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Models').click()"); time.sleep(0.6)
     st = inv("get_settings"); st.update(theme="dusk"); inv("save_settings", {"settings": st}); reload_ui()
     nav("Settings"); snap("desktop-models", DESK)
+
+    # ---- what's new: mood pictures, rooms and pathways, the picture frame -------------------------------------
+    st = inv("get_settings"); st.update(provider="custom:demo", profiles=[prof], theme="dusk"); inv("save_settings", {"settings": st})
+    def upload(cmd, data, headers):
+        b64 = base64.b64encode(data).decode()
+        r = d.execute_async_script("const done=arguments[arguments.length-1];const b=Uint8Array.from(atob(arguments[0]),c=>c.charCodeAt(0));window.__TAURI_INTERNALS__.invoke(arguments[1], b, {headers:arguments[2]}).then(v=>done({ok:v})).catch(e=>done({err:String(e)}));", b64, cmd, headers)
+        if "err" in r: raise RuntimeError(r["err"])
+        return r["ok"]
+    mira = ids["Mira Okafor"]; mira_art = CHARS[0]["art"]; gal = {}
+    for mood in ["happy", "sad", "calm", "surprised"]:
+        res = upload("add_gallery_image", portrait(*mira_art, mood if mood != "calm" else None), {"x-char-id": mira, "x-file-name": mood + ".png"}); gal[mood] = res["gallery"][-1]["id"]
+    for mood, tags in [("happy", ["happy", "laughing"]), ("sad", ["sad", "crying"]), ("calm", ["neutral"]), ("surprised", ["surprised", "scared"])]:
+        inv("set_gallery_moods", {"id": mira, "itemId": gal[mood], "moods": tags})
+    inv("set_gallery_mode", {"id": mira, "mode": "mood"})
+    reload_ui(); nav("Characters")
+    d.execute_script("[...document.querySelectorAll('.ccard h3')].find(x=>x.textContent==='Mira Okafor').click()"); time.sleep(1.2)
+    d.execute_script("const e=[...document.querySelectorAll('h1,h2,h3,h4,label,span,b,div')].find(x=>x.children.length===0&&x.textContent.trim()==='Gallery'); if(e) e.scrollIntoView({block:'start'});"); time.sleep(0.6)
+    snap("desktop-gallery-editor", DESK)
+    nav("Dorms")
+    d.execute_script("[...document.querySelectorAll('.chatlist .it')].find(b=>b.textContent.includes('Mira Okafor')).click()"); time.sleep(1.0)
+    say(dm["id"], "I think I finally understand Grignard reagents!")
+    override["text"] = "*laughs and claps her hands* Haha! That's the best news I've heard all week. You are going to ace it!"
+    reply(dm["id"]); reload_ui(); nav("Dorms")
+    d.execute_script("[...document.querySelectorAll('.chatlist .it')].find(b=>b.textContent.includes('Mira Okafor')).click()"); time.sleep(1.5)
+    snap("desktop-gallery-chat", DESK, bottom=True)
+
+    mk = lambda name, kind, desc, bd, parent=None: inv("create_room", {"room": dict(name=name, kind=kind, description=desc, owner_kind="self", character_id=None, backdrop=bd, parent_id=parent, links=[], id=0, created_at=0)})
+    house = mk("Our house", "other", "A narrow blue house with a creaky porch and a very loud radiator.", "preset:lamplight")
+    kitchen = mk("Kitchen", "kitchen", "Yellow tiles, a rattling kettle and a plant that has seen things.", "preset:morning", house["id"])
+    living = mk("Living room", "living_room", "A sagging sofa, a bookshelf and a rug with a suspicious stain.", "preset:paper", house["id"])
+    attic = mk("Attic", "bedroom", "Dusty boxes and one round window. No way out but down.", "preset:night-window", house["id"])
+    gate = mk("Garden gate", "garden", "A gate in a mossy wall, humming with crickets.", "preset:garden")
+    shop = mk("Corner shop", "other", "Open all night. The owner knows everyone's order.", "preset:neon")
+    inv("set_room_links", {"id": kitchen["id"], "links": [gate["id"]]}); inv("set_room_links", {"id": gate["id"], "links": [kitchen["id"], shop["id"]]}); inv("set_room_links", {"id": living["id"], "links": [gate["id"]]})
+    pos = {str(house["id"]): {"x": 10, "y": 20}, str(kitchen["id"]): {"x": 300, "y": 20}, str(living["id"]): {"x": 590, "y": 20}, str(attic["id"]): {"x": 10, "y": 240}, str(gate["id"]): {"x": 300, "y": 240}, str(shop["id"]): {"x": 590, "y": 240}}
+    d.execute_script("localStorage.setItem('dorms.rooms.map', arguments[0]); localStorage.setItem('dorms.rooms.view','map')", json.dumps(pos))
+    reload_ui(); nav("Rooms"); time.sleep(0.8)
+    snap("desktop-pathways-map", DESK)
+
+    home = inv("create_dorm", {"name": "Our house", "roomId": house["id"]})
+    walk = inv("create_chat", {"dormId": home["id"], "name": "Coffee at home", "kind": "dm", "characterIds": [mira]})
+    say(walk["id"], "Can't sleep. Want to do something?")
+    override["text"] = "*stretches and grins* Honestly? Let's go to the kitchen and make some coffee."
+    reply(walk["id"])
+    inv("move_chat", {"chatId": walk["id"], "roomId": kitchen["id"]})
+    say(walk["id"], "Lead the way.")
+    override["text"] = "*the kettle rattles as she fills two mugs* Two sugars, right? Don't tell the plant."
+    reply(walk["id"]); reload_ui(); nav("Dorms")
+    d.execute_script("[...document.querySelectorAll('.chatlist .it')].find(b=>b.textContent.includes('Coffee at home')).click()"); time.sleep(1.5)
+    snap("desktop-go-to", DESK, bottom=True)
+
+    nav("Characters"); time.sleep(0.6)
+    d.execute_script("document.querySelector('[aria-label=\"Choose who hangs in the picture frame\"]').click()"); time.sleep(0.8)
+    snap("desktop-picture-frame", DESK)
+    d.execute_script("[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Cancel').click()"); time.sleep(0.4)
 
     # profiles: the Profile tab, then the welcome screen you see once a profile exists
     inv("create_profile", {"handle": "Alex", "displayName": "Alex", "passcode": "demo-pass"}); reload_ui()
