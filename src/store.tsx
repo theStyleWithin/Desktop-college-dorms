@@ -1,10 +1,10 @@
 import { createContext, useContext } from "react";
-import type { AppInfo, Character, Chat, Dorm, Folder, Frame, Persona, Room, SessionState, Settings } from "./api";
+import type { AppInfo, Character, Chat, Dorm, Folder, Frame, Persona, Room, SessionState, Settings, World } from "./api";
 
 export type Route =
   | { page: "home" }
   | { page: "library" }
-  | { page: "rooms"; edit?: number | "new" }
+  | { page: "rooms"; edit?: number | "new"; /** the world a new room is made in, or the world being looked at */ world?: number | null }
   | { page: "notes" }
   | { page: "decor" }
   | { page: "lorebooks" }
@@ -17,6 +17,8 @@ export interface Store {
   chats: Chat[];
   dorms: Dorm[];
   rooms: Room[];
+  /** folders of connected rooms */
+  worlds: World[];
   folders: Folder[];
   personas: Persona[];
   /** Who you are in chats right now: the active persona, or your plain name and profile picture. */

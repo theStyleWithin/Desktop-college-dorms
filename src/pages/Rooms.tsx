@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { api, displayName, type Room, type RoomKind } from "../api";
 import RoomMap from "../components/RoomMap";
 import RoomTitle from "../components/RoomTitle";
+import WorldsBar, { type WorldSel } from "../components/WorldsBar";
+import RoomGallery from "../components/RoomGallery";
 import RoomDecoEditor from "../components/RoomDecoEditor";
 import { ensureDecoArt } from "../lib/deco";
 import MusicField from "../components/MusicField";
 import RoomModelField, { type ModelDraft } from "../components/RoomModelField";
 import { Modal, useToast } from "../components/ui";
-import { PRESETS, ROOM_KINDS, kindLabel, roomBackground, isInside, pathName, MAX_EXITS } from "../lib/rooms";
+import { PRESETS, ROOM_KINDS, kindLabel, roomBackground, isInside, pathName, MAX_EXITS, connectedRooms } from "../lib/rooms";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
 
@@ -22,13 +24,21 @@ export async function enterRoom(room: Room, characterId: string | null, refresh:
   go({ page: "chat", chatId: chat.id });
 }
 
-export default function Rooms({ edit }: { edit?: number | "new" }) {
-  const { rooms, dorms, characters, go, refresh } = useStore();
+export default function Rooms({ edit, world }: { edit?: number | "new"; world?: number | null }) {
+  const { rooms: allRooms, worlds, dorms, characters, go, refresh } = useStore();
   const toast = useToast();
   const [starting, setStarting] = useState<Room | null>(null);
   const [view, setView] = useState<"cards" | "map">(() => { try { return localStorage.getItem("dorms.rooms.view") === "map" ? "map" : "cards"; } catch { return "cards"; } });
-  const pickView = (v: "cards" | "map") => { setView(v); try { localStorage.setItem("dorms.rooms.view", v); } catch { /* storage unavailable */ } };
-  if (edit !== undefined) return <RoomForm id={edit === "new" ? null : edit} />;
+  // the pathways editor keeps changes as a draft until Save pathways: leaving it asks first
+  const [mapDirty, setMapDirty] = useState(false);
+  const leave = (fn: () => void) => { if (!mapDirty || window.confirm("You have changes in the pathways editor that aren't saved. Leave without saving them?")) fn(); };
+  const pickView = (v: "cards" | "map") => leave(() => { setView(v); try { localStorage.setItem("dorms.rooms.view", v); } catch { /* storage unavailable */ } });
+  // which world is being looked at (kept for next time), and so which rooms are shown
+  const [sel, setSel] = useState<WorldSel>(() => { if (world != null) return world; try { const v = localStorage.getItem("dorms.rooms.world"); return v === "none" ? "none" : v && /^\d+$/.test(v) ? Number(v) : "all"; } catch { return "all"; } });
+  const pickWorld = (w: WorldSel) => leave(() => { setSel(w); try { localStorage.setItem("dorms.rooms.world", String(w)); } catch { /* storage unavailable */ } });
+  const shown: WorldSel = typeof sel === "number" && !worlds.some((w) => w.id === sel) ? "all" : sel;
+  const rooms = allRooms.filter((r) => shown === "all" || (shown === "none" ? r.world_id == null : r.world_id === shown));
+  if (edit !== undefined) return <RoomForm id={edit === "new" ? null : edit} world={world ?? null} />;
 
   const remove = async (r: Room) => {
     const used = dorms.filter((d) => d.room_id === r.id).length;
@@ -43,20 +53,23 @@ export default function Rooms({ edit }: { edit?: number | "new" }) {
         {rooms.length > 1 && (
           <div className="view-switch" role="group" aria-label="How to show the rooms">
             <button className={`chip ${view === "cards" ? "on" : ""}`} aria-pressed={view === "cards"} onClick={() => pickView("cards")}>Cards</button>
-            <button className={`chip ${view === "map" ? "on" : ""}`} aria-pressed={view === "map"} data-testid="rooms-map-tab" onClick={() => pickView("map")}>Pathways map</button>
+            <button className={`chip ${view === "map" ? "on" : ""}`} aria-pressed={view === "map"} data-testid="rooms-map-tab" onClick={() => pickView("map")}>Pathways editor</button>
           </div>
         )}
-        <button className="btn primary" onClick={() => go({ page: "rooms", edit: "new" })}>＋ Make a room</button>
+        <button className="btn primary" onClick={() => go({ page: "rooms", edit: "new", world: typeof shown === "number" ? shown : null })}>＋ Make a room</button>
       </div>
-      <p className="sub" style={{ marginBottom: 18 }}>A room is the place a dorm happens in. Characters know where they are, and the chat shows the room behind it.</p>
-      {rooms.length === 0 ? (
+      <p className="sub" style={{ marginBottom: 12 }}>A room is the place a dorm happens in. Characters know where they are, and the chat shows the room behind it. Group connected rooms into <b>worlds</b> to keep big places apart.</p>
+      <WorldsBar rooms={allRooms} sel={shown} onSelect={pickWorld} onStart={setStarting} onEdit={(r) => leave(() => go({ page: "rooms", edit: r.id }))} onMap={() => pickView("map")} />
+      {rooms.length === 0 && allRooms.length > 0 ? (
+        <div className="empty-state"><h3>No rooms here yet</h3><p className="sub" style={{ margin: "6px 0 14px" }}>{typeof shown === "number" ? "Make the first room of this world, or move rooms in from the room's own page." : "Every room is in a world."}</p></div>
+      ) : rooms.length === 0 ? (
         <div className="empty-state">
           <h3>No rooms yet</h3>
           <p className="sub" style={{ margin: "6px 0 14px" }}>Make a room first and set up a dorm in it, or add rooms later to dorms you already have.</p>
           <button className="btn primary" onClick={() => go({ page: "rooms", edit: "new" })}>＋ Make your first room</button>
         </div>
       ) : view === "map" && rooms.length > 1 ? (
-        <RoomMap rooms={rooms} onEdit={(r) => go({ page: "rooms", edit: r.id })} onStart={setStarting} />
+        <RoomMap rooms={rooms} onEdit={(r) => leave(() => go({ page: "rooms", edit: r.id }))} onStart={setStarting} onDirty={setMapDirty} />
       ) : (
         <div className="room-grid">
           {rooms.map((r) => {
@@ -68,7 +81,7 @@ export default function Rooms({ edit }: { edit?: number | "new" }) {
                 <div className="room-art" style={{ background: roomBackground(r) ?? "linear-gradient(135deg, #2a2540, #3a2f55)" }}>{r.deco?.bg ? (ensureDecoArt(), <span className="deco-bg" data-bg={r.deco.bg} />) : null}</div>
                 <div className="room-body">
                   <h3><RoomTitle room={r} /></h3>
-                  <div className="hint">{kindLabel(r.kind)} · {r.owner_kind === "character" && owner ? `${displayName(owner)}'s place` : "Your own space"} · {n} dorm{n === 1 ? "" : "s"}{r.parent_id != null && rooms.some((x) => x.id === r.parent_id) ? ` · in ${pathName(rooms, r.parent_id)}` : ""}{inside ? ` · ${inside} room${inside === 1 ? "" : "s"} inside` : ""}</div>
+                  <div className="hint">{kindLabel(r.kind)} · {r.owner_kind === "character" && owner ? `${displayName(owner)}'s place` : "Your own space"} · {n} dorm{n === 1 ? "" : "s"}{r.parent_id != null && rooms.some((x) => x.id === r.parent_id) ? ` · in ${pathName(rooms, r.parent_id)}` : ""}{inside ? ` · ${inside} room${inside === 1 ? "" : "s"} inside` : ""}{(r.gallery?.length ?? 0) > 0 ? ` · 🖼 ${r.gallery!.length}` : ""}{shown === "all" && r.world_id != null ? ` · 🌍 ${worlds.find((w) => w.id === r.world_id)?.name ?? ""}` : ""}</div>
                   {r.description && <p className="sub room-desc">{r.description}</p>}
                   <div className="row" style={{ marginTop: 10 }}>
                     <button className="btn primary sm" onClick={() => setStarting(r)}>Start a dorm here</button>
@@ -105,11 +118,17 @@ function StartPicker({ room, onDone }: { room: Room; onDone: (characterId: strin
   );
 }
 
-function RoomForm({ id }: { id: number | null }) {
-  const { rooms, characters, go, refresh } = useStore();
+function RoomForm({ id, world }: { id: number | null; world: number | null }) {
+  const { rooms: allRooms, worlds, characters, go, refresh } = useStore();
   const toast = useToast();
-  const existing = id != null ? rooms.find((r) => r.id === id) ?? null : null;
-  const [r, setR] = useState<Omit<Room, "id" | "created_at"> & Partial<Room>>(existing ?? blank());
+  const existing = id != null ? allRooms.find((r) => r.id === id) ?? null : null;
+  const [r, setR] = useState<Omit<Room, "id" | "created_at"> & Partial<Room>>(existing ?? { ...blank(), world_id: world });
+  // the rooms this one can be part of or lead to: the ones in its own world
+  const curWorld = existing ? existing.world_id ?? null : r.world_id ?? null;
+  const rooms = allRooms.filter((x) => (x.world_id ?? null) === curWorld);
+  const [target, setTarget] = useState<number | null>(existing?.world_id ?? world);
+  const [withConn, setWithConn] = useState(true);
+  const conn = existing ? connectedRooms(allRooms, existing.id) : [];
   const [pick, setPick] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [music, setMusic] = useState<{ file?: File; remove?: boolean }>({});
@@ -162,6 +181,22 @@ function RoomForm({ id }: { id: number | null }) {
         ) : <div className="hint">Create a character first, or choose “My own space”.</div>
       ) : <div className="hint">Your virtual house. Live in it solo — invite characters whenever you want.</div>}
 
+      <h3 className="step"><b>•</b> World</h3>
+      <div className="field">
+        <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+          <select value={target ?? ""} aria-label="World" data-testid="room-world" style={{ maxWidth: 320 }}
+            onChange={(e) => { const w = e.target.value ? Number(e.target.value) : null; setTarget(w); if (!existing) set({ world_id: w }); }}>
+            <option value="">Not in a world</option>
+            {worlds.map((w) => <option key={w.id} value={w.id}>🌍 {w.name}</option>)}
+          </select>
+          {existing && <button type="button" className="btn" data-testid="room-world-move" disabled={target === (existing.world_id ?? null)} onClick={async () => {
+            try { await api.moveRoomsToWorld(withConn ? conn : [existing.id], target); await refresh(); toast(withConn && conn.length > 1 ? `Moved ${conn.length} rooms.` : "Moved.", "ok"); } catch (e) { toast(errText(e), "err"); }
+          }}>Move{withConn && conn.length > 1 ? ` ${conn.length} rooms` : ""}</button>}
+        </div>
+        {existing && conn.length > 1 && <label className="check" style={{ display: "flex", gap: 8, margin: "8px 0" }}><input type="checkbox" checked={withConn} data-testid="room-world-with" onChange={(e) => setWithConn(e.target.checked)} /> <span>Move the {conn.length - 1} room{conn.length === 2 ? "" : "s"} connected to it too (otherwise the links to them are dropped)</span></label>}
+        <div className="hint">A world is a folder of connected rooms. A room can only be part of, and lead to, rooms in its own world.</div>
+      </div>
+
       <h3 className="step"><b>•</b> Pathways</h3>
       <p className="sub" style={{ margin: "4px 0 10px" }}>Build a place out of rooms: "Our house" with a kitchen, a living room and an attic inside it. In a chat you can walk the story from room to room, and it carries on as the same conversation.</p>
       <label className="field"><span>This room is part of</span>
@@ -185,6 +220,10 @@ function RoomForm({ id }: { id: number | null }) {
       <h3 className="step"><b>•</b> Decorations (optional)</h3>
       <p className="sub" style={{ margin: "4px 0 10px" }}>Dress the room like a server: a short tag beside its name, and the same nameplates, moving backgrounds and wreaths a profile can wear.</p>
       <RoomDecoEditor room={{ ...(r as Room), id: existing?.id ?? 0, created_at: existing?.created_at ?? 0 }} value={r.deco ?? { plate: "none", bg: "", wreath: "", tag: "", tag_color: "#5865f2", tag_glyph: "" }} onChange={(deco) => set({ deco })} />
+
+      <h3 className="step"><b>•</b> Gallery</h3>
+      <p className="sub" style={{ margin: "4px 0 10px" }}>Pictures of the place, to build up its look beyond the words of the description.</p>
+      <RoomGallery room={existing} />
 
       <h3 className="step"><b>2</b> Name, description &amp; background</h3>
       <label className="field"><span>Room name</span>

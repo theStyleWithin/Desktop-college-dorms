@@ -163,9 +163,25 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   refuses the room the chat is already in, and appends a message with role `travel` (its text is the room's name). The chat page shows it as a divider line;
   the prompt gets it as narration (`[The scene moves to Kitchen.]`) and the system prompt describes the current room, the room it is part of, and
   where one can go (its sub-rooms, its neighbours in the same parent and its exits). The Go to menu offers the same: the room's exits, then the rooms around it by `parent_id`; a chat in no room at all may enter any room; a room with neither shows "No way on from here". `move_chat` itself does not check the route. Deleting the room a chat is in puts the chat back in its dorm's room.
-- The Rooms page has a Cards / Pathways map switch (kept on the device). The map draws each room as a card with a handle; dragging from a handle onto another room calls
-  `set_room_links` with that room's exits plus the new one (an arrow; refused beyond three), and the ✕ on an arrow calls it without. Two rooms that lead to each other show two arcs. Card positions are kept in `dorms.rooms.map` on the device; dashed lines are `parent_id`.
+- The Rooms page has a Cards / Pathways editor switch (kept on the device). The editor draws each room as a card with a handle; dragging from a handle onto another room adds an exit to a
+  draft (an arrow; refused beyond three) and the ✕ on an arrow removes one from it. Nothing is stored until **Save pathways**, which calls `set_room_links` for each room whose exits changed and
+  keeps the card positions; **Discard** drops the draft, and leaving the editor with unsaved changes asks first. Two rooms that lead to each other show two arcs. Card positions are kept in `dorms.rooms.map` on the device; dashed lines are `parent_id`.
 - A moved chat prefers the new room's music over the dorm's. Backups carry parents, pathways and each chat's current room (numbers are remapped on import).
+
+## Worlds
+
+- A room's gallery (`rooms.gallery`, JSON of `{id,file,caption}`, at most `MAX_ROOM_PICS` = 24) holds copies of pictures in `media/roompic-*`; captions go into the room block ("Details of this place"). Deleting the room or a picture deletes the file; backups pack and re-import them.
+
+- A world (`worlds` table: name, description, created time; per profile) is a folder of rooms; `rooms.world_id` says which (none = not in a world). `world_lorebooks(world_id, book_id)` attaches
+  lorebooks (only the owner's own). Rooms, `parent_id` and exits never cross between worlds: `valid_parent` and `set_room_links` refuse a room of another world, and `move_rooms_to_world(ids, world)`
+  moves a set at once, then drops every link that now joins two different worlds (so a connected set moved together stays connected). A room made for someone else's world is put in none.
+- A world has a `description` (short, told to the characters) and a `lore` (up to 20,000 characters, written to be read: headings with `#`/`##`, lists with `-`, `**bold**` and `*italic*`; shown on the world's overview page,
+  never sent to the model). The overview lists the world's rooms (with a Start here button for each), its exits, and its attached lorebooks.
+- Deleting a world never deletes its rooms (they are simply in no world); deleting a lorebook takes it off every world. Backups carry worlds and their lorebooks (numbers remapped on import).
+- A chat is in the world of the room it is in now (so walking through a room in another world changes it). The system prompt names the world and its description, and the lorebooks attached to the
+  world are merged with the speaker's own lorebooks (each book once) when the prompt is built, so they apply in every chat in any room of the world.
+- The Rooms page has a world bar (all rooms, each world, rooms in no world; make one; for the one picked: name, description, lorebooks, make a room in it, delete it). The room form picks the room's world and can move the
+  rooms connected to it along. The Go to menu of a chat in no room, and the dorm's room list, group rooms by world.
 
 ## Imported 3D rooms (v0.6)
 

@@ -166,6 +166,12 @@ pub struct Room {
     /// The room this one is part of (the kitchen of "our house"). Rooms without one are top-level places.
     #[serde(default)]
     pub parent_id: Option<i64>,
+    /// Pictures of the room: its look, as a gallery (up to `MAX_ROOM_PICS`).
+    #[serde(default)]
+    pub gallery: Vec<RoomPic>,
+    /// The world this room is in (a folder of connected rooms); `None` = not in one.
+    #[serde(default)]
+    pub world_id: Option<i64>,
     /// How the room is dressed, if the user wants: the same nameplate, background and wreath a profile can wear, and a tag beside its name.
     #[serde(default)]
     pub deco: RoomDeco,
@@ -175,6 +181,36 @@ pub struct Room {
 }
 
 fn one() -> f64 { 1.0 }
+
+/// A world: a folder of connected rooms, kept apart from the other worlds. Lorebooks can be attached to it, and then apply to every
+/// chat in any of its rooms. Rooms, "part of" links and exits never cross from one world into another.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+pub struct World {
+    pub id: i64,
+    pub name: String,
+    /// What this world is like, told to the characters in every chat in it.
+    #[serde(default)]
+    pub description: String,
+    /// The world's background lore, written to be read (the codex): its history, places and people. Shown on the world's overview page; not sent to the model
+    /// (the description and the attached lorebooks are what shape the roleplay).
+    #[serde(default)]
+    pub lore: String,
+    /// Ids of the lorebooks attached to it.
+    #[serde(default)]
+    pub lorebooks: Vec<String>,
+    #[serde(default)]
+    pub created_at: i64,
+}
+
+/// A picture in a room's gallery: part of how the place looks, with an optional caption (which the characters are told too).
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Default)]
+#[serde(default)]
+pub struct RoomPic {
+    pub id: String,
+    /// Path inside the data folder (`media/roompic-*`).
+    pub file: String,
+    pub caption: String,
+}
 
 /// A room dressed like a server: optional decorations and a short tag (all empty by default).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -616,6 +652,13 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
     ensure_column(&conn, "chats", "style", "TEXT NOT NULL DEFAULT 'chat'")?;
     // pathways: rooms inside rooms, rooms joined to each other, and the room a chat has moved into
     ensure_column(&conn, "rooms", "parent_id", "INTEGER")?;
+    ensure_column(&conn, "rooms", "world_id", "INTEGER")?;
+    ensure_column(&conn, "rooms", "gallery", "TEXT NOT NULL DEFAULT '[]'")?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS worlds(id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id TEXT, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS world_lorebooks(world_id INTEGER NOT NULL, book_id TEXT NOT NULL, PRIMARY KEY(world_id, book_id));",
+    )?;
+    ensure_column(&conn, "worlds", "lore", "TEXT NOT NULL DEFAULT ''")?; // after the table exists (worlds made before this had no lore)
     ensure_column(&conn, "rooms", "deco_plate", "TEXT NOT NULL DEFAULT 'none'")?;
     ensure_column(&conn, "rooms", "deco_bg", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "rooms", "deco_wreath", "TEXT NOT NULL DEFAULT ''")?;
@@ -730,9 +773,9 @@ pub fn get_dorm(c: &Connection, id: i64, owner: &Owner) -> R<Option<Dorm>> {
 // ----- rooms -----
 
 fn row_room(r: &rusqlite::Row) -> R<Room> {
-    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)?, model: r.get(10)?, model_name: r.get(11)?, model_scale: r.get(12)?, model_rot: r.get(13)?, model_y: r.get(14)?, model_share: r.get::<_, i64>(15)? != 0, parent_id: r.get(16)?, links: vec![], deco: RoomDeco { plate: r.get(17)?, bg: r.get(18)?, wreath: r.get(19)?, tag: r.get(20)?, tag_color: r.get(21)?, tag_glyph: r.get(22)? } })
+    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)?, model: r.get(10)?, model_name: r.get(11)?, model_scale: r.get(12)?, model_rot: r.get(13)?, model_y: r.get(14)?, model_share: r.get::<_, i64>(15)? != 0, parent_id: r.get(16)?, links: vec![], deco: RoomDeco { plate: r.get(17)?, bg: r.get(18)?, wreath: r.get(19)?, tag: r.get(20)?, tag_color: r.get(21)?, tag_glyph: r.get(22)? }, world_id: r.get(23)?, gallery: serde_json::from_str(&r.get::<_, String>(24)?).unwrap_or_default() })
 }
-const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share,parent_id,deco_plate,deco_bg,deco_wreath,deco_tag,deco_tag_color,deco_tag_glyph";
+const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share,parent_id,deco_plate,deco_bg,deco_wreath,deco_tag,deco_tag_color,deco_tag_glyph,world_id,gallery";
 
 pub fn list_rooms(c: &Connection, owner: &Owner) -> R<Vec<Room>> {
     let mut s = c.prepare(&format!("SELECT {ROOM_COLS} FROM rooms WHERE profile_id IS ?1 ORDER BY id DESC"))?;
@@ -759,7 +802,9 @@ pub fn get_room(c: &Connection, id: i64, owner: &Owner) -> R<Option<Room>> {
 /// Whether `parent` can be the room `id` is part of: one of the owner's rooms, and not the room itself or anything inside it.
 pub fn valid_parent(c: &Connection, id: i64, parent: Option<i64>, owner: &Owner) -> Option<i64> {
     let mut cur = parent?;
-    if get_room(c, cur, owner).ok().flatten().is_none() { return None; }
+    let wanted = get_room(c, cur, owner).ok().flatten()?;
+    // a room can only be part of a room in its own world
+    if get_room(c, id, owner).ok().flatten().map(|r| r.world_id) != Some(wanted.world_id) { return None; }
     // walk up from the wanted parent: if we meet `id`, the room would end up inside itself
     for _ in 0..200 {
         if cur == id { return None; }
@@ -779,8 +824,10 @@ pub const MAX_EXITS: usize = 3;
 pub fn set_room_links(c: &Connection, id: i64, links: &[i64], owner: &Owner) -> R<()> {
     if get_room(c, id, owner)?.is_none() { return Ok(()); }
     c.execute("DELETE FROM room_links WHERE a=?1", [id])?;
+    let world = get_room(c, id, owner)?.map(|r| r.world_id);
     for &o in links {
-        if o != id && get_room(c, o, owner)?.is_some() {
+        // exits only lead to rooms in the same world
+        if o != id && get_room(c, o, owner)?.map(|r| r.world_id) == world {
             c.execute("INSERT OR IGNORE INTO room_links(a,b) VALUES(?1,?2)", params![id, o])?;
         }
     }
@@ -793,10 +840,84 @@ pub fn set_room_parent(c: &Connection, id: i64, parent: Option<i64>, owner: &Own
     Ok(())
 }
 
+// ----- worlds -----
+
+/// A world of this owner, or `None`.
+pub fn valid_world(c: &Connection, world: Option<i64>, owner: &Owner) -> Option<i64> {
+    let w = world?;
+    c.query_row("SELECT 1 FROM worlds WHERE id=?1 AND profile_id IS ?2", params![w, owner], |_| Ok(())).optional().ok().flatten().map(|_| w)
+}
+
+fn world_books(c: &Connection, id: i64) -> Vec<String> {
+    c.prepare("SELECT book_id FROM world_lorebooks WHERE world_id=?1 ORDER BY book_id").and_then(|mut s| s.query_map([id], |r| r.get(0)).map(|rows| rows.filter_map(|x| x.ok()).collect())).unwrap_or_default()
+}
+
+pub fn list_worlds(c: &Connection, owner: &Owner) -> R<Vec<World>> {
+    let mut s = c.prepare("SELECT id,name,description,lore,created_at FROM worlds WHERE profile_id IS ?1 ORDER BY id")?;
+    let rows: Vec<(i64, String, String, String, i64)> = s.query_map([owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?.filter_map(|r| r.ok()).collect();
+    Ok(rows.into_iter().map(|(id, name, description, lore, created_at)| World { id, name, description, lore, lorebooks: world_books(c, id), created_at }).collect())
+}
+
+pub fn get_world(c: &Connection, id: i64, owner: &Owner) -> R<Option<World>> {
+    Ok(list_worlds(c, owner)?.into_iter().find(|w| w.id == id))
+}
+
+pub fn create_world(c: &Connection, name: &str, description: &str, owner: &Owner) -> R<World> {
+    c.execute("INSERT INTO worlds(profile_id,name,description,created_at) VALUES(?1,?2,?3,?4)", params![owner, name, description, now()])?;
+    Ok(get_world(c, c.last_insert_rowid(), owner)?.expect("just inserted"))
+}
+
+/// Rename it, describe it, and set exactly which of the owner's lorebooks are attached.
+pub fn update_world(c: &Connection, id: i64, name: &str, description: &str, lore: &str, lorebooks: &[String], owner: &Owner) -> R<()> {
+    if get_world(c, id, owner)?.is_none() { return Ok(()); }
+    c.execute("UPDATE worlds SET name=?2, description=?3, lore=?5 WHERE id=?1 AND profile_id IS ?4", params![id, name, description, owner, lore])?;
+    c.execute("DELETE FROM world_lorebooks WHERE world_id=?1", [id])?;
+    let mine: Vec<String> = list_lorebooks(c, owner)?.into_iter().map(|b| b.id).collect();
+    for b in lorebooks.iter().filter(|b| mine.contains(b)) {
+        c.execute("INSERT OR IGNORE INTO world_lorebooks(world_id,book_id) VALUES(?1,?2)", params![id, b])?;
+    }
+    Ok(())
+}
+
+/// Delete a world. Its rooms are not deleted: they are simply not in a world any more.
+pub fn delete_world(c: &Connection, id: i64, owner: &Owner) -> R<()> {
+    if get_world(c, id, owner)?.is_none() { return Ok(()); }
+    c.execute("UPDATE rooms SET world_id=NULL WHERE world_id=?1 AND profile_id IS ?2", params![id, owner])?;
+    c.execute("DELETE FROM world_lorebooks WHERE world_id=?1", [id])?;
+    c.execute("DELETE FROM worlds WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
+/// Put these rooms in a world (or in none). Rooms, "part of" links and exits never cross between worlds, so any link between a room that
+/// moved and one that did not (and is now in a different world) is dropped.
+pub fn move_rooms_to_world(c: &Connection, ids: &[i64], world: Option<i64>, owner: &Owner) -> R<()> {
+    let world = valid_world(c, world, owner);
+    for id in ids {
+        c.execute("UPDATE rooms SET world_id=?2 WHERE id=?1 AND profile_id IS ?3", params![id, world, owner])?;
+    }
+    c.execute("UPDATE rooms SET parent_id=NULL WHERE profile_id IS ?1 AND parent_id IS NOT NULL AND (SELECT p.world_id FROM rooms p WHERE p.id=rooms.parent_id) IS NOT rooms.world_id", [owner])?;
+    c.execute("DELETE FROM room_links WHERE (SELECT world_id FROM rooms WHERE id=room_links.a) IS NOT (SELECT world_id FROM rooms WHERE id=room_links.b)", [])?;
+    Ok(())
+}
+
+/// The world a chat is in: the world of the room it is in now.
+pub fn chat_world(c: &Connection, chat: &Chat, owner: &Owner) -> R<Option<World>> {
+    match chat_room(c, chat, owner)?.and_then(|r| r.world_id) { Some(w) => get_world(c, w, owner), None => Ok(None) }
+}
+
+/// The most pictures one room's gallery holds.
+pub const MAX_ROOM_PICS: usize = 24;
+
+/// Replaces a room's gallery (the pictures themselves are files the caller has already put in place).
+pub fn set_room_gallery(c: &Connection, id: i64, gallery: &[RoomPic], owner: &Owner) -> R<()> {
+    c.execute("UPDATE rooms SET gallery=?2 WHERE id=?1 AND profile_id IS ?3", params![id, serde_json::to_string(gallery).unwrap_or_else(|_| "[]".into()), owner])?;
+    Ok(())
+}
+
 pub fn create_room(c: &Connection, r: &Room, owner: &Owner) -> R<Room> {
     c.execute(
-        "INSERT INTO rooms(profile_id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share,deco_plate,deco_bg,deco_wreath,deco_tag,deco_tag_color,deco_tag_glyph) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
-        params![owner, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, now(), r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64, r.deco.plate, r.deco.bg, r.deco.wreath, r.deco.tag, r.deco.tag_color, r.deco.tag_glyph],
+        "INSERT INTO rooms(profile_id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share,deco_plate,deco_bg,deco_wreath,deco_tag,deco_tag_color,deco_tag_glyph,world_id) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)",
+        params![owner, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, now(), r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64, r.deco.plate, r.deco.bg, r.deco.wreath, r.deco.tag, r.deco.tag_color, r.deco.tag_glyph, valid_world(c, r.world_id, owner)],
     )?;
     Ok(get_room(c, c.last_insert_rowid(), owner)?.expect("just inserted"))
 }
@@ -937,6 +1058,7 @@ pub fn delete_lorebook(c: &Connection, id: &str, owner: &Owner) -> R<()> {
             save_character(c, &ch, owner)?;
         }
     }
+    c.execute("DELETE FROM world_lorebooks WHERE book_id=?1 AND world_id IN (SELECT id FROM worlds WHERE profile_id IS ?2)", params![id, owner])?;
     c.execute("DELETE FROM lorebooks WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     Ok(())
 }
@@ -1517,6 +1639,8 @@ pub fn touch_login(c: &Connection, id: &str) -> R<()> {
 /// profile itself. For the guest space this just empties it.
 pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM room_links WHERE a IN (SELECT id FROM rooms WHERE profile_id IS ?1) OR b IN (SELECT id FROM rooms WHERE profile_id IS ?1)", [owner])?;
+    c.execute("DELETE FROM world_lorebooks WHERE world_id IN (SELECT id FROM worlds WHERE profile_id IS ?1)", [owner])?;
+    c.execute("DELETE FROM worlds WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM rooms WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM decor WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM prompts WHERE profile_id IS ?1", [owner])?;
@@ -1541,7 +1665,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "emoji_items"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "emoji_items", "worlds"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
@@ -1589,7 +1713,7 @@ mod tests {
     fn rooms_and_packs_belong_to_their_owner_and_dorms_can_only_use_their_own_rooms() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default() };
+        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default(), world_id: None, gallery: vec![] };
         let ra = create_room(&c, &room("A's kitchen"), &a).unwrap();
         let rb = create_room(&c, &room("B's kitchen"), &b).unwrap();
         assert_eq!(list_rooms(&c, &a).unwrap().len(), 1);
@@ -1956,7 +2080,7 @@ mod tests {
     fn pathways_nest_rooms_link_them_and_move_a_chat() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let room = |n: &str| Room { id: 0, name: n.into(), kind: "other".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default() };
+        let room = |n: &str| Room { id: 0, name: n.into(), kind: "other".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default(), world_id: None, gallery: vec![] };
         let house = create_room(&c, &room("House"), &a).unwrap();
         let kitchen = create_room(&c, &room("Kitchen"), &a).unwrap();
         let attic = create_room(&c, &room("Attic"), &a).unwrap();
@@ -2046,9 +2170,74 @@ mod tests {
         delete_emoji(&c, "1", &b).unwrap();
         assert!(get_emoji(&c, "1", &a).unwrap().is_some(), "or remove them");
         // deleting the room frees what was tied to it
-        let r = create_room(&c, &Room { id: 0, name: "R".into(), kind: "other".into(), description: String::new(), owner_kind: "self".into(), character_id: None, backdrop: String::new(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default() }, &a).unwrap();
+        let r = create_room(&c, &Room { id: 0, name: "R".into(), kind: "other".into(), description: String::new(), owner_kind: "self".into(), character_id: None, backdrop: String::new(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default(), world_id: None, gallery: vec![] }, &a).unwrap();
         save_emoji(&c, &it("5", "emoji", "tied", Some(r.id)), &a).unwrap();
         delete_room(&c, r.id, &a).unwrap();
         assert_eq!(get_emoji(&c, "5", &a).unwrap().unwrap().room_id, None, "what was tied to a deleted room works everywhere from then on");
+    }
+
+    #[test]
+    fn a_room_keeps_its_gallery_for_its_owner_only() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        let r = create_room(&c, &Room { id: 0, name: "Attic".into(), kind: "other".into(), description: String::new(), owner_kind: "self".into(), character_id: None, backdrop: String::new(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default(), world_id: None, gallery: vec![] }, &a).unwrap();
+        let pics = vec![RoomPic { id: "p1".into(), file: "media/roompic-1.png".into(), caption: "a cracked blue teapot".into() }];
+        set_room_gallery(&c, r.id, &pics, &b).unwrap();
+        assert!(get_room(&c, r.id, &a).unwrap().unwrap().gallery.is_empty(), "another profile can't change it");
+        set_room_gallery(&c, r.id, &pics, &a).unwrap();
+        let g = get_room(&c, r.id, &a).unwrap().unwrap().gallery;
+        assert_eq!((g.len(), g[0].caption.as_str()), (1, "a cracked blue teapot"));
+    }
+
+    #[test]
+    fn worlds_keep_their_rooms_apart_and_carry_lorebooks() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        let mk = |n: &str, w: Option<i64>, o: &Owner| create_room(&c, &Room { id: 0, name: n.into(), kind: "other".into(), description: String::new(), owner_kind: "self".into(), character_id: None, backdrop: String::new(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default(), world_id: w, gallery: vec![] }, o).unwrap();
+        let (w1, w2, wb) = (create_world(&c, "Tevyat", "A big wide world.", &a).unwrap(), create_world(&c, "Earth", "", &a).unwrap(), create_world(&c, "Theirs", "", &b).unwrap());
+        assert_eq!(list_worlds(&c, &a).unwrap().len(), 2);
+        assert_eq!(list_worlds(&c, &b).unwrap().len(), 1, "another profile's worlds are its own");
+        let (r1, r2, r3, r4) = (mk("Mondstadt", Some(w1.id), &a), mk("Cave", Some(w1.id), &a), mk("Home", Some(w2.id), &a), mk("Loose", None, &a));
+        assert_eq!(mk("Sneaky", Some(wb.id), &a).world_id, None, "a room can't be put in someone else's world");
+        let get = |id: i64| get_room(&c, id, &a).unwrap().unwrap();
+        // "part of" and exits never cross between worlds
+        set_room_parent(&c, r2.id, Some(r1.id), &a).unwrap();
+        set_room_parent(&c, r3.id, Some(r1.id), &a).unwrap();
+        set_room_parent(&c, r4.id, Some(r1.id), &a).unwrap();
+        assert_eq!((get(r2.id).parent_id, get(r3.id).parent_id, get(r4.id).parent_id), (Some(r1.id), None, None));
+        set_room_links(&c, r1.id, &[r2.id, r3.id, r4.id], &a).unwrap();
+        assert_eq!(get(r1.id).links, vec![r2.id], "an exit only leads to a room in the same world");
+        // moving a room to another world drops the links it can't keep
+        move_rooms_to_world(&c, &[r2.id], Some(w2.id), &a).unwrap();
+        assert_eq!((get(r2.id).world_id, get(r2.id).parent_id, get(r1.id).links.len()), (Some(w2.id), None, 0));
+        // a whole connected set moves together and stays connected
+        let (x, y) = (mk("X", Some(w1.id), &a), mk("Y", Some(w1.id), &a));
+        set_room_parent(&c, y.id, Some(x.id), &a).unwrap();
+        set_room_links(&c, x.id, &[y.id], &a).unwrap();
+        move_rooms_to_world(&c, &[x.id, y.id], Some(w2.id), &a).unwrap();
+        assert_eq!((get(y.id).world_id, get(y.id).parent_id, get(x.id).links.clone()), (Some(w2.id), Some(x.id), vec![y.id]));
+        assert_eq!(move_rooms_to_world(&c, &[x.id], Some(wb.id), &a).map(|_| get(x.id).world_id).unwrap(), None, "someone else's world means no world");
+        // lorebooks attached to a world; only the owner's own books count
+        let book = Lorebook { id: "book1".into(), name: "Lore".into(), book: serde_json::json!({"entries": []}), created_at: 1, updated_at: 1 };
+        save_lorebook(&c, &book, &a).unwrap();
+        update_world(&c, w1.id, "Tevyat", "A big wide world.", "Long ago, seven nations rose.", &["book1".into(), "nope".into()], &a).unwrap();
+        assert_eq!(get_world(&c, w1.id, &a).unwrap().unwrap().lore, "Long ago, seven nations rose.");
+        assert_eq!(get_world(&c, w1.id, &a).unwrap().unwrap().lorebooks, vec!["book1".to_string()]);
+        update_world(&c, w1.id, "Hijack", "", "stolen", &[], &b).unwrap();
+        assert_eq!(get_world(&c, w1.id, &a).unwrap().unwrap().name, "Tevyat", "another profile can't change it");
+        // a chat is in the world of the room it is in
+        let d = create_dorm(&c, "d", Some(r1.id), &a).unwrap();
+        let ch = create_chat(&c, Some(d.id), "x", "dm", &[], &a).unwrap();
+        assert_eq!(chat_world(&c, &ch, &a).unwrap().unwrap().id, w1.id);
+        set_chat_room(&c, ch.id, Some(r3.id), &a).unwrap();
+        let ch = get_chat(&c, ch.id, &a).unwrap().unwrap();
+        assert_eq!(chat_world(&c, &ch, &a).unwrap().unwrap().id, w2.id, "walking into a room in another world changes the world");
+        delete_lorebook(&c, "book1", &a).unwrap();
+        assert!(get_world(&c, w1.id, &a).unwrap().unwrap().lorebooks.is_empty(), "a deleted lorebook leaves its world");
+        // deleting a world keeps its rooms
+        delete_world(&c, w1.id, &b).unwrap();
+        assert!(get_world(&c, w1.id, &a).unwrap().is_some(), "another profile can't delete it");
+        delete_world(&c, w1.id, &a).unwrap();
+        assert!(get_world(&c, w1.id, &a).unwrap().is_none() && get(r1.id).world_id.is_none() && get_room(&c, r1.id, &a).unwrap().is_some(), "its rooms are not deleted, only no longer in a world");
     }
 }

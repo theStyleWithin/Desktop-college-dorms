@@ -23,7 +23,7 @@ mem.rooms = names.map((name, i) => ({ id: i + 1, name, kind: ["other", "kitchen"
 
 function App() {
   const [, bump] = useState(0);
-  const store = { refresh: async () => bump((n) => n + 1) } as unknown as Store;
+  const store = { refresh: async () => bump((n) => n + 1), settings: { deco: { animate: true } }, worlds: [] } as unknown as Store;
   return (
     <ToastProvider><StoreCtx.Provider value={store}>
       <div className="page" style={{ padding: 20 }}>

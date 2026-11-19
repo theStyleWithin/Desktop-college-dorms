@@ -81,8 +81,13 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
   alley). Rooms can lead on to more rooms for as long as you keep connecting them; a room is a dead end only when you haven't connected an exit.
   In a chat, the **➜ Go to…** menu next to the message box walks the story along the room's exits (and to the rooms around it in the same place):
   it is the same chat, the same conversation, with a line marking the move. The characters are told where they are now and where they can go next.
-  On the Rooms page, **Pathways map** shows every room as a card with a round handle: drag from the handle onto another room to draw an exit
-  (an arrow; draw one back for a way home; a ✕ on the arrow removes it), and drag the cards wherever you like. Dashed lines show which rooms are inside another room.
+  On the Rooms page, the **Pathways editor** shows every room as a card with a round handle: drag from the handle onto another room to draw an exit
+  (an arrow; draw one back for a way home; a ✕ on the arrow removes it), and drag the cards wherever you like. Your changes wait as a draft until you press **Save pathways**
+  (**Discard** puts it back the way it was saved). Dashed lines show which rooms are inside another room.
+  **Worlds** are folders of connected rooms, kept apart from each other: group the rooms of a big place into a world, build more rooms into it, and attach lorebooks to it that
+  apply to every chat in any of its rooms. Rooms, "part of" links and exits never cross from one world into another. Each world also has room for its **background lore**,
+  written to be read: its **📖 Read about this world** page shows the lore, its rooms (start a dorm in any of them) and the lorebooks that apply, so you can read up before diving in.
+  Rooms also have a **gallery**, like characters do: up to 24 pictures with captions that show what the place looks like. Captions are told to the characters as details of the room, and any picture can become the backdrop.
 - **Profile decorations**: dress your profile and your characters. A **nameplate** (an animated strip behind a name), an animated **profile background** and an
   **avatar wreath** (a frame drawn around a picture), filed by collection (Classic, Kawaii Boba Tea, Lunar New Year, Anime) with filters and one-click themes, plus a
   2 to 4 letter **name tag** with a colour and a symbol. Your own show at the bottom left of the side bar, where your profile sits, and on your profile card

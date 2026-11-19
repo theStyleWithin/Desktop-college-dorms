@@ -484,6 +484,9 @@ struct Data {
     /// Added in v0.8: saved prompts.
     #[serde(default)]
     prompts: Vec<db::SavedPrompt>,
+    /// Worlds: folders of rooms, with their lorebooks (a room carries its world's number).
+    #[serde(default)]
+    worlds: Vec<db::World>,
     /// Custom emoji and stickers (pictures travel in the archive's media folder).
     #[serde(default)]
     emoji: Vec<db::EmojiItem>,
@@ -598,7 +601,7 @@ pub struct ExportInfo {
 }
 
 fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
-    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji) = {
+    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji, worlds) = {
         let db = st.db.lock().unwrap();
         let characters = db::list_characters(&db, o).map_err(e)?;
         let dorms = db::list_dorms(&db, o).map_err(e)?;
@@ -615,6 +618,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
         let decor = db::list_decor(&db, o).map_err(e)?;
         let char_deco = db::list_char_deco(&db, o).map_err(e)?;
         let emoji = db::list_emoji(&db, o).map_err(e)?;
+        let worlds = db::list_worlds(&db, o).map_err(e)?;
         let prompts = db::list_prompts(&db, o).map_err(e)?;
         let mechanics = db::list_mechanics(&db, o).map_err(e)?;
         let notes = db::list_notes(&db, o).map_err(e)?;
@@ -627,7 +631,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
             Some(id) => db::get_profile(&db, id).map_err(e)?,
             None => None,
         };
-        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji)
+        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji, worlds)
     };
     let mut chats = chats;
     for c in chats.iter_mut() {
@@ -774,6 +778,22 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     decor.retain(|d| d.share);
     for d in decor.iter_mut() { pack_music(&mut d.file, &mut zip)?; }
     decor.retain(|d| !d.file.is_empty());
+    // the pictures of a room's gallery travel with it
+    for r in rooms.iter_mut() {
+        let mut keep = Vec::new();
+        for (k, g) in r.gallery.clone().into_iter().enumerate() {
+            let Ok(bytes) = std::fs::read(st.data_dir.join(&g.file)) else { continue };
+            let ext = std::path::Path::new(&g.file).extension().and_then(|x| x.to_str()).unwrap_or("png").to_lowercase();
+            let base = format!("roompic-{}-{k}-{}.{ext}", r.id, g.id.chars().filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-').collect::<String>());
+            if safe_media_name(&base) && seen.insert(base.clone()) {
+                zip.start_file(format!("media/{base}"), stored).map_err(e)?;
+                zip.write_all(&bytes).map_err(e)?;
+                media_count += 1;
+            }
+            keep.push(db::RoomPic { file: format!("media/{base}"), ..g });
+        }
+        r.gallery = keep;
+    }
     // room backdrops travel with their rooms
     for r in rooms.iter_mut() {
         if let Some(f) = r.backdrop.strip_prefix("file:") {
@@ -803,7 +823,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     // API keys, passcodes and per-device model choices are deliberately not part of the file.
     let mut exported_settings = settings;
     exported_settings.local_model = String::new();
-    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, emoji, profile_avatar };
+    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, emoji, worlds, profile_avatar };
     zip.start_file("manifest.json", deflated).map_err(e)?;
     zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(e)?).map_err(e)?;
     zip.start_file("data.json", deflated).map_err(e)?;
@@ -906,7 +926,7 @@ fn remove_owner_data(st: &AppState, o: &Owner) -> R<()> {
         files.extend(db::list_folders(&db, o).map_err(e)?.into_iter().filter_map(|f| f.cover));
         files.extend(db::list_personas(&db, o).map_err(e)?.into_iter().filter_map(|p| p.avatar));
         if let Some(pid) = o { files.extend(db::get_profile_avatar(&db, pid).map(|(f, _)| f)); }
-        files.extend(db::list_rooms(&db, o).map_err(e)?.into_iter().flat_map(|r| r.backdrop.strip_prefix("file:").map(str::to_string).into_iter().chain(Some(r.music).filter(|m| !m.is_empty())).chain(Some(r.model).filter(|m| !m.is_empty()))));
+        files.extend(db::list_rooms(&db, o).map_err(e)?.into_iter().flat_map(|r| r.backdrop.strip_prefix("file:").map(str::to_string).into_iter().chain(Some(r.music).filter(|m| !m.is_empty())).chain(Some(r.model).filter(|m| !m.is_empty())).chain(r.gallery.into_iter().map(|g| g.file))));
         files.extend(db::list_dorms(&db, o).map_err(e)?.into_iter().filter(|d| !d.music.is_empty()).map(|d| d.music));
         files.extend(db::list_decor(&db, o).map_err(e)?.into_iter().map(|d| d.file));
         files.extend(db::list_emoji(&db, o).map_err(e)?.into_iter().map(|d| d.file));
@@ -1175,6 +1195,16 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             }
         }
 
+        // worlds first, so each room can be put in its own (their lorebooks are the new copies)
+        let mut world_map: HashMap<i64, i64> = HashMap::new();
+        for w in &parsed.data.worlds {
+            let name: String = w.name.chars().filter(|c| !c.is_control()).take(60).collect();
+            if name.trim().is_empty() { continue; }
+            let nw = db::create_world(&db, name.trim(), &w.description.chars().take(4000).collect::<String>(), &o).map_err(e)?;
+            let books: Vec<String> = w.lorebooks.iter().filter_map(|b| book_map.get(b).cloned()).collect();
+            db::update_world(&db, nw.id, &nw.name, &nw.description, &w.lore.replace('\r', "").chars().take(20_000).collect::<String>(), &books, &o).map_err(e)?;
+            world_map.insert(w.id, nw.id);
+        }
         // rooms (after the characters, since a room can belong to one) and the dorms' place in them
         let mut room_map: HashMap<i64, i64> = HashMap::new();
         for (i, r) in parsed.data.rooms.iter().enumerate() {
@@ -1182,6 +1212,7 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             room.character_id = room.character_id.as_ref().and_then(|c| char_map.get(c).cloned());
             if room.character_id.is_none() { room.owner_kind = "self".into(); }
             room.deco = crate::deco::clean_room_deco(room.deco);
+            room.world_id = room.world_id.and_then(|w| world_map.get(&w).copied());
             let had_file = room.backdrop.starts_with("file:");
             if had_file { room.backdrop.clear(); }
             let music = std::mem::take(&mut room.music);
@@ -1224,6 +1255,24 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
                 // a built-in scene: keep it
                 nr.backdrop = r.backdrop.clone();
                 db::update_room(&db, &nr, &o).map_err(e)?;
+            }
+            // its gallery: pictures only, under fresh names, captions kept short
+            {
+                let mut pics = Vec::new();
+                for (k, g) in r.gallery.iter().enumerate().take(db::MAX_ROOM_PICS) {
+                    let base = g.file.strip_prefix("media/").unwrap_or("").to_string();
+                    let ext = std::path::Path::new(&base).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+                    if !["png", "jpg", "jpeg", "webp", "gif", "avif", "bmp"].contains(&ext.as_str()) { continue; }
+                    let Some(bytes) = parsed.media.get(&base).filter(|_| safe_media_name(&base)) else { continue };
+                    let id = uid();
+                    let rel = format!("media/roompic-{}-{id}.{ext}", nr.id);
+                    let abs = st.data_dir.join(&rel);
+                    std::fs::write(&abs, bytes).map_err(e)?;
+                    written.push(abs);
+                    pics.push(db::RoomPic { id, file: rel, caption: g.caption.chars().filter(|c| !c.is_control()).take(120).collect() });
+                    let _ = k;
+                }
+                if !pics.is_empty() { db::set_room_gallery(&db, nr.id, &pics, &o).map_err(e)?; }
             }
             room_map.insert(r.id, nr.id);
         }

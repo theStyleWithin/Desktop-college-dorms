@@ -44,7 +44,7 @@ function Avatar({ c, name, pic, art, wreath }: { c?: Character; name: string; pi
 }
 
 export default function ChatPage({ initialChatId }: { initialChatId?: number }) {
-  const { chats, dorms, rooms, characters, settings, go, refresh, modelCount, personas, me } = useStore();
+  const { chats, dorms, rooms, worlds, characters, settings, go, refresh, modelCount, personas, me } = useStore();
   const toast = useToast();
   const decoMap = useCharDeco();
   const [selected, setSelected] = useState<number | null>(initialChatId ?? chats[0]?.id ?? null);
@@ -430,7 +430,10 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                       <option value="">➜ Go to…{room ? "" : " (a room)"}</option>
                       {exits.length > 0 && <optgroup label="Exits">{exits.map((r) => <option key={r.id} value={r.id}>{pathName(rooms, r.id)}</option>)}</optgroup>}
                       {near.length > 0 && <optgroup label="Nearby">{near.map((r) => <option key={r.id} value={r.id}>{pathName(rooms, r.id)}</option>)}</optgroup>}
-                      {all.length > 0 && <optgroup label="Rooms">{all.map((r) => <option key={r.id} value={r.id}>{pathName(rooms, r.id)}</option>)}</optgroup>}
+                      {/* a chat in no room yet may enter any room: listed by world, so big worlds stay apart */}
+                      {all.length > 0 && [...worlds.map((w) => ({ key: w.id, label: `🌍 ${w.name}`, list: all.filter((r) => r.world_id === w.id) })), { key: "none", label: worlds.length ? "Not in a world" : "Rooms", list: all.filter((r) => r.world_id == null || !worlds.some((w) => w.id === r.world_id)) }].filter((g) => g.list.length).map((g) => (
+                        <optgroup key={g.key} label={g.label}>{g.list.map((r) => <option key={r.id} value={r.id}>{pathName(rooms, r.id)}</option>)}</optgroup>
+                      ))}
                     </select>
                   );
                 })()}
@@ -514,12 +517,13 @@ function CharacterPicker({ value, onChange, single }: { value: string[]; onChang
 }
 
 function RoomSelect({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
-  const { rooms, go } = useStore();
+  const { rooms, worlds, go } = useStore();
   return (
     <div className="row" style={{ marginTop: 10 }}>
       <select value={value ?? ""} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)} aria-label="Room" style={{ flex: 1 }}>
         <option value="">No room (no setting)</option>
-        {rooms.map((r) => <option key={r.id} value={r.id}>🛋️ {r.name}</option>)}
+        {worlds.map((w) => { const l = rooms.filter((r) => r.world_id === w.id); return l.length ? <optgroup key={w.id} label={`🌍 ${w.name}`}>{l.map((r) => <option key={r.id} value={r.id}>🛋️ {r.name}</option>)}</optgroup> : null; })}
+        {rooms.filter((r) => r.world_id == null || !worlds.some((w) => w.id === r.world_id)).map((r) => <option key={r.id} value={r.id}>🛋️ {r.name}</option>)}
       </select>
       <button className="btn sm" onClick={() => go({ page: "rooms", edit: "new" })}>＋ New room</button>
     </div>

@@ -109,6 +109,11 @@ export interface Room {
   music?: string; music_name?: string; music_path?: string | null;
   /** Pathways: the room this one is part of, and rooms joined to it (both ways) besides its parent and sub-rooms. */
   parent_id?: number | null; links?: number[];
+  /** The world this room is in (a folder of connected rooms), or none. */
+  world_id?: number | null;
+  /** Pictures of the room (its look); their captions are told to the characters too. */
+  gallery?: { id: string; file: string; caption: string }[];
+  gallery_paths?: { id: string; path: string }[];
   /** Optional decorations and a tag, like a server's: the same nameplate, background and wreath a profile can wear. */
   deco?: RoomDeco;
   /** An imported 3D scene that replaces the built-in room: its file name, where it is (use roomModelUrl()), how it is set, and whether its owner allowed sharing it. */
@@ -229,6 +234,8 @@ export interface PackageExtract {
 export interface ProviderHealth { state: "local" | "ok" | "warn" | "down" | "none"; detail: string; model: string; checked_at: number }
 /** How a character (or the user) is dressed: a nameplate, an animated profile background and an avatar wreath (ids from lib/decoData.json). */
 export interface CharDeco { character_id: string; plate: string; bg: string; wreath: string; source: "ai" | "user"; updated_at: number }
+/** A world: a folder of connected rooms, kept apart from other worlds, with lorebooks attached that apply to every chat in it. */
+export interface World { id: number; name: string; description: string; /** background lore written to be read (not sent to the model) */ lore: string; lorebooks: string[]; created_at: number }
 export interface RoomDeco { plate: string; bg: string; wreath: string; tag: string; tag_color: string; tag_glyph: string }
 export const DEFAULT_ROOM_DECO: RoomDeco = { plate: "none", bg: "", wreath: "", tag: "", tag_color: "#5865f2", tag_glyph: "" };
 export interface UserDeco { plate: string; bg: string; wreath: string; animate: boolean; tag: string; tag_color: string; tag_glyph: string; banner: string; ai_pick: boolean }
@@ -349,6 +356,17 @@ export const api = {
   listStatuses: () => invoke<CharStatus[]>("list_statuses"),
   setStatus: (characterId: string, text: string) => invoke<CharStatus | null>("set_status", { characterId, text }),
   generateStatus: (characterId: string) => invoke<CharStatus>("generate_status", { characterId }),
+  async addRoomPicture(roomId: number, file: File, caption: string): Promise<Room> {
+    return bin("add_room_picture", new Uint8Array(await file.arrayBuffer()), { "x-room-id": String(roomId), "x-file-name": enc(file.name), "x-caption": enc(caption) });
+  },
+  setRoomPictureCaption: (id: number, itemId: string, caption: string) => invoke<Room>("set_room_picture_caption", { id, itemId, caption }),
+  removeRoomPicture: (id: number, itemId: string) => invoke<Room>("remove_room_picture", { id, itemId }),
+  useRoomPictureAsBackdrop: (id: number, itemId: string) => invoke<Room>("use_room_picture_as_backdrop", { id, itemId }),
+  listWorlds: () => invoke<World[]>("list_worlds"),
+  createWorld: (name: string, description: string) => invoke<World>("create_world", { name, description }),
+  updateWorld: (id: number, name: string, description: string, lore: string, lorebooks: string[]) => invoke<World>("update_world", { id, name, description, lore, lorebooks }),
+  deleteWorld: (id: number) => invoke<void>("delete_world", { id }),
+  moveRoomsToWorld: (ids: number[], worldId: number | null) => invoke<void>("move_rooms_to_world", { ids, worldId }),
   listEmoji: () => invoke<EmojiItem[]>("list_emoji"),
   async addEmoji(file: File, kind: "emoji" | "sticker", name: string, meaning: string, roomId: number | null): Promise<EmojiItem> {
     return bin("add_emoji", new Uint8Array(await file.arrayBuffer()), { "x-kind": kind, "x-name": enc(name), "x-meaning": enc(meaning), "x-room-id": roomId == null ? "" : String(roomId), "x-file-name": enc(file.name) });
@@ -546,6 +564,7 @@ export const musicUrl = (x: { music_path?: string | null }) => (x.music_path ? c
 export const roomBackdrop = (r: { backdrop_path?: string | null }) => (r.backdrop_path ? convertFileSrc(r.backdrop_path) : null);
 /** A gallery picture's address (the web view can't open a path directly). */
 export const emojiUrl = (e: { path: string }) => convertFileSrc(e.path);
+export const roomPicUrl = (r: Room, itemId: string) => { const p = r.gallery_paths?.find((g) => g.id === itemId)?.path; return p ? convertFileSrc(p) : null; };
 export const galleryUrl = (c: Character, itemId: string) => { const p = c.gallery_paths?.find((g) => g.id === itemId)?.path; return p ? convertFileSrc(p) : null; };
 export const mediaUrl = (c: { media_path: string | null }) => (c.media_path ? convertFileSrc(c.media_path) : null);
 
