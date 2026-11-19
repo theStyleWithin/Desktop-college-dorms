@@ -12,6 +12,7 @@ import MusicField from "../components/MusicField";
 import { PROMPT_DRAG } from "../components/PromptsMenu";
 import { detectMood, pickGalleryItem } from "../lib/mood";
 import { useTextScale, setTextScaleAnchored, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
+import { Wreathed, useCharDeco } from "../lib/deco";
 import { hideDirectives, roomBackground, roomScene, kindLabel, nearbyRooms, roomExits, pathName } from "../lib/rooms";
 import { makeWardrobe } from "../components/WardrobePanel";
 import type { Speech } from "../components/SpeechBubble";
@@ -29,18 +30,21 @@ function renderText(text: string) {
   );
 }
 
-function Avatar({ c, name, pic, art }: { c?: Character; name: string; pic?: { src: string | null; frame: import("../api").Frame | null }; art?: { kind: MediaKind; url: string; frame: null } }) {
+function Avatar({ c, name, pic, art, wreath }: { c?: Character; name: string; pic?: { src: string | null; frame: import("../api").Frame | null }; art?: { kind: MediaKind; url: string; frame: null }; wreath?: string }) {
   return (
+    <Wreathed wreath={wreath}>
     <div className="avatar">
       {art ? <Art kind={art.kind} url={art.url} name={name} frame={art.frame} /> : pic ? <Art kind={pic.src ? "image" : null} url={pic.src} name={name} frame={pic.frame} />
         : <Art kind={c?.media?.kind === "vrm" ? null : c?.media?.kind ?? null} url={c ? mediaUrl(c) : null} name={name} frame={c?.frame} />}
     </div>
+    </Wreathed>
   );
 }
 
 export default function ChatPage({ initialChatId }: { initialChatId?: number }) {
   const { chats, dorms, rooms, characters, settings, go, refresh, modelCount, personas, me } = useStore();
   const toast = useToast();
+  const decoMap = useCharDeco();
   const [selected, setSelected] = useState<number | null>(initialChatId ?? chats[0]?.id ?? null);
   const [msgs, setMsgs] = useState<Message[]>([]);
   const [live, setLive] = useState<Live | null>(null);
@@ -357,7 +361,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                 const body = extending ? saved + (saved && live.text && !/\s$/.test(saved) && !/^\s/.test(live.text) ? " " : "") + hideDirectives(live.text) : saved;
                 return (
                   <div className={`msg ${m.role}`} key={m.id}>
-                    <Avatar c={c} name={nameOf(m)} pic={m.role === "user" ? { src: me.avatar, frame: me.frame } : undefined} art={m.role === "user" || lastMsgOf.get(m.character_id ?? "") !== m.id ? undefined : artOf(c)} />
+                    <Avatar c={c} name={nameOf(m)} wreath={(m.role === "user" ? settings.deco?.wreath : decoMap.get(m.character_id ?? "")?.wreath) || undefined} pic={m.role === "user" ? { src: me.avatar, frame: me.frame } : undefined} art={m.role === "user" || lastMsgOf.get(m.character_id ?? "") !== m.id ? undefined : artOf(c)} />
                     <div>
                       <div className="who">{nameOf(m)} <small>{timeAgo(m.created_at)}</small></div>
                       {editing?.id === m.id ? (
@@ -389,7 +393,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               })}
               {live && live.continueOf == null && (
                 <div className="msg character">
-                  <Avatar c={byId.get(live.characterId)} name={byId.get(live.characterId)?.card.name ?? "?"} art={artOf(byId.get(live.characterId))} />
+                  <Avatar c={byId.get(live.characterId)} name={byId.get(live.characterId)?.card.name ?? "?"} wreath={decoMap.get(live.characterId)?.wreath || undefined} art={artOf(byId.get(live.characterId))} />
                   <div>
                     <div className="who">{byId.get(live.characterId)?.card.name ?? "…"}</div>
                     {live.text ? <div className="txt">{renderText(hideDirectives(live.text))}</div>

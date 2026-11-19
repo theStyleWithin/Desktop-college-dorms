@@ -600,7 +600,7 @@ body.resizing * { cursor: col-resize !important; }
 [data-plate="starfield"]::after { background: radial-gradient(circle at 80% 25%, #fff 0 1.4px, transparent 2px) 0 0 / 90px 44px; animation: pl-twinkle 2.2s ease-in-out infinite; }
 [data-plate="parchment"] { color: #3a2a14 !important; }
 [data-plate="parchment"]::before { background: linear-gradient(90deg, #f1e2bd, #e6cf9b 60%, #d9bc80); box-shadow: inset 0 0 0 1px rgba(90,60,20,.55), inset 0 0 14px rgba(120,80,20,.35); }
-.plated[data-plate="parchment"] .names b { color: #2d1f0c; text-shadow: none; } .plated[data-plate="parchment"] .names small { color: #5a4220; text-shadow: none; }
+.plated[data-plate="parchment"] .m-name { color: #2d1f0c; text-shadow: none; } .plate-pick.plated[data-plate="parchment"] .m-status { color: #5a4220; text-shadow: none; }
 [data-plate="neon"]::before { background: repeating-linear-gradient(0deg, rgba(255,0,200,.55) 0 1px, transparent 1px 10px) 0 0 / 100% 40px, repeating-linear-gradient(90deg, rgba(0,230,255,.4) 0 1px, transparent 1px 22px), linear-gradient(180deg, #14002a, #2a0a4a); animation: pl-scan 2.5s linear infinite; }
 [data-plate="slime"]::before { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='70' height='40'%3E%3Cpath d='M0 0 H70 V8 Q64 8 62 16 Q60 24 56 16 Q54 8 46 8 Q40 8 38 20 Q36 30 31 20 Q28 8 20 8 Q12 8 10 14 Q8 22 4 14 Q2 8 0 8Z' fill='%2384cc16' fill-opacity='.75'/%3E%3C/svg%3E") 0 0 / 70px 40px repeat-x, linear-gradient(180deg, #14532d, #166534); animation: pl-pan 12s linear infinite; }
 [data-plate="prism"]::before { background: linear-gradient(100deg, #ef4444, #f59e0b, #22c55e, #06b6d4, #6366f1, #d946ef); animation: pl-hue 8s linear infinite; }
@@ -611,7 +611,7 @@ body.resizing * { cursor: col-resize !important; }
 .dw::after { content: ''; position: absolute; inset: -22%; background: no-repeat center / contain; pointer-events: none; z-index: 2; }
 .dw.sm::after, .dw.xs::after { inset: -20%; }
 [data-plate="bubbletea"] { color: #3a2250 !important; }
-.plated[data-plate="bubbletea"] .names b { color: #2f1946; text-shadow: none; } .plated[data-plate="bubbletea"] .names small { color: #5b3c78; text-shadow: none; }
+.plated[data-plate="bubbletea"] .m-name { color: #2f1946; text-shadow: none; } .plate-pick.plated[data-plate="bubbletea"] .m-status { color: #5b3c78; text-shadow: none; }
 .theme-grid, .bg-grid, .wr-grid { display: grid; gap: 10px; margin: 8px 0 14px; }
 .theme-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); } .bg-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); } .wr-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .theme-card, .bg-pick, .wr-pick { display: flex; border: 2px solid transparent; border-radius: 12px; background: var(--hover, #ffffff12); color: var(--text); font: inherit; text-align: left; cursor: pointer; padding: 10px; gap: 12px; }
@@ -619,8 +619,7 @@ body.resizing * { cursor: col-resize !important; }
 .theme-card.on, .bg-pick.on, .wr-pick.on { border-color: var(--accent); }
 .theme-card small, .bg-pick small, .wr-pick small { display: block; color: var(--muted); font-size: 12px; }
 .theme-av .dw-av, .wr-av .dw-av { margin: 14px; width: 56px; height: 56px; font-size: 22px; border: 0; } .wr-av .avatar { margin: 18px 18px 14px; }
-.banner.bg-prev { height: 76px; border-radius: 8px; cursor: inherit; pointer-events: none; } .bg-prev.none { height: 76px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--panel); color: var(--muted); }
-.banner[data-bg] .bimg { background-position: center 62% !important; }
+.dbanner.bg-prev { height: 76px; border-radius: 8px; cursor: inherit; pointer-events: none; } .bg-prev.none { height: 76px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--panel); color: var(--muted); }
 .fp-chip { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--hover, #ffffff12); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; } .fp-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; } .fp-chip.static { cursor: default; } .fp-chip button { border: 0; background: none; color: inherit; padding: 0; cursor: pointer; display: flex; } .fp-chip button svg { width: 12px; height: 12px; }
 .fp-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 .dc-wear { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px; margin: 8px 0 10px; border-radius: 10px; background: var(--hover, #ffffff12); font-size: 14px; } .dc-wear span { flex: 1; min-width: 0; }
@@ -634,8 +633,8 @@ body.resizing * { cursor: col-resize !important; }
 .dw.sm[data-wreath]::after, .dw.xs[data-wreath]::after { inset: -20%; }
 .dw-av { display: inline-flex; }
 .deco-bg { position: absolute; inset: 0; background-position: center 62%; background-size: cover; background-repeat: no-repeat; }
-.banner { display: block; position: relative; width: 100%; overflow: hidden; border-radius: 12px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 55%, var(--bg)), color-mix(in srgb, var(--accent2) 55%, var(--bg))); }
-.banner.bg-prev { height: 76px; border-radius: 8px; pointer-events: none; }
+.dbanner { display: block; position: relative; width: 100%; overflow: hidden; border-radius: 12px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 55%, var(--bg)), color-mix(in srgb, var(--accent2) 55%, var(--bg))); }
+.dbanner.bg-prev { height: 76px; border-radius: 8px; pointer-events: none; }
 .bg-prev.none { height: 76px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--panel2); color: var(--muted); }
 .plated .m-name, .plated .m-status { text-shadow: 0 1px 2px rgba(0,0,0,.65); }
 .plate-pick { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; }
@@ -653,3 +652,10 @@ body.resizing * { cursor: col-resize !important; }
 .m-row.plated { padding: 0; }
 .m-row.plated .m-main { background: none; }
 .you-row { margin: 4px 0 10px; }
+.profile-card { border: 1px solid var(--line); border-radius: 14px; overflow: visible; margin: 14px 0 6px; background: var(--panel); position: relative; }
+.profile-card-banner .dbanner { border-radius: 14px 14px 0 0; }
+.profile-card-me { display: flex; align-items: center; gap: 14px; padding: 0 16px 14px; margin-top: -30px; position: relative; }
+.profile-card-row { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; min-width: 140px; }
+.profile-card-row .m-name { font-size: 1.1rem; }
+.bg-prev-wrap { display: block; }
+.me-row.plated { padding-left: 8px; padding-right: 8px; }

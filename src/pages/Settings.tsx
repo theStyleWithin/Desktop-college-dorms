@@ -1,17 +1,18 @@
 import { useTextScale, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
 import { WIDGETS, useWidgetPrefs } from "../components/SideWidgets";
 import { useEffect, useState } from "react";
-import { api, newProfile, profileAvatar, onModelProgress, saveExportFile, type ApiProfile, type EngineStatus, type ExportInfo, type Hardware, type ModelFile, type ModelProgress, type Settings } from "../api";
+import { DEFAULT_DECO, api, newProfile, profileAvatar, onModelProgress, saveExportFile, type ApiProfile, type EngineStatus, type ExportInfo, type Hardware, type ModelFile, type ModelProgress, type Settings } from "../api";
 import { CreateProfileModal, PASSCODE_NOTE, ProfileAvatar } from "../components/ProfileForms";
 import { PersonasTab, ProfilePicture } from "../components/Personas";
 import { ControllerTab } from "../components/ControllerTab";
+import DecoTab, { ProfileCard } from "../components/DecoTab";
 import { Modal, useToast } from "../components/ui";
 import { errText, fmtBytes } from "../lib/util";
 import type { SessionState } from "../api";
 import { useStore } from "../store";
 
-type Tab = "profile" | "personas" | "models" | "chat" | "voice" | "controller" | "look" | "privacy" | "about";
-const TABS: [Tab, string][] = [["profile", "Profile"], ["personas", "Personas"], ["models", "Models"], ["chat", "Chat"], ["voice", "Voice"], ["controller", "Controller"], ["look", "Appearance"], ["privacy", "Privacy"], ["about", "About"]];
+type Tab = "profile" | "deco" | "personas" | "models" | "chat" | "voice" | "controller" | "look" | "privacy" | "about";
+const TABS: [Tab, string][] = [["profile", "Profile"], ["deco", "Decorations"], ["personas", "Personas"], ["models", "Models"], ["chat", "Chat"], ["voice", "Voice"], ["controller", "Controller"], ["look", "Appearance"], ["privacy", "Privacy"], ["about", "About"]];
 
 const ENDPOINTS: [string, string, string][] = [
   ["OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"],
@@ -27,6 +28,8 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
   const [s, setS] = useState<Settings>(settings);
   // the name can also change from the Profile tab's own Save; keep this draft in step so it can't revert it
   useEffect(() => { setS((x) => (x.user_name === settings.user_name ? x : { ...x, user_name: settings.user_name })); }, [settings.user_name]);
+  // decorations save the moment they change, so keep the draft in step with them (otherwise saving the rest would put the old ones back)
+  useEffect(() => { setS((x) => (JSON.stringify(x.deco) === JSON.stringify(settings.deco) ? x : { ...x, deco: settings.deco })); }, [settings.deco]);
   const dirty = JSON.stringify(s) !== JSON.stringify(settings);
   const patch = (p: Partial<Settings>) => setS((x) => ({ ...x, ...p }));
 
@@ -47,6 +50,7 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
         {TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}
       </div>
       {tab === "profile" && <ProfileTab s={s} patch={patch} />}
+      {tab === "deco" && <DecoTab />}
       {tab === "personas" && <PersonasTab />}
       {tab === "models" && <Models s={s} patch={patch} onChanged={refresh} />}
       {tab === "chat" && <ChatTab s={s} patch={patch} />}
@@ -580,6 +584,7 @@ function ProfileTab({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) =
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
+      <ProfileCard deco={s.deco ?? DEFAULT_DECO} name={p?.handle ?? "Guest"} src={profileAvatar(p)} frame={p?.avatar_frame} />
       <div className="card">
         <div className="row" style={{ gap: 14 }}>
           <ProfileAvatar name={p?.handle ?? "Guest"} size={64} src={profileAvatar(p)} frame={p?.avatar_frame} />

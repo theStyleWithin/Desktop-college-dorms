@@ -34,20 +34,20 @@ export default function DecoPicker({ value, animate, onChange, avatar, name, chi
     </button>
   );
   const platePick = (p: DecoItem) => (
-    <button key={p.id} type="button" className={`plate-pick m-row-like ${plateProps(p.id, animate).className}${cur.plate === p.id ? " on" : ""}`} aria-pressed={cur.plate === p.id} data-plate-pick={p.id}
+    <button key={"plate-" + p.id} type="button" className={`plate-pick m-row-like ${plateProps(p.id, animate).className}${cur.plate === p.id ? " on" : ""}`} aria-pressed={cur.plate === p.id} data-plate-pick={p.id}
       {...(plateProps(p.id, animate)["data-plate"] ? { "data-plate": p.id, "data-anim": animate ? "on" : "off" } : {})} onClick={() => onChange({ plate: p.id })}>
       <span>{avatar(32)}</span>
       <span className="names"><b className="m-name">{name}</b><small className="m-status">{p.name} · {p.blurb}</small></span>
     </button>
   );
   const bgPick = (b: DecoItem) => (
-    <button key={b.id} type="button" className={`bg-pick${(cur.bg || "none") === b.id ? " on" : ""}`} aria-pressed={(cur.bg || "none") === b.id} data-bg-pick={b.id} onClick={() => onChange({ bg: b.id === "none" ? "" : b.id })}>
+    <button key={"bg-" + b.id} type="button" className={`bg-pick${(cur.bg || "none") === b.id ? " on" : ""}`} aria-pressed={(cur.bg || "none") === b.id} data-bg-pick={b.id} onClick={() => onChange({ bg: b.id === "none" ? "" : b.id })}>
       {b.id === "none" ? <span className="bg-prev none">None</span> : <span className="bg-prev-wrap"><DecoBg bg={b.id} /></span>}
       <b>{b.name}</b><small>{b.blurb}</small>
     </button>
   );
   const wrPick = (w: DecoItem) => (
-    <button key={w.id} type="button" className={`wr-pick${(cur.wreath || "none") === w.id ? " on" : ""}`} aria-pressed={(cur.wreath || "none") === w.id} data-wreath-pick={w.id} onClick={() => onChange({ wreath: w.id === "none" ? "" : w.id })}>
+    <button key={"wr-" + w.id} type="button" className={`wr-pick${(cur.wreath || "none") === w.id ? " on" : ""}`} aria-pressed={(cur.wreath || "none") === w.id} data-wreath-pick={w.id} onClick={() => onChange({ wreath: w.id === "none" ? "" : w.id })}>
       <span className="wr-av"><span className="dw-av"><Wreathed wreath={w.id === "none" ? "" : w.id}>{avatar(56)}</Wreathed></span></span><b>{w.name}</b><small>{w.blurb}</small>
     </button>
   );

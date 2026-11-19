@@ -61,5 +61,5 @@ export function TagChip({ tag, color, glyph }: { tag?: string; color?: string; g
 /** A moving profile background (a strip of scenery behind a name and a picture). */
 export function DecoBg({ bg, height = 76, children }: { bg: string; height?: number; children?: ReactNode }) {
   if (bg) ensureDecoArt();
-  return <div className="banner" style={{ height }}>{bg ? <span className="deco-bg" data-bg={bg} /> : null}{children}</div>;
+  return <div className="dbanner" style={{ height }}>{bg ? <span className="deco-bg" data-bg={bg} /> : null}{children}</div>;
 }
