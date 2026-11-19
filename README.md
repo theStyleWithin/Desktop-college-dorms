@@ -77,9 +77,12 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
   image or a built-in scene), set a dorm in it, and the characters know where they are while the chat shows the room behind it.
   Make the room first and the dorm after ("Create & enter"), or add a room to a dorm you already have.
 - **Pathways**: build a place out of rooms. "Our house" can hold a kitchen, a living room and an attic (each with its own picture and
-  description), and any room can have a doorway to another (the garden gate). In a chat, the **➜ Go to…** menu next to the message box
-  walks the story into another room: it is the same chat, the same conversation, with a line marking the move. The characters are told
-  where they are now and where they can go next.
+  description), and a room can lead on to other rooms by **exits**: one-way pathways, up to three per room (the garden gate leads to the street and the
+  alley). Rooms can lead on to more rooms for as long as you keep connecting them; a room is a dead end only when you haven't connected an exit.
+  In a chat, the **➜ Go to…** menu next to the message box walks the story along the room's exits (and to the rooms around it in the same place):
+  it is the same chat, the same conversation, with a line marking the move. The characters are told where they are now and where they can go next.
+  On the Rooms page, **Pathways map** shows every room as a card with a round handle: drag from the handle onto another room to draw an exit
+  (an arrow; draw one back for a way home; a ✕ on the arrow removes it), and drag the cards wherever you like. Dashed lines show which rooms are inside another room.
 - **Your own 3D rooms**: in a room's settings, import a house or room model (`.glb`, `.gltf` or `.fbx`, or a Unity package, `.unitypackage`, for example one from Booth). It replaces the built-in 3D room in chats set in that room.
   The app finds the floor, centres the model and works out where she can walk: she wanders, uses her phone and stretches there, and steps around the furniture (a bed, desk or window are only in the built-in room). Set the size, turn and height if it doesn't sit right.
   Each model has a sharing mark, **Not allowed to share** (the default) or **May be shared**. Only a model you mark as shareable goes into an exported profile file; the room itself is always exported, and the export tells you which models it left out. The mark is your own declaration, the app can't check a seller's licence. A Unity package is opened inside the app: the room model is taken out, the pictures its materials use are put back on, and it is saved as one `.glb`. If the package has several models you choose which one is the room. A package over 4 GB, with not enough free space on the device, with a room over about 1 GB, or with no single room model in it (only separate props in a Unity scene, or only formats like `.blend`) is refused with the reason. Unity shaders and baked lighting are not carried over, so rooms look flatter than in VRChat.

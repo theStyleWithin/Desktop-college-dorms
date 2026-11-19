@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { api, displayName, type Room, type RoomKind } from "../api";
+import RoomMap from "../components/RoomMap";
 import MusicField from "../components/MusicField";
 import RoomModelField, { type ModelDraft } from "../components/RoomModelField";
 import { Modal, useToast } from "../components/ui";
-import { PRESETS, ROOM_KINDS, kindLabel, roomBackground, isInside, pathName } from "../lib/rooms";
+import { PRESETS, ROOM_KINDS, kindLabel, roomBackground, isInside, pathName, MAX_EXITS } from "../lib/rooms";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
 
@@ -22,6 +23,8 @@ export default function Rooms({ edit }: { edit?: number | "new" }) {
   const { rooms, dorms, characters, go, refresh } = useStore();
   const toast = useToast();
   const [starting, setStarting] = useState<Room | null>(null);
+  const [view, setView] = useState<"cards" | "map">(() => { try { return localStorage.getItem("dorms.rooms.view") === "map" ? "map" : "cards"; } catch { return "cards"; } });
+  const pickView = (v: "cards" | "map") => { setView(v); try { localStorage.setItem("dorms.rooms.view", v); } catch { /* storage unavailable */ } };
   if (edit !== undefined) return <RoomForm id={edit === "new" ? null : edit} />;
 
   const remove = async (r: Room) => {
@@ -34,6 +37,12 @@ export default function Rooms({ edit }: { edit?: number | "new" }) {
     <div className="page">
       <div className="row" style={{ marginBottom: 6 }}>
         <h1 className="grow">Rooms</h1>
+        {rooms.length > 1 && (
+          <div className="view-switch" role="group" aria-label="How to show the rooms">
+            <button className={`chip ${view === "cards" ? "on" : ""}`} aria-pressed={view === "cards"} onClick={() => pickView("cards")}>Cards</button>
+            <button className={`chip ${view === "map" ? "on" : ""}`} aria-pressed={view === "map"} data-testid="rooms-map-tab" onClick={() => pickView("map")}>Pathways map</button>
+          </div>
+        )}
         <button className="btn primary" onClick={() => go({ page: "rooms", edit: "new" })}>＋ Make a room</button>
       </div>
       <p className="sub" style={{ marginBottom: 18 }}>A room is the place a dorm happens in. Characters know where they are, and the chat shows the room behind it.</p>
@@ -43,6 +52,8 @@ export default function Rooms({ edit }: { edit?: number | "new" }) {
           <p className="sub" style={{ margin: "6px 0 14px" }}>Make a room first and set up a dorm in it, or add rooms later to dorms you already have.</p>
           <button className="btn primary" onClick={() => go({ page: "rooms", edit: "new" })}>＋ Make your first room</button>
         </div>
+      ) : view === "map" && rooms.length > 1 ? (
+        <RoomMap rooms={rooms} onEdit={(r) => go({ page: "rooms", edit: r.id })} onStart={setStarting} />
       ) : (
         <div className="room-grid">
           {rooms.map((r) => {
@@ -156,16 +167,16 @@ function RoomForm({ id }: { id: number | null }) {
           {rooms.filter((x) => x.id !== id && !isInside(rooms, x.id, id)).map((x) => <option key={x.id} value={x.id}>{pathName(rooms, x.id)}</option>)}
         </select>
         <div className="hint">Rooms in the same place (the kitchen and the living room of one house) can already walk to each other and to the house itself.</div></label>
-      <div className="field"><span>Also connects to</span>
+      <div className="field"><span>Exits (up to {MAX_EXITS})</span>
         {rooms.filter((x) => x.id !== id).length === 0 ? <div className="hint">Make another room first.</div> : (
           <div className="chips" data-testid="room-links">
             {rooms.filter((x) => x.id !== id).map((x) => {
-              const on = (r.links ?? []).includes(x.id);
-              return <button key={x.id} type="button" className={`chip ${on ? "on" : ""}`} aria-pressed={on} onClick={() => set({ links: on ? (r.links ?? []).filter((l) => l !== x.id) : [...(r.links ?? []), x.id] })}>{x.name}</button>;
+              const on = (r.links ?? []).includes(x.id), full = !on && (r.links ?? []).length >= MAX_EXITS;
+              return <button key={x.id} type="button" className={`chip ${on ? "on" : ""}`} aria-pressed={on} disabled={full} title={full ? `A room can have at most ${MAX_EXITS} exits` : undefined} onClick={() => set({ links: on ? (r.links ?? []).filter((l) => l !== x.id) : [...(r.links ?? []), x.id] })}>{x.name}</button>;
             })}
           </div>
         )}
-        <div className="hint">A door to somewhere else, such as the garden gate. It works both ways.</div>
+        <div className="hint">Where this room leads: a door, a gate, a staircase. Each exit goes one way, so choose the exits on the other room too if you want to come back. A room with no exits is a dead end, unless it is part of a place with other rooms in it.</div>
       </div>
 
       <h3 className="step"><b>2</b> Name, description &amp; background</h3>

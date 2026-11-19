@@ -166,7 +166,7 @@ pub struct Room {
     /// The room this one is part of (the kitchen of "our house"). Rooms without one are top-level places.
     #[serde(default)]
     pub parent_id: Option<i64>,
-    /// Rooms joined to this one by a pathway, in either direction (besides its parent and sub-rooms).
+    /// Its exits: rooms it leads to by a one-way pathway (at most 3), besides its parent and sub-rooms.
     #[serde(default)]
     pub links: Vec<i64>,
 }
@@ -672,14 +672,17 @@ pub fn valid_parent(c: &Connection, id: i64, parent: Option<i64>, owner: &Owner)
     None
 }
 
-/// Joins `id` to exactly the given rooms (the owner's own, never itself) by pathways.
+/// The most exits (one-way pathways out) a room may have.
+pub const MAX_EXITS: usize = 3;
+
+/// Gives `id` exactly these exits: one-way pathways to the owner's own other rooms (never to itself). Whether there
+/// are too many is for the caller to refuse (a backup may carry more than the limit and must keep them).
 pub fn set_room_links(c: &Connection, id: i64, links: &[i64], owner: &Owner) -> R<()> {
     if get_room(c, id, owner)?.is_none() { return Ok(()); }
-    c.execute("DELETE FROM room_links WHERE a=?1 OR b=?1", [id])?;
+    c.execute("DELETE FROM room_links WHERE a=?1", [id])?;
     for &o in links {
         if o != id && get_room(c, o, owner)?.is_some() {
             c.execute("INSERT OR IGNORE INTO room_links(a,b) VALUES(?1,?2)", params![id, o])?;
-            c.execute("INSERT OR IGNORE INTO room_links(a,b) VALUES(?1,?2)", params![o, id])?;
         }
     }
     Ok(())
@@ -1784,8 +1787,11 @@ mod tests {
         set_room_parent(&c, attic.id, Some(theirs.id), &a).unwrap();
         assert_eq!(get_room(&c, attic.id, &a).unwrap().unwrap().parent_id, None, "nor inside someone else's room");
         set_room_links(&c, kitchen.id, &[attic.id, theirs.id, kitchen.id], &a).unwrap();
-        assert_eq!(get_room(&c, kitchen.id, &a).unwrap().unwrap().links, vec![attic.id], "links are the owner's own other rooms only");
-        assert_eq!(get_room(&c, attic.id, &a).unwrap().unwrap().links, vec![kitchen.id], "a pathway goes both ways");
+        assert_eq!(get_room(&c, kitchen.id, &a).unwrap().unwrap().links, vec![attic.id], "exits lead to the owner's own other rooms only");
+        assert!(get_room(&c, attic.id, &a).unwrap().unwrap().links.is_empty(), "an exit is one-way: the attic has none back");
+        set_room_links(&c, attic.id, &[kitchen.id], &a).unwrap();
+        assert_eq!(get_room(&c, attic.id, &a).unwrap().unwrap().links, vec![kitchen.id]);
+        assert_eq!(get_room(&c, kitchen.id, &a).unwrap().unwrap().links, vec![attic.id], "giving the attic its exits leaves the kitchen's alone");
         let d = create_dorm(&c, "d", Some(house.id), &a).unwrap();
         let ch = create_chat(&c, Some(d.id), "x", "dm", &[], &a).unwrap();
         assert_eq!(chat_room(&c, &ch, &a).unwrap().unwrap().id, house.id, "before any move the chat is in its dorm's room");
@@ -1799,6 +1805,6 @@ mod tests {
         assert_eq!(get_room(&c, kitchen.id, &a).unwrap().unwrap().parent_id, None, "deleting a house frees its rooms");
         delete_room(&c, kitchen.id, &a).unwrap();
         assert_eq!(get_chat(&c, ch.id, &a).unwrap().unwrap().room_id, None, "deleting the room a chat is in puts it back in its dorm's");
-        assert!(get_room(&c, attic.id, &a).unwrap().unwrap().links.is_empty(), "and its pathways go with it");
+        assert!(get_room(&c, attic.id, &a).unwrap().unwrap().links.is_empty(), "and the exits leading to it go with it");
     }
 }

@@ -603,9 +603,18 @@ try:
     check("a room can be made part of another room", kitchen["parent_id"] == house["id"] and livingr["parent_id"] == house["id"] and house["parent_id"] is None, str(kitchen))
     house_b = invoke("update_room", {"room": dict(house, parent_id=kitchen["id"])})
     check("a room can't be put inside one of its own rooms", house_b["parent_id"] is None)
-    garden = invoke("set_room_links", {"id": garden["id"], "links": [kitchen["id"], garden["id"], 99999]})
-    check("a pathway joins two rooms (never to itself or to a room that isn't there)", garden["links"] == [kitchen["id"]], str(garden))
-    check("the pathway works from the other side too", [r for r in invoke("list_rooms") if r["id"] == kitchen["id"]][0]["links"] == [garden["id"]])
+    garden = invoke("set_room_links", {"id": garden["id"], "links": [kitchen["id"], garden["id"], 99999, kitchen["id"]]})
+    check("an exit leads to another of the owner's rooms (never to itself, to a room that isn't there, or twice)", garden["links"] == [kitchen["id"]], str(garden))
+    check("an exit is one-way: the kitchen has none back yet", [r for r in invoke("list_rooms") if r["id"] == kitchen["id"]][0]["links"] == [])
+    invoke("set_room_links", {"id": kitchen["id"], "links": [garden["id"]]})
+    check("giving the kitchen its own exit to the gate leaves the gate's exit alone", [r for r in invoke("list_rooms") if r["id"] == garden["id"]][0]["links"] == [kitchen["id"]])
+    extra_ = [mk_room(f"Extra {i}", "x") for i in range(4)]
+    check("a room can have up to three exits", len(invoke("set_room_links", {"id": house["id"], "links": [x["id"] for x in extra_[:3]]})["links"]) == 3)
+    check("a fourth exit is refused, and the three stay", "at most 3" in (inv_err("set_room_links", {"id": house["id"], "links": [x["id"] for x in extra_]}) or "") and len([r for r in invoke("list_rooms") if r["id"] == house["id"]][0]["links"]) == 3)
+    invoke("set_room_links", {"id": house["id"], "links": []})
+    for x_ in extra_: invoke("delete_room", {"id": x_["id"]})
+
+
     pdorm = invoke("create_dorm", {"name": "House dorm", "roomId": house["id"]})
     pchat = invoke("create_chat", {"dormId": pdorm["id"], "name": "at home", "kind": "dm", "characterIds": [mira["id"]]})
     invoke("add_user_message", {"chatId": pchat["id"], "text": "home sweet home"}); gen_and_wait(pchat["id"])
@@ -613,7 +622,7 @@ try:
     reload_ui(); nav("Dorms"); time.sleep(1.0)
     d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'at home')]").click(); time.sleep(1.2)
     opts_ = d.execute_script("const s=document.querySelector('[aria-label=\"Go to another room\"]');return s?[...s.querySelectorAll('optgroup')].map(g=>g.label+': '+[...g.querySelectorAll('option')].map(o=>o.textContent).sort().join(', ')):null")
-    check("a Go to… menu in the chat lists nearby rooms first (the rooms inside the house)", opts_ is not None and opts_[0].startswith("Nearby") and "Our house › Kitchen" in opts_[0] and "Our house › Living room" in opts_[0] and "Garden gate" not in opts_[0], str(opts_))
+    check("a Go to… menu in the chat lists only the way on (the rooms inside the house), not every room", opts_ is not None and len(opts_) == 1 and opts_[0].startswith("Nearby") and "Our house › Kitchen" in opts_[0] and "Our house › Living room" in opts_[0] and "Garden gate" not in opts_[0], str(opts_))
     Select(d.find_element(By.CSS_SELECTOR, "[aria-label='Go to another room']")).select_by_visible_text("Our house › Kitchen"); time.sleep(1.5)
     moved = [c for c in invoke("list_chats") if c["id"] == pchat["id"]][0]
     check("choosing a room moves the same chat there (no new chat)", moved["room_id"] == kitchen["id"] and len([c for c in invoke("list_chats") if c["dorm_id"] == pdorm["id"]]) == 1, str(moved))
@@ -621,7 +630,9 @@ try:
     check("the chat header shows the new room", "Kitchen" in d.execute_script("return document.querySelector('.chathead .tok')?.textContent||''"))
     gen_and_wait(pchat["id"])
     check("after the move, the characters are told they are in the kitchen and the move is narrated", "Setting: Kitchen" in sysprompt() and "yellow tiles" in sysprompt().lower() and "It is part of Our house" in sysprompt() and any("[The scene moves to Kitchen.]" in m["content"] for m in seen["body"]["messages"]), sysprompt()[-500:])
-    check("the kitchen leads to the garden gate by its pathway", "Garden gate" in sysprompt())
+    check("the kitchen leads to the garden gate by its exit", "Garden gate" in sysprompt())
+    exits_ = d.execute_script("const s=document.querySelector('[aria-label=\"Go to another room\"]');return s?[...s.querySelectorAll('optgroup')].map(g=>g.label+': '+[...g.querySelectorAll('option')].map(o=>o.textContent).sort().join(', ')):null")
+    check("in the kitchen the menu shows its exit first", exits_ is not None and exits_[0] == "Exits: Garden gate", str(exits_))
     check("moving to the room it is already in is refused", "already" in (inv_err("move_chat", {"chatId": pchat["id"], "roomId": kitchen["id"]}) or ""))
     check("a chat can't move into a room that isn't there", bool(inv_err("move_chat", {"chatId": pchat["id"], "roomId": 99999})))
     nroom = len(invoke("list_rooms"))
@@ -629,6 +640,26 @@ try:
     after_ = [c for c in invoke("list_chats") if c["id"] == pchat["id"]][0]
     check("deleting the room a chat is in puts it back in its dorm's room", after_["room_id"] is None and len(invoke("list_rooms")) == nroom - 1)
     check("rooms that were inside a deleted room keep existing", [r for r in invoke("list_rooms") if r["id"] == livingr["id"]][0]["parent_id"] == house["id"])
+    # the pathways map on the Rooms page: rooms as cards, a line drawn from a round handle onto another room joins them
+    reload_ui(); nav("Rooms"); time.sleep(1.0)
+    d.execute_script("document.querySelector('[data-testid=rooms-map-tab]').click()"); time.sleep(0.8)
+    n_rooms_ = len(invoke("list_rooms"))
+    check("the Rooms page can show a pathways map with a card for every room", d.execute_script("return document.querySelectorAll('[data-room-node]').length") == n_rooms_ and n_rooms_ >= 3, str(n_rooms_))
+    def drag_line(a_id, b_id):
+        d.execute_script("""const port=document.querySelector('[data-port="'+arguments[0]+'"]'), tgt=document.querySelector('[data-room-node="'+arguments[1]+'"]');
+          const pr=port.getBoundingClientRect(), tr=tgt.getBoundingClientRect();
+          const mk=(t,x,y)=>new PointerEvent(t,{clientX:x,clientY:y,bubbles:true,pointerId:1,isPrimary:true});
+          port.dispatchEvent(mk('pointerdown',pr.x+5,pr.y+5)); window.dispatchEvent(mk('pointermove',tr.x+40,tr.y+40)); window.dispatchEvent(mk('pointerup',tr.x+40,tr.y+40));""", a_id, b_id)
+        time.sleep(1.0)
+    links_of = lambda rid: [r for r in invoke("list_rooms") if r["id"] == rid][0]["links"]
+    check("the garden gate has no exit to the living room yet", livingr["id"] not in links_of(garden["id"]))
+    drag_line(garden["id"], livingr["id"])
+    check("pulling a line from one room's handle onto another gives it an exit there, one way", livingr["id"] in links_of(garden["id"]) and garden["id"] not in links_of(livingr["id"]), str(links_of(garden["id"])))
+    check("the new exit is drawn on the map as an arrow", d.execute_script("return !!document.querySelector('[data-link=\"%d-%d\"]')" % (garden["id"], livingr["id"])))
+    drag_line(garden["id"], garden["id"])
+    check("a line dropped back on the same room joins nothing", links_of(garden["id"]) == [livingr["id"]], str(links_of(garden["id"])))
+    d.execute_script("document.querySelector('[data-unlink=\"%d-%d\"]').dispatchEvent(new MouseEvent('click',{bubbles:true}))" % (garden["id"], livingr["id"])); time.sleep(1.0)
+    check("the × on an arrow takes the exit away again", links_of(garden["id"]) == [] and links_of(livingr["id"]) == [])
 
     pack_json = json.dumps({"name": "Heartbeat", "description": "Two numbers.", "entries": [
         {"id": "e1", "name": "Stages", "content": "HEARTBEAT-LORE: read affection like this.", "alwaysSend": True},

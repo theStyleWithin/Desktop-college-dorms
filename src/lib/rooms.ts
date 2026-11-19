@@ -61,11 +61,20 @@ export function roomScene(r?: Room | null): SceneCfg | null {
   return { url, ext, scale: r.model_scale ?? 1, rot: r.model_rot ?? 0, y: r.model_y ?? 0 };
 }
 
-/** Where one can walk to from `cur`: the room it is part of, the rooms inside it, its neighbours in the same place, and rooms joined by a pathway. */
+/** The most exits (one-way pathways out) a room can have. */
+export const MAX_EXITS = 3;
+
+/** The rooms `cur` leads to by its own exits (one-way pathways the user drew). */
+export function roomExits(rooms: Room[], cur: Room | null): Room[] {
+  if (!cur) return [];
+  return (cur.links ?? []).map((id) => rooms.find((r) => r.id === id)).filter((r): r is Room => !!r && r.id !== cur.id);
+}
+
+/** The rooms around `cur` by the place it is part of: that place, the rooms inside it, and its neighbours there. */
 export function nearbyRooms(rooms: Room[], cur: Room | null): Room[] {
   if (!cur) return [];
-  const linked = new Set<number>([...(cur.links ?? []), ...rooms.filter((r) => (r.links ?? []).includes(cur.id)).map((r) => r.id)]);
-  return rooms.filter((r) => r.id !== cur.id && (r.id === cur.parent_id || r.parent_id === cur.id || (cur.parent_id != null && r.parent_id === cur.parent_id) || linked.has(r.id)));
+  const exits = new Set(roomExits(rooms, cur).map((r) => r.id));
+  return rooms.filter((r) => r.id !== cur.id && !exits.has(r.id) && (r.id === cur.parent_id || r.parent_id === cur.id || (cur.parent_id != null && r.parent_id === cur.parent_id)));
 }
 
 /** Whether room `x` sits somewhere inside room `anc` (so `anc` can't be put inside it). */

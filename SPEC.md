@@ -143,12 +143,14 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
 
 ## Pathways
 
-- A room may be part of another room (`parent_id`, never itself or anything inside it, checked on the backend) and may be joined to other rooms by
-  pathways (`room_links`, stored both ways; only the owner's own rooms). Deleting a room lifts what was inside it one level and removes its pathways.
+- A room may be part of another room (`parent_id`, never itself or anything inside it, checked on the backend) and may lead to other rooms by
+  exits (`room_links(a,b)`: one-way pathways from a to b, at most `MAX_EXITS` = 3 per room, only to the owner's own other rooms; the command refuses a fourth, while the database layer keeps whatever a backup brings). Deleting a room lifts what was inside it one level and removes its pathways.
 - A chat has an optional `room_id`: the room the story has walked into. The room of a chat is that one, else its dorm's. `move_chat(chat_id, room_id)` sets it,
   refuses the room the chat is already in, and appends a message with role `travel` (its text is the room's name). The chat page shows it as a divider line;
   the prompt gets it as narration (`[The scene moves to Kitchen.]`) and the system prompt describes the current room, the room it is part of, and
-  where one can go (its sub-rooms, its neighbours in the same parent and its pathways). Deleting the room a chat is in puts the chat back in its dorm's room.
+  where one can go (its sub-rooms, its neighbours in the same parent and its exits). The Go to menu offers the same: the room's exits, then the rooms around it by `parent_id`; a chat in no room at all may enter any room; a room with neither shows "No way on from here". `move_chat` itself does not check the route. Deleting the room a chat is in puts the chat back in its dorm's room.
+- The Rooms page has a Cards / Pathways map switch (kept on the device). The map draws each room as a card with a handle; dragging from a handle onto another room calls
+  `set_room_links` with that room's exits plus the new one (an arrow; refused beyond three), and the ✕ on an arrow calls it without. Two rooms that lead to each other show two arcs. Card positions are kept in `dorms.rooms.map` on the device; dashed lines are `parent_id`.
 - A moved chat prefers the new room's music over the dorm's. Backups carry parents, pathways and each chat's current room (numbers are remapped on import).
 
 ## Imported 3D rooms (v0.6)

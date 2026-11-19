@@ -529,11 +529,17 @@ pub fn clear_dorm_music(state: State<'_, Shared>, id: i64) -> R<DormOut> {
     Ok(dorm_out(&state, db::get_dorm(&db, id, &o).map_err(e)?.ok_or("Dorm not found")?))
 }
 
-/// Pathways: the rooms this one is joined to besides its parent and its sub-rooms.
+/// Pathways: the exits of this room (one-way, three at most) besides its parent and its sub-rooms.
 #[tauri::command]
 pub fn set_room_links(state: State<'_, Shared>, id: i64, links: Vec<i64>) -> R<RoomOut> {
     let o = owner(&state)?;
     let db = state.db.lock().unwrap();
+    let mut links = links;
+    let mut seen = std::collections::HashSet::new();
+    links.retain(|l| *l != id && seen.insert(*l));
+    if links.len() > db::MAX_EXITS {
+        return Err(format!("A room can have at most {} exits. Take one away first.", db::MAX_EXITS));
+    }
     db::set_room_links(&db, id, &links, &o).map_err(e)?;
     Ok(room_out(&state, db::get_room(&db, id, &o).map_err(e)?.ok_or("Room not found")?))
 }
