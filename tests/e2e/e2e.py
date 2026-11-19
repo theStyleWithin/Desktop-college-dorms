@@ -1176,7 +1176,7 @@ try:
     for _ in range(20):
         time.sleep(0.5)
         if fave_name in head_(): break
-    check("clicking a favorite opens a chat with them", fave_name in head_(), f"{fave_name!r} vs {head_()!r}")
+    check("clicking a favorite opens a chat with them", fave_name in head_(), f"{fave_name!r} vs {head_()!r}; toasts: {d.execute_script('return [...document.querySelectorAll(\'.toast\')].map(t=>t.textContent).join(\' | \')')!r}; chats: {len(invoke('list_chats'))}")
     nav("Characters"); time.sleep(0.5)
     d.execute_script("document.querySelector('[data-testid=side-recent] .sw-title').click()"); time.sleep(0.4)
     check("a section can be folded away", not d.execute_script("return !!document.querySelector('[data-testid=side-recent] .sw-body')"))
