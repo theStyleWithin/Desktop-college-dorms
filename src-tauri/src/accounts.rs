@@ -1166,6 +1166,21 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             }
             room_map.insert(r.id, nr.id);
         }
+        // pathways: rooms inside rooms, and rooms joined to each other, now that every room has its new number
+        for r in &parsed.data.rooms {
+            let Some(&me_) = room_map.get(&r.id) else { continue };
+            if let Some(p) = r.parent_id.and_then(|p| room_map.get(&p).copied()) { db::set_room_parent(&db, me_, Some(p), &o).map_err(e)?; }
+        }
+        for r in &parsed.data.rooms {
+            let Some(&me_) = room_map.get(&r.id) else { continue };
+            let links: Vec<i64> = r.links.iter().filter_map(|l| room_map.get(l).copied()).collect();
+            if !links.is_empty() {
+                // pathways go both ways: keep what the other side already joined to this room
+                let mut all = db::get_room(&db, me_, &o).map_err(e)?.map(|x| x.links).unwrap_or_default();
+                all.extend(links);
+                db::set_room_links(&db, me_, &all, &o).map_err(e)?;
+            }
+        }
 
         // decorations (only shareable ones are ever packed): a .glb, a safe name, written under a fresh name
         for d in &parsed.data.decor {
@@ -1197,9 +1212,9 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             let ids: Vec<String> = ch.character_ids.iter().filter_map(|i| char_map.get(i).cloned()).collect();
             let dorm = ch.dorm_id.and_then(|d| dorm_map.get(&d).copied());
             db.execute(
-                "INSERT INTO chats(dorm_id,name,kind,character_ids,auto_chat,auto_interval_s,turn_mode,max_auto_turns,created_at,updated_at,profile_id,style)
-                 VALUES(?1,?2,?3,?4,0,?5,?6,?7,?8,?9,?10,?11)",
-                rusqlite::params![dorm, ch.name, ch.kind, serde_json::to_string(&ids).unwrap_or_default(), ch.auto_interval_s.max(5), ch.turn_mode, ch.max_auto_turns.max(1), ch.created_at, ch.updated_at, pid, if ch.style == "phone" { "phone" } else { "chat" }],
+                "INSERT INTO chats(dorm_id,name,kind,character_ids,auto_chat,auto_interval_s,turn_mode,max_auto_turns,created_at,updated_at,profile_id,style,room_id)
+                 VALUES(?1,?2,?3,?4,0,?5,?6,?7,?8,?9,?10,?11,?12)",
+                rusqlite::params![dorm, ch.name, ch.kind, serde_json::to_string(&ids).unwrap_or_default(), ch.auto_interval_s.max(5), ch.turn_mode, ch.max_auto_turns.max(1), ch.created_at, ch.updated_at, pid, if ch.style == "phone" { "phone" } else { "chat" }, ch.room_id.and_then(|r| room_map.get(&r).copied())],
             )
             .map_err(e)?;
             chat_map.insert(ch.id, db.last_insert_rowid());

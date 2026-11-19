@@ -2,6 +2,7 @@
 //! can evolve without migrations); chats and messages are relational.
 
 use dorms_core::CharacterData;
+use std::collections::HashMap;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
@@ -139,6 +140,12 @@ pub struct Room {
     /// The owner marked this model as allowed to be shared. Only then does it go into an exported profile.
     #[serde(default)]
     pub model_share: bool,
+    /// The room this one is part of (the kitchen of "our house"). Rooms without one are top-level places.
+    #[serde(default)]
+    pub parent_id: Option<i64>,
+    /// Rooms joined to this one by a pathway, in either direction (besides its parent and sub-rooms).
+    #[serde(default)]
+    pub links: Vec<i64>,
 }
 
 fn one() -> f64 { 1.0 }
@@ -268,6 +275,9 @@ pub struct Chat {
     /// chat | phone (the same conversation, shown and written as texting)
     #[serde(default = "default_style")]
     pub style: String,
+    /// The room the story has moved into (a pathway taken). Without one, the chat is in its dorm's room.
+    #[serde(default)]
+    pub room_id: Option<i64>,
 }
 
 fn default_style() -> String {
@@ -476,6 +486,10 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
     ensure_column(&conn, "rooms", "model_y", "REAL NOT NULL DEFAULT 0")?;
     ensure_column(&conn, "rooms", "model_share", "INTEGER NOT NULL DEFAULT 0")?;
     ensure_column(&conn, "chats", "style", "TEXT NOT NULL DEFAULT 'chat'")?;
+    // pathways: rooms inside rooms, rooms joined to each other, and the room a chat has moved into
+    ensure_column(&conn, "rooms", "parent_id", "INTEGER")?;
+    ensure_column(&conn, "chats", "room_id", "INTEGER")?;
+    conn.execute_batch("CREATE TABLE IF NOT EXISTS room_links(a INTEGER NOT NULL, b INTEGER NOT NULL, PRIMARY KEY(a,b));")?;
     for t in ["rooms", "mechanics", "notes", "folders", "lorebooks", "personas"] {
         conn.execute_batch(&format!("CREATE INDEX IF NOT EXISTS idx_{t}_profile ON {t}(profile_id);"))?;
     }
@@ -580,18 +594,64 @@ pub fn get_dorm(c: &Connection, id: i64, owner: &Owner) -> R<Option<Dorm>> {
 // ----- rooms -----
 
 fn row_room(r: &rusqlite::Row) -> R<Room> {
-    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)?, model: r.get(10)?, model_name: r.get(11)?, model_scale: r.get(12)?, model_rot: r.get(13)?, model_y: r.get(14)?, model_share: r.get::<_, i64>(15)? != 0 })
+    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)?, model: r.get(10)?, model_name: r.get(11)?, model_scale: r.get(12)?, model_rot: r.get(13)?, model_y: r.get(14)?, model_share: r.get::<_, i64>(15)? != 0, parent_id: r.get(16)?, links: vec![] })
 }
-const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share";
+const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share,parent_id";
 
 pub fn list_rooms(c: &Connection, owner: &Owner) -> R<Vec<Room>> {
     let mut s = c.prepare(&format!("SELECT {ROOM_COLS} FROM rooms WHERE profile_id IS ?1 ORDER BY id DESC"))?;
     let rows = s.query_map([owner], row_room)?;
-    Ok(rows.filter_map(|r| r.ok()).collect())
+    let mut rooms: Vec<Room> = rows.filter_map(|r| r.ok()).collect();
+    let ids: std::collections::HashSet<i64> = rooms.iter().map(|r| r.id).collect();
+    let mut links: HashMap<i64, Vec<i64>> = HashMap::new();
+    let mut l = c.prepare("SELECT a,b FROM room_links ORDER BY b")?;
+    for (x, y) in l.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))?.filter_map(|r| r.ok()) {
+        if ids.contains(&x) && ids.contains(&y) { links.entry(x).or_default().push(y); }
+    }
+    for r in rooms.iter_mut() { r.links = links.remove(&r.id).unwrap_or_default(); }
+    Ok(rooms)
 }
 
 pub fn get_room(c: &Connection, id: i64, owner: &Owner) -> R<Option<Room>> {
-    c.query_row(&format!("SELECT {ROOM_COLS} FROM rooms WHERE id=?1 AND profile_id IS ?2"), params![id, owner], row_room).optional()
+    let room = c.query_row(&format!("SELECT {ROOM_COLS} FROM rooms WHERE id=?1 AND profile_id IS ?2"), params![id, owner], row_room).optional()?;
+    Ok(room.map(|mut r| {
+        r.links = c.prepare("SELECT b FROM room_links WHERE a=?1 ORDER BY b").and_then(|mut s| s.query_map([id], |x| x.get(0)).map(|rows| rows.filter_map(|x| x.ok()).collect())).unwrap_or_default();
+        r
+    }))
+}
+
+/// Whether `parent` can be the room `id` is part of: one of the owner's rooms, and not the room itself or anything inside it.
+pub fn valid_parent(c: &Connection, id: i64, parent: Option<i64>, owner: &Owner) -> Option<i64> {
+    let mut cur = parent?;
+    if get_room(c, cur, owner).ok().flatten().is_none() { return None; }
+    // walk up from the wanted parent: if we meet `id`, the room would end up inside itself
+    for _ in 0..200 {
+        if cur == id { return None; }
+        match c.query_row("SELECT parent_id FROM rooms WHERE id=?1 AND profile_id IS ?2", params![cur, owner], |r| r.get::<_, Option<i64>>(0)) {
+            Ok(Some(p)) => cur = p,
+            _ => return parent,
+        }
+    }
+    None
+}
+
+/// Joins `id` to exactly the given rooms (the owner's own, never itself) by pathways.
+pub fn set_room_links(c: &Connection, id: i64, links: &[i64], owner: &Owner) -> R<()> {
+    if get_room(c, id, owner)?.is_none() { return Ok(()); }
+    c.execute("DELETE FROM room_links WHERE a=?1 OR b=?1", [id])?;
+    for &o in links {
+        if o != id && get_room(c, o, owner)?.is_some() {
+            c.execute("INSERT OR IGNORE INTO room_links(a,b) VALUES(?1,?2)", params![id, o])?;
+            c.execute("INSERT OR IGNORE INTO room_links(a,b) VALUES(?1,?2)", params![o, id])?;
+        }
+    }
+    Ok(())
+}
+
+pub fn set_room_parent(c: &Connection, id: i64, parent: Option<i64>, owner: &Owner) -> R<()> {
+    let parent = valid_parent(c, id, parent, owner);
+    c.execute("UPDATE rooms SET parent_id=?2 WHERE id=?1 AND profile_id IS ?3", params![id, parent, owner])?;
+    Ok(())
 }
 
 pub fn create_room(c: &Connection, r: &Room, owner: &Owner) -> R<Room> {
@@ -607,11 +667,17 @@ pub fn update_room(c: &Connection, r: &Room, owner: &Owner) -> R<()> {
         "UPDATE rooms SET name=?2,kind=?3,description=?4,owner_kind=?5,character_id=?6,backdrop=?7,music=?9,music_name=?10,model=?11,model_name=?12,model_scale=?13,model_rot=?14,model_y=?15,model_share=?16 WHERE id=?1 AND profile_id IS ?8",
         params![r.id, r.name, r.kind, r.description, r.owner_kind, r.character_id, r.backdrop, owner, r.music, r.music_name, r.model, r.model_name, r.model_scale, r.model_rot, r.model_y, r.model_share as i64],
     )?;
+    set_room_parent(c, r.id, r.parent_id, owner)?;
     Ok(())
 }
 
 pub fn delete_room(c: &Connection, id: i64, owner: &Owner) -> R<()> {
     c.execute("UPDATE dorms SET room_id=NULL WHERE room_id=?1 AND profile_id IS ?2", params![id, owner])?;
+    c.execute("UPDATE chats SET room_id=NULL WHERE room_id=?1 AND profile_id IS ?2", params![id, owner])?;
+    // what was inside it moves up a level, so nothing is lost
+    let up: Option<i64> = c.query_row("SELECT parent_id FROM rooms WHERE id=?1 AND profile_id IS ?2", params![id, owner], |r| r.get(0)).optional()?.flatten();
+    c.execute("UPDATE rooms SET parent_id=?3 WHERE parent_id=?1 AND profile_id IS ?2", params![id, owner, up])?;
+    c.execute("DELETE FROM room_links WHERE a=?1 OR b=?1", [id])?;
     c.execute("DELETE FROM rooms WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     Ok(())
 }
@@ -935,10 +1001,11 @@ fn row_chat(r: &rusqlite::Row) -> R<Chat> {
         created_at: r.get(9)?,
         updated_at: r.get(10)?,
         style: r.get(11)?,
+        room_id: r.get(12)?,
     })
 }
 
-const CHAT_COLS: &str = "id,dorm_id,name,kind,character_ids,auto_chat,auto_interval_s,turn_mode,max_auto_turns,created_at,updated_at,style";
+const CHAT_COLS: &str = "id,dorm_id,name,kind,character_ids,auto_chat,auto_interval_s,turn_mode,max_auto_turns,created_at,updated_at,style,room_id";
 
 pub fn list_chats(c: &Connection, owner: &Owner) -> R<Vec<Chat>> {
     let sql = format!("SELECT {CHAT_COLS} FROM chats WHERE profile_id IS ?1 ORDER BY updated_at DESC");
@@ -964,6 +1031,20 @@ pub fn create_chat(c: &Connection, dorm_id: Option<i64>, name: &str, kind: &str,
         params![dorm_id, name, kind, serde_json::to_string(ids).unwrap_or_default(), t, owner],
     )?;
     Ok(get_chat(c, c.last_insert_rowid(), owner)?.expect("just inserted"))
+}
+
+/// The room a chat is in now: the one the story moved to, else its dorm's.
+pub fn chat_room(c: &Connection, chat: &Chat, owner: &Owner) -> R<Option<Room>> {
+    if let Some(r) = chat.room_id { if let Some(room) = get_room(c, r, owner)? { return Ok(Some(room)); } }
+    let Some(d) = chat.dorm_id else { return Ok(None) };
+    let Some(dorm) = get_dorm(c, d, owner)? else { return Ok(None) };
+    match dorm.room_id { Some(r) => get_room(c, r, owner), None => Ok(None) }
+}
+
+pub fn set_chat_room(c: &Connection, id: i64, room_id: Option<i64>, owner: &Owner) -> R<()> {
+    let room_id = match room_id { Some(r) if get_room(c, r, owner)?.is_some() => Some(r), _ => None };
+    c.execute("UPDATE chats SET room_id=?2, updated_at=?4 WHERE id=?1 AND profile_id IS ?3", params![id, room_id, owner, now()])?;
+    Ok(())
 }
 
 pub fn update_chat(c: &Connection, ch: &Chat, owner: &Owner) -> R<()> {
@@ -1180,6 +1261,7 @@ pub fn touch_login(c: &Connection, id: &str) -> R<()> {
 /// Remove everything a profile owns (chats take their messages with them) and, for a named profile, the
 /// profile itself. For the guest space this just empties it.
 pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM room_links WHERE a IN (SELECT id FROM rooms WHERE profile_id IS ?1) OR b IN (SELECT id FROM rooms WHERE profile_id IS ?1)", [owner])?;
     c.execute("DELETE FROM rooms WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM decor WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM prompts WHERE profile_id IS ?1", [owner])?;
@@ -1247,7 +1329,7 @@ mod tests {
     fn rooms_and_packs_belong_to_their_owner_and_dorms_can_only_use_their_own_rooms() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false };
+        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![] };
         let ra = create_room(&c, &room("A's kitchen"), &a).unwrap();
         let rb = create_room(&c, &room("B's kitchen"), &b).unwrap();
         assert_eq!(list_rooms(&c, &a).unwrap().len(), 1);
@@ -1561,5 +1643,41 @@ mod tests {
         let again = open(&path).unwrap(); // opening twice must not fail or duplicate anything
         assert_eq!(list_characters(&again, &None).unwrap().len(), 1);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pathways_nest_rooms_link_them_and_move_a_chat() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        let room = |n: &str| Room { id: 0, name: n.into(), kind: "other".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![] };
+        let house = create_room(&c, &room("House"), &a).unwrap();
+        let kitchen = create_room(&c, &room("Kitchen"), &a).unwrap();
+        let attic = create_room(&c, &room("Attic"), &a).unwrap();
+        let theirs = create_room(&c, &room("Theirs"), &b).unwrap();
+        set_room_parent(&c, kitchen.id, Some(house.id), &a).unwrap();
+        assert_eq!(get_room(&c, kitchen.id, &a).unwrap().unwrap().parent_id, Some(house.id));
+        set_room_parent(&c, house.id, Some(kitchen.id), &a).unwrap();
+        assert_eq!(get_room(&c, house.id, &a).unwrap().unwrap().parent_id, None, "a room can't end up inside its own sub-room");
+        set_room_parent(&c, house.id, Some(house.id), &a).unwrap();
+        assert_eq!(get_room(&c, house.id, &a).unwrap().unwrap().parent_id, None, "nor inside itself");
+        set_room_parent(&c, attic.id, Some(theirs.id), &a).unwrap();
+        assert_eq!(get_room(&c, attic.id, &a).unwrap().unwrap().parent_id, None, "nor inside someone else's room");
+        set_room_links(&c, kitchen.id, &[attic.id, theirs.id, kitchen.id], &a).unwrap();
+        assert_eq!(get_room(&c, kitchen.id, &a).unwrap().unwrap().links, vec![attic.id], "links are the owner's own other rooms only");
+        assert_eq!(get_room(&c, attic.id, &a).unwrap().unwrap().links, vec![kitchen.id], "a pathway goes both ways");
+        let d = create_dorm(&c, "d", Some(house.id), &a).unwrap();
+        let ch = create_chat(&c, Some(d.id), "x", "dm", &[], &a).unwrap();
+        assert_eq!(chat_room(&c, &ch, &a).unwrap().unwrap().id, house.id, "before any move the chat is in its dorm's room");
+        set_chat_room(&c, ch.id, Some(kitchen.id), &a).unwrap();
+        let ch = get_chat(&c, ch.id, &a).unwrap().unwrap();
+        assert_eq!(chat_room(&c, &ch, &a).unwrap().unwrap().id, kitchen.id);
+        set_chat_room(&c, ch.id, Some(theirs.id), &a).unwrap();
+        assert_eq!(get_chat(&c, ch.id, &a).unwrap().unwrap().room_id, None, "a chat can't move into someone else's room");
+        set_chat_room(&c, ch.id, Some(kitchen.id), &a).unwrap();
+        delete_room(&c, house.id, &a).unwrap();
+        assert_eq!(get_room(&c, kitchen.id, &a).unwrap().unwrap().parent_id, None, "deleting a house frees its rooms");
+        delete_room(&c, kitchen.id, &a).unwrap();
+        assert_eq!(get_chat(&c, ch.id, &a).unwrap().unwrap().room_id, None, "deleting the room a chat is in puts it back in its dorm's");
+        assert!(get_room(&c, attic.id, &a).unwrap().unwrap().links.is_empty(), "and its pathways go with it");
     }
 }

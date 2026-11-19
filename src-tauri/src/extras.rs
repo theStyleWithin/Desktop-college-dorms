@@ -91,8 +91,12 @@ pub fn create_room(state: State<'_, Shared>, room: Room) -> R<RoomOut> {
     r.model.clear(); // a 3D scene only comes through set_room_model
     r.model_name.clear();
     r.model_scale = 1.0; r.model_rot = 0.0; r.model_y = 0.0; r.model_share = false;
+    let wanted_parent = r.parent_id;
     let r = db::create_room(&db, &r, &o).map_err(e)?;
-    Ok(room_out(&state, r))
+    if wanted_parent.is_some() {
+        db::set_room_parent(&db, r.id, wanted_parent, &o).map_err(e)?;
+    }
+    Ok(room_out(&state, db::get_room(&db, r.id, &o).map_err(e)?.unwrap_or(r)))
 }
 
 #[tauri::command]
@@ -525,6 +529,32 @@ pub fn clear_dorm_music(state: State<'_, Shared>, id: i64) -> R<DormOut> {
     Ok(dorm_out(&state, db::get_dorm(&db, id, &o).map_err(e)?.ok_or("Dorm not found")?))
 }
 
+/// Pathways: the rooms this one is joined to besides its parent and its sub-rooms.
+#[tauri::command]
+pub fn set_room_links(state: State<'_, Shared>, id: i64, links: Vec<i64>) -> R<RoomOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    db::set_room_links(&db, id, &links, &o).map_err(e)?;
+    Ok(room_out(&state, db::get_room(&db, id, &o).map_err(e)?.ok_or("Room not found")?))
+}
+
+/// The story walks into another room: the same chat carries on there. A line in the conversation records the move,
+/// and from now on the characters are told they are in the new room.
+#[tauri::command]
+pub fn move_chat(state: State<'_, Shared>, chat_id: i64, room_id: i64) -> R<db::Message> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let chat = db::get_chat(&db, chat_id, &o).map_err(e)?.ok_or("Chat not found")?;
+    let room = db::get_room(&db, room_id, &o).map_err(e)?.ok_or("Room not found")?;
+    if db::chat_room(&db, &chat, &o).map_err(e)?.map(|r| r.id) == Some(room.id) {
+        return Err(format!("You are already in {}.", room.name));
+    }
+    db::set_chat_room(&db, chat_id, Some(room.id), &o).map_err(e)?;
+    let m = db::add_message(&db, chat_id, "travel", None, &[room.name.clone()]).map_err(e)?;
+    crate::commands::emit(&state, "dorms://moved", json!({ "chat_id": chat_id, "room_id": room.id }));
+    Ok(m)
+}
+
 #[tauri::command]
 pub fn set_dorm_room(state: State<'_, Shared>, id: i64, room_id: Option<i64>) -> R<()> {
     let o = owner(&state)?;
@@ -536,8 +566,7 @@ fn kind_label(k: &str) -> String {
 }
 
 fn room_block(db: &Connection, chat: &db::Chat, o: &db::Owner) -> String {
-    let Some(dorm) = chat.dorm_id.and_then(|d| db::get_dorm(db, d, o).ok().flatten()) else { return String::new() };
-    let Some(room) = dorm.room_id.and_then(|r| db::get_room(db, r, o).ok().flatten()) else { return String::new() };
+    let Some(room) = db::chat_room(db, chat, o).ok().flatten() else { return String::new() };
     let mut s = format!("Setting: {}", room.name);
     if room.kind != "other" {
         s.push_str(&format!(" (a {})", kind_label(&room.kind)));
@@ -550,7 +579,22 @@ fn room_block(db: &Connection, chat: &db::Chat, o: &db::Owner) -> String {
     if !room.description.trim().is_empty() {
         s.push_str(&format!("\n{}", room.description.trim()));
     }
-    s.push_str("\nKeep the scene in this place unless the story moves it.");
+    // where this place sits and where it leads, so the story can walk on
+    let all = db::list_rooms(db, o).unwrap_or_default();
+    let name = |id: &i64| all.iter().find(|r| r.id == *id).map(|r| r.name.clone());
+    if let Some(p) = room.parent_id.as_ref().and_then(name) {
+        s.push_str(&format!("\nIt is part of {p}."));
+    }
+    let mut near: Vec<String> = all.iter().filter(|r| r.parent_id == Some(room.id)).map(|r| r.name.clone()).collect();
+    if let Some(pid) = room.parent_id {
+        near.extend(all.iter().filter(|r| r.parent_id == Some(pid) && r.id != room.id).map(|r| r.name.clone()));
+    }
+    near.extend(room.links.iter().filter_map(name));
+    near.sort(); near.dedup();
+    if !near.is_empty() {
+        s.push_str(&format!("\nFrom here one can go to: {}.", near.join(", ")));
+    }
+    s.push_str("\nKeep the scene in this place unless the story moves it. When the story walks into another room, the scene follows the story there.");
     s
 }
 
