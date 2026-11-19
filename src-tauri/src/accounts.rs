@@ -778,6 +778,22 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     decor.retain(|d| d.share);
     for d in decor.iter_mut() { pack_music(&mut d.file, &mut zip)?; }
     decor.retain(|d| !d.file.is_empty());
+    // the pictures of a room's gallery travel with it
+    for r in rooms.iter_mut() {
+        let mut keep = Vec::new();
+        for (k, g) in r.gallery.clone().into_iter().enumerate() {
+            let Ok(bytes) = std::fs::read(st.data_dir.join(&g.file)) else { continue };
+            let ext = std::path::Path::new(&g.file).extension().and_then(|x| x.to_str()).unwrap_or("png").to_lowercase();
+            let base = format!("roompic-{}-{k}-{}.{ext}", r.id, g.id.chars().filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-').collect::<String>());
+            if safe_media_name(&base) && seen.insert(base.clone()) {
+                zip.start_file(format!("media/{base}"), stored).map_err(e)?;
+                zip.write_all(&bytes).map_err(e)?;
+                media_count += 1;
+            }
+            keep.push(db::RoomPic { file: format!("media/{base}"), ..g });
+        }
+        r.gallery = keep;
+    }
     // room backdrops travel with their rooms
     for r in rooms.iter_mut() {
         if let Some(f) = r.backdrop.strip_prefix("file:") {
@@ -910,7 +926,7 @@ fn remove_owner_data(st: &AppState, o: &Owner) -> R<()> {
         files.extend(db::list_folders(&db, o).map_err(e)?.into_iter().filter_map(|f| f.cover));
         files.extend(db::list_personas(&db, o).map_err(e)?.into_iter().filter_map(|p| p.avatar));
         if let Some(pid) = o { files.extend(db::get_profile_avatar(&db, pid).map(|(f, _)| f)); }
-        files.extend(db::list_rooms(&db, o).map_err(e)?.into_iter().flat_map(|r| r.backdrop.strip_prefix("file:").map(str::to_string).into_iter().chain(Some(r.music).filter(|m| !m.is_empty())).chain(Some(r.model).filter(|m| !m.is_empty()))));
+        files.extend(db::list_rooms(&db, o).map_err(e)?.into_iter().flat_map(|r| r.backdrop.strip_prefix("file:").map(str::to_string).into_iter().chain(Some(r.music).filter(|m| !m.is_empty())).chain(Some(r.model).filter(|m| !m.is_empty())).chain(r.gallery.into_iter().map(|g| g.file))));
         files.extend(db::list_dorms(&db, o).map_err(e)?.into_iter().filter(|d| !d.music.is_empty()).map(|d| d.music));
         files.extend(db::list_decor(&db, o).map_err(e)?.into_iter().map(|d| d.file));
         files.extend(db::list_emoji(&db, o).map_err(e)?.into_iter().map(|d| d.file));
@@ -1239,6 +1255,24 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
                 // a built-in scene: keep it
                 nr.backdrop = r.backdrop.clone();
                 db::update_room(&db, &nr, &o).map_err(e)?;
+            }
+            // its gallery: pictures only, under fresh names, captions kept short
+            {
+                let mut pics = Vec::new();
+                for (k, g) in r.gallery.iter().enumerate().take(db::MAX_ROOM_PICS) {
+                    let base = g.file.strip_prefix("media/").unwrap_or("").to_string();
+                    let ext = std::path::Path::new(&base).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+                    if !["png", "jpg", "jpeg", "webp", "gif", "avif", "bmp"].contains(&ext.as_str()) { continue; }
+                    let Some(bytes) = parsed.media.get(&base).filter(|_| safe_media_name(&base)) else { continue };
+                    let id = uid();
+                    let rel = format!("media/roompic-{}-{id}.{ext}", nr.id);
+                    let abs = st.data_dir.join(&rel);
+                    std::fs::write(&abs, bytes).map_err(e)?;
+                    written.push(abs);
+                    pics.push(db::RoomPic { id, file: rel, caption: g.caption.chars().filter(|c| !c.is_control()).take(120).collect() });
+                    let _ = k;
+                }
+                if !pics.is_empty() { db::set_room_gallery(&db, nr.id, &pics, &o).map_err(e)?; }
             }
             room_map.insert(r.id, nr.id);
         }

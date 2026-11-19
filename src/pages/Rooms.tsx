@@ -3,6 +3,7 @@ import { api, displayName, type Room, type RoomKind } from "../api";
 import RoomMap from "../components/RoomMap";
 import RoomTitle from "../components/RoomTitle";
 import WorldsBar, { type WorldSel } from "../components/WorldsBar";
+import RoomGallery from "../components/RoomGallery";
 import RoomDecoEditor from "../components/RoomDecoEditor";
 import { ensureDecoArt } from "../lib/deco";
 import MusicField from "../components/MusicField";
@@ -80,7 +81,7 @@ export default function Rooms({ edit, world }: { edit?: number | "new"; world?: 
                 <div className="room-art" style={{ background: roomBackground(r) ?? "linear-gradient(135deg, #2a2540, #3a2f55)" }}>{r.deco?.bg ? (ensureDecoArt(), <span className="deco-bg" data-bg={r.deco.bg} />) : null}</div>
                 <div className="room-body">
                   <h3><RoomTitle room={r} /></h3>
-                  <div className="hint">{kindLabel(r.kind)} · {r.owner_kind === "character" && owner ? `${displayName(owner)}'s place` : "Your own space"} · {n} dorm{n === 1 ? "" : "s"}{r.parent_id != null && rooms.some((x) => x.id === r.parent_id) ? ` · in ${pathName(rooms, r.parent_id)}` : ""}{inside ? ` · ${inside} room${inside === 1 ? "" : "s"} inside` : ""}{shown === "all" && r.world_id != null ? ` · 🌍 ${worlds.find((w) => w.id === r.world_id)?.name ?? ""}` : ""}</div>
+                  <div className="hint">{kindLabel(r.kind)} · {r.owner_kind === "character" && owner ? `${displayName(owner)}'s place` : "Your own space"} · {n} dorm{n === 1 ? "" : "s"}{r.parent_id != null && rooms.some((x) => x.id === r.parent_id) ? ` · in ${pathName(rooms, r.parent_id)}` : ""}{inside ? ` · ${inside} room${inside === 1 ? "" : "s"} inside` : ""}{(r.gallery?.length ?? 0) > 0 ? ` · 🖼 ${r.gallery!.length}` : ""}{shown === "all" && r.world_id != null ? ` · 🌍 ${worlds.find((w) => w.id === r.world_id)?.name ?? ""}` : ""}</div>
                   {r.description && <p className="sub room-desc">{r.description}</p>}
                   <div className="row" style={{ marginTop: 10 }}>
                     <button className="btn primary sm" onClick={() => setStarting(r)}>Start a dorm here</button>
@@ -219,6 +220,10 @@ function RoomForm({ id, world }: { id: number | null; world: number | null }) {
       <h3 className="step"><b>•</b> Decorations (optional)</h3>
       <p className="sub" style={{ margin: "4px 0 10px" }}>Dress the room like a server: a short tag beside its name, and the same nameplates, moving backgrounds and wreaths a profile can wear.</p>
       <RoomDecoEditor room={{ ...(r as Room), id: existing?.id ?? 0, created_at: existing?.created_at ?? 0 }} value={r.deco ?? { plate: "none", bg: "", wreath: "", tag: "", tag_color: "#5865f2", tag_glyph: "" }} onChange={(deco) => set({ deco })} />
+
+      <h3 className="step"><b>•</b> Gallery</h3>
+      <p className="sub" style={{ margin: "4px 0 10px" }}>Pictures of the place, to build up its look beyond the words of the description.</p>
+      <RoomGallery room={existing} />
 
       <h3 className="step"><b>2</b> Name, description &amp; background</h3>
       <label className="field"><span>Room name</span>

@@ -94,8 +94,8 @@ pub struct CharacterOut {
 
 #[derive(Serialize)]
 pub struct GalleryPath {
-    id: String,
-    path: String,
+    pub id: String,
+    pub path: String,
 }
 
 fn out(st: &AppState, c: Character) -> CharacterOut {

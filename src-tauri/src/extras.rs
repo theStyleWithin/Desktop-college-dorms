@@ -31,13 +31,16 @@ pub struct RoomOut {
     music_path: Option<String>,
     /// Absolute path of the imported 3D scene, when it has one.
     model_path: Option<String>,
+    /// Where each gallery picture is (the web view turns them into something it can show).
+    gallery_paths: Vec<crate::commands::GalleryPath>,
 }
 
 fn room_out(st: &AppState, room: Room) -> RoomOut {
     let backdrop_path = room.backdrop.strip_prefix("file:").map(|f| st.data_dir.join(f).to_string_lossy().to_string());
     let music_path = Some(room.music.as_str()).filter(|m| !m.is_empty()).map(|m| st.data_dir.join(m).to_string_lossy().to_string());
     let model_path = Some(room.model.as_str()).filter(|m| !m.is_empty()).map(|m| st.data_dir.join(m).to_string_lossy().to_string());
-    RoomOut { room, backdrop_path, music_path, model_path }
+    let gallery_paths = room.gallery.iter().map(|p| crate::commands::GalleryPath { id: p.id.clone(), path: st.data_dir.join(&p.file).to_string_lossy().to_string() }).collect();
+    RoomOut { room, backdrop_path, music_path, model_path, gallery_paths }
 }
 
 const KINDS: [&str; 13] = [
@@ -136,6 +139,9 @@ pub fn delete_room(state: State<'_, Shared>, id: i64) -> R<()> {
         if !r.model.is_empty() {
             let _ = std::fs::remove_file(state.data_dir.join(&r.model));
         }
+        for p in &r.gallery {
+            let _ = std::fs::remove_file(state.data_dir.join(&p.file));
+        }
     }
     db::delete_room(&db, id, &o).map_err(e)
 }
@@ -164,6 +170,86 @@ pub fn set_room_backdrop(request: Request<'_>, state: State<'_, Shared>) -> R<Ro
     r.backdrop = format!("file:{rel}");
     db::update_room(&db, &r, &o).map_err(e)?;
     Ok(room_out(&state, r))
+}
+
+const MAX_ROOM_PIC_BYTES: usize = 25 * 1024 * 1024;
+const PIC_EXTS: [&str; 7] = ["png", "jpg", "jpeg", "webp", "gif", "avif", "bmp"];
+
+fn clean_caption(raw: &str) -> String {
+    raw.chars().filter(|c| !c.is_control()).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ").chars().take(120).collect()
+}
+
+/// Add a picture to a room's gallery. Body: the picture. Headers: `x-room-id`, `x-file-name`, `x-caption` (percent-encoded).
+#[tauri::command]
+pub fn add_room_picture(request: Request<'_>, state: State<'_, Shared>) -> R<RoomOut> {
+    let id: i64 = header(&request, "x-room-id").parse().map_err(|_| "Save the room first")?;
+    let name = header(&request, "x-file-name");
+    let caption = clean_caption(&header(&request, "x-caption"));
+    let bytes = raw_body(&request)?;
+    if bytes.is_empty() || bytes.len() > MAX_ROOM_PIC_BYTES {
+        return Err("That picture is too large (25 MB at most).".into());
+    }
+    let ext = std::path::Path::new(&name).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+    if !PIC_EXTS.contains(&ext.as_str()) {
+        return Err("A room's gallery holds pictures (JPG, PNG, WebP or GIF).".into());
+    }
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let r = db::get_room(&db, id, &o).map_err(e)?.ok_or("Save the room first")?;
+    if r.gallery.len() >= db::MAX_ROOM_PICS {
+        return Err(format!("That's the most pictures one room's gallery can hold ({}). Remove some first.", db::MAX_ROOM_PICS));
+    }
+    let pid = uid();
+    let rel = format!("media/roompic-{}-{pid}.{ext}", r.id);
+    std::fs::write(state.data_dir.join(&rel), bytes).map_err(e)?;
+    let mut g = r.gallery.clone();
+    g.push(db::RoomPic { id: pid, file: rel, caption });
+    db::set_room_gallery(&db, id, &g, &o).map_err(e)?;
+    Ok(room_out(&state, db::get_room(&db, id, &o).map_err(e)?.ok_or("Room not found")?))
+}
+
+/// Change a gallery picture's caption.
+#[tauri::command]
+pub fn set_room_picture_caption(state: State<'_, Shared>, id: i64, item_id: String, caption: String) -> R<RoomOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let r = db::get_room(&db, id, &o).map_err(e)?.ok_or("Room not found")?;
+    let mut g = r.gallery.clone();
+    let p = g.iter_mut().find(|p| p.id == item_id).ok_or("That picture isn't in the gallery any more.")?;
+    p.caption = clean_caption(&caption);
+    db::set_room_gallery(&db, id, &g, &o).map_err(e)?;
+    Ok(room_out(&state, db::get_room(&db, id, &o).map_err(e)?.ok_or("Room not found")?))
+}
+
+#[tauri::command]
+pub fn remove_room_picture(state: State<'_, Shared>, id: i64, item_id: String) -> R<RoomOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let r = db::get_room(&db, id, &o).map_err(e)?.ok_or("Room not found")?;
+    if let Some(p) = r.gallery.iter().find(|p| p.id == item_id) {
+        let _ = std::fs::remove_file(state.data_dir.join(&p.file));
+    }
+    let g: Vec<db::RoomPic> = r.gallery.iter().filter(|p| p.id != item_id).cloned().collect();
+    db::set_room_gallery(&db, id, &g, &o).map_err(e)?;
+    Ok(room_out(&state, db::get_room(&db, id, &o).map_err(e)?.ok_or("Room not found")?))
+}
+
+/// Use a gallery picture as the room's backdrop (a copy; the picture stays in the gallery).
+#[tauri::command]
+pub fn use_room_picture_as_backdrop(state: State<'_, Shared>, id: i64, item_id: String) -> R<RoomOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut r = db::get_room(&db, id, &o).map_err(e)?.ok_or("Room not found")?;
+    let p = r.gallery.iter().find(|p| p.id == item_id).cloned().ok_or("That picture isn't in the gallery any more.")?;
+    let ext = std::path::Path::new(&p.file).extension().and_then(|x| x.to_str()).unwrap_or("png").to_lowercase();
+    let rel = format!("media/room-{}-{}.{ext}", r.id, db::now());
+    std::fs::copy(state.data_dir.join(&p.file), state.data_dir.join(&rel)).map_err(e)?;
+    if let Some(old) = r.backdrop.strip_prefix("file:") {
+        let _ = std::fs::remove_file(state.data_dir.join(old));
+    }
+    r.backdrop = format!("file:{rel}");
+    db::update_room(&db, &r, &o).map_err(e)?;
+    Ok(room_out(&state, db::get_room(&db, id, &o).map_err(e)?.ok_or("Room not found")?))
 }
 
 const MUSIC_EXTS: [&str; 8] = ["mp3", "ogg", "oga", "opus", "wav", "m4a", "aac", "flac"];
@@ -639,6 +725,11 @@ fn room_block(db: &Connection, chat: &db::Chat, o: &db::Owner) -> String {
     }
     if !room.description.trim().is_empty() {
         s.push_str(&format!("\n{}", room.description.trim()));
+    }
+    // what the pictures of the room show (their captions), so the characters know the place as it looks
+    let details: Vec<String> = room.gallery.iter().map(|p| p.caption.trim().to_string()).filter(|c| !c.is_empty()).take(12).collect();
+    if !details.is_empty() {
+        s.push_str(&format!("\nDetails of this place: {}.", details.join("; ")));
     }
     if let Some(w) = room.world_id.and_then(|w| db::get_world(db, w, o).ok().flatten()) {
         s.push_str(&format!("\nThis place is in the world of {}.", w.name));

@@ -12,15 +12,24 @@ Cloud APIs are optional and use your own key.
 
 Rendered from the real app with original demo characters. (Cards, chats and avatars here are made up for the screenshots.)
 
-**Desktop**
+**What's new**
+
+| | |
+|---|---|
+| ![Characters list](docs/screenshots/desktop-channel.png)<br>**Characters list** (here beside a dorm channel, where characters talk to you and to each other): a members-style list on the right with a round avatar, a presence light (green, amber or red from the model behind them) and a status bubble in each character's voice | ![Side bar](docs/screenshots/desktop-side-bar.png)<br>**Your own side bar**: drag items into your order; **Recent chats**, **Favorites** (no limit), **Most used** and a **Picture frame** fill the empty space |
+| ![Gallery editor](docs/screenshots/desktop-gallery-editor.png)<br>**Character galleries**: give a character a whole gallery, tag each picture with the moods it fits, and choose fixed, random or match-the-mood | ![Mood picture in chat](docs/screenshots/desktop-gallery-chat.png)<br>**Mood pictures**: a happy reply shows the happy picture, a sad one the sad picture, detected on your device |
+| ![Pathways map](docs/screenshots/desktop-pathways-map.png)<br>**Pathways map**: rooms inside rooms, and one-way exits (up to three per room) you draw by dragging from a room's handle onto another | ![Walking between rooms](docs/screenshots/desktop-go-to.png)<br>**Walk the story**: the **Go to…** menu moves the same chat into another room; a line marks the move and the characters know where they are |
+| ![Picture frame chooser](docs/screenshots/desktop-picture-frame.png)<br>**Picture frame**: choose who hangs in it and they stay there until you change it | |
+
+**More of the app**
 
 | | |
 |---|---|
 | ![Home](docs/screenshots/desktop-home.png)<br>**Home**: jump back into chats, your characters at a glance | ![Library](docs/screenshots/desktop-library.png)<br>**Library**: search, tags, favorites, import cards |
-| ![A channel](docs/screenshots/desktop-channel.png)<br>**Dorm channels**: characters talk to you and to each other | ![Direct chat](docs/screenshots/desktop-chat.png)<br>**Chat**: swipe, regenerate, continue, edit; image, GIF, video or live 3D VRM beside it |
-| ![Editor](docs/screenshots/desktop-editor.png)<br>**Character editor**: Chub-style, with live token counts | ![Models](docs/screenshots/desktop-models.png)<br>**Built-in models**: sized to your computer, resumable downloads |
-| ![Other API](docs/screenshots/desktop-other-api.png)<br>**Other API**: plug in any OpenAI- or Anthropic-style service | ![Light theme](docs/screenshots/desktop-light-theme.png)<br>**Themes**: dusk, midnight and a light "paper" theme |
-| ![Welcome](docs/screenshots/desktop-welcome.png)<br>**Profiles**: local accounts with an optional passcode, or hop in as a guest | ![Profile settings](docs/screenshots/desktop-profile.png)<br>**Profile settings**: passcode, backup, **Eject**, delete |
+| ![Direct chat](docs/screenshots/desktop-chat.png)<br>**Chat**: swipe, regenerate, continue, edit; image, GIF, video or live 3D VRM beside it | ![Editor](docs/screenshots/desktop-editor.png)<br>**Character editor**: Chub-style, with live token counts |
+| ![Models](docs/screenshots/desktop-models.png)<br>**Built-in models**: sized to your computer, resumable downloads | ![Other API](docs/screenshots/desktop-other-api.png)<br>**Other API**: plug in any OpenAI- or Anthropic-style service |
+| ![Light theme](docs/screenshots/desktop-light-theme.png)<br>**Themes**: dusk, midnight and a light "paper" theme | ![Welcome](docs/screenshots/desktop-welcome.png)<br>**Profiles**: local accounts with an optional passcode, or hop in as a guest |
+| ![Profile settings](docs/screenshots/desktop-profile.png)<br>**Profile settings**: passcode, backup, **Eject**, delete | |
 
 **Phone layout** (the Android app uses this same interface; shown here at phone width)
 
@@ -87,6 +96,7 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
   **Worlds** are folders of connected rooms, kept apart from each other: group the rooms of a big place into a world, build more rooms into it, and attach lorebooks to it that
   apply to every chat in any of its rooms. Rooms, "part of" links and exits never cross from one world into another. Each world also has room for its **background lore**,
   written to be read: its **📖 Read about this world** page shows the lore, its rooms (start a dorm in any of them) and the lorebooks that apply, so you can read up before diving in.
+  Rooms also have a **gallery**, like characters do: up to 24 pictures with captions that show what the place looks like. Captions are told to the characters as details of the room, and any picture can become the backdrop.
 - **Profile decorations**: dress your profile and your characters. A **nameplate** (an animated strip behind a name), an animated **profile background** and an
   **avatar wreath** (a frame drawn around a picture), filed by collection (Classic, Kawaii Boba Tea, Lunar New Year, Anime) with filters and one-click themes, plus a
   2 to 4 letter **name tag** with a colour and a symbol. Your own show at the bottom left of the side bar, where your profile sits, and on your profile card
