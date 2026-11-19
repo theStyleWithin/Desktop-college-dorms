@@ -61,6 +61,9 @@ function loadNavOrder(): Route["page"][] {
 function Shell({ session, setSession }: { session: SessionState; setSession: (s: SessionState) => void }) {
   const toast = useToast();
   const [route, setRoute] = useState<Route>({ page: "home" });
+  // every walk to a chat (from the side bar, say) starts the chat page fresh, even when a chat is already open
+  const [chatNav, setChatNav] = useState(0);
+  const go = useCallback((r: Route) => { if (r.page === "chat") setChatNav((n) => n + 1); setRoute(r); }, []);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
   const [dorms, setDorms] = useState<Dorm[]>([]);
@@ -126,8 +129,8 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
   }, [personas, settings.active_persona, settings.user_name, session.profile]);
 
   const store: Store = useMemo(
-    () => ({ characters, chats, dorms, rooms, folders, personas, me, settings, info, modelCount, go: setRoute, refresh, setSettings, session, setSession }),
-    [characters, chats, dorms, rooms, folders, personas, me, settings, info, modelCount, refresh, setSettings, session, setSession],
+    () => ({ characters, chats, dorms, rooms, folders, personas, me, settings, info, modelCount, go, refresh, setSettings, session, setSession }),
+    [characters, chats, dorms, rooms, folders, personas, me, settings, info, modelCount, go, refresh, setSettings, session, setSession],
   );
 
   return (
@@ -188,7 +191,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
               {route.page === "lorebooks" && <Lorebooks />}
               {route.page === "rooms" && <Rooms key={String(route.edit ?? "list")} edit={route.edit} />}
               {route.page === "editor" && <Editor key={route.id ?? "new"} id={route.id} />}
-              {route.page === "chat" && <ChatPage initialChatId={route.chatId} />}
+              {route.page === "chat" && <ChatPage key={chatNav} initialChatId={route.chatId} />}
               {route.page === "settings" && <SettingsPage initialTab={route.tab} />}
             </>
           )}
