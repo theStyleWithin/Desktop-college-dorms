@@ -233,6 +233,8 @@ export interface RoomDeco { plate: string; bg: string; wreath: string; tag: stri
 export const DEFAULT_ROOM_DECO: RoomDeco = { plate: "none", bg: "", wreath: "", tag: "", tag_color: "#5865f2", tag_glyph: "" };
 export interface UserDeco { plate: string; bg: string; wreath: string; animate: boolean; tag: string; tag_color: string; tag_glyph: string; banner: string; ai_pick: boolean }
 export const DEFAULT_DECO: UserDeco = { plate: "none", bg: "", wreath: "", animate: true, tag: "", tag_color: "#5865f2", tag_glyph: "", banner: "", ai_pick: false };
+/** A custom emoji (used inline as :name:) or a sticker (sent as a whole message, [sticker: name]). It works everywhere, or only in one room. */
+export interface EmojiItem { id: string; kind: "emoji" | "sticker"; name: string; meaning: string; file: string; room_id: number | null; created_at: number; /** where the picture is */ path: string }
 export interface CharStatus { character_id: string; text: string; source: "ai" | "user"; updated_at: number }
 export interface SavedPrompt { id: string; title: string; body: string; tag: string; created_at: number; updated_at: number }
 export interface DecorItem { id: string; name: string; file: string; bytes: number; share: boolean; created_at: number; /** absolute path of the .glb */ path: string }
@@ -347,6 +349,12 @@ export const api = {
   listStatuses: () => invoke<CharStatus[]>("list_statuses"),
   setStatus: (characterId: string, text: string) => invoke<CharStatus | null>("set_status", { characterId, text }),
   generateStatus: (characterId: string) => invoke<CharStatus>("generate_status", { characterId }),
+  listEmoji: () => invoke<EmojiItem[]>("list_emoji"),
+  async addEmoji(file: File, kind: "emoji" | "sticker", name: string, meaning: string, roomId: number | null): Promise<EmojiItem> {
+    return bin("add_emoji", new Uint8Array(await file.arrayBuffer()), { "x-kind": kind, "x-name": enc(name), "x-meaning": enc(meaning), "x-room-id": roomId == null ? "" : String(roomId), "x-file-name": enc(file.name) });
+  },
+  updateEmoji: (id: string, name: string, meaning: string, roomId: number | null) => invoke<EmojiItem>("update_emoji", { id, name, meaning, roomId }),
+  deleteEmoji: (id: string) => invoke<void>("delete_emoji", { id }),
   listCharDeco: () => invoke<CharDeco[]>("list_char_deco"),
   setCharDeco: (characterId: string, plate: string, bg: string, wreath: string) => invoke<CharDeco | null>("set_char_deco", { characterId, plate, bg, wreath }),
   clearCharDeco: (characterId: string) => invoke<void>("clear_char_deco", { characterId }),
@@ -537,6 +545,7 @@ export const roomModelUrl = (r: { model_path?: string | null }) => (r.model_path
 export const musicUrl = (x: { music_path?: string | null }) => (x.music_path ? convertFileSrc(x.music_path) : null);
 export const roomBackdrop = (r: { backdrop_path?: string | null }) => (r.backdrop_path ? convertFileSrc(r.backdrop_path) : null);
 /** A gallery picture's address (the web view can't open a path directly). */
+export const emojiUrl = (e: { path: string }) => convertFileSrc(e.path);
 export const galleryUrl = (c: Character, itemId: string) => { const p = c.gallery_paths?.find((g) => g.id === itemId)?.path; return p ? convertFileSrc(p) : null; };
 export const mediaUrl = (c: { media_path: string | null }) => (c.media_path ? convertFileSrc(c.media_path) : null);
 

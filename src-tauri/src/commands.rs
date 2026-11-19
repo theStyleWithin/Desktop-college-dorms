@@ -134,7 +134,7 @@ pub(crate) fn header(req: &Request<'_>, name: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn media_kind(file_name: &str) -> R<(&'static str, String)> {
+pub(crate) fn media_kind(file_name: &str) -> R<(&'static str, String)> {
     let ext = std::path::Path::new(file_name)
         .extension()
         .and_then(|x| x.to_str())

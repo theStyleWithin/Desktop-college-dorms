@@ -1188,6 +1188,62 @@ try:
     st_ = invoke("get_settings"); st_["deco"] = dict(st_["deco"], plate="none", wreath="", tag=""); invoke("save_settings", {"settings": st_})
     set_provider(provider=st0["provider"], openai_base_url=st0["openai_base_url"], openai_model=st0["openai_model"])
 
+    # -- custom emoji and stickers: your own pictures, working everywhere or in one room, and the characters can use them too
+    from PIL import Image as _I2
+    def mk_png(name, rgb, size=(32, 32)):
+        pth = os.path.join(WORK, name); _I2.new("RGB", size, rgb).save(pth); return pth
+    def add_em(path, kind, name="", meaning="", room=""):
+        return invoke_file("add_emoji", path, {"x-kind": kind, "x-name": name, "x-meaning": meaning, "x-room-id": str(room), "x-file-name": os.path.basename(path)})
+    em1 = add_em(mk_png("Party Time.png", (250, 60, 60)), "emoji", meaning="celebrating")
+    check("an emoji is made from a picture: its name comes from the file name, cleaned, and the picture is copied into the app", (em1["name"], em1["kind"], em1["room_id"], em1["meaning"]) == ("party_time", "emoji", None, "celebrating") and em1["path"].startswith(DATA) and os.path.exists(em1["path"]), str(em1))
+    check("two emoji can't share a name and reach", "already" in (inv_err_file("add_emoji", mk_png("party_time.png", (1, 2, 3)), {"x-kind": "emoji", "x-name": "", "x-meaning": "", "x-room-id": "", "x-file-name": "party_time.png"}) or ""))
+    check("only pictures are accepted", "pictures" in (inv_err_file("add_emoji", os.path.join(FIX, "loose.json"), {"x-kind": "emoji", "x-name": "x1", "x-meaning": "", "x-room-id": "", "x-file-name": "loose.json"}) or "") or "Unsupported" in (inv_err_file("add_emoji", os.path.join(FIX, "loose.json"), {"x-kind": "emoji", "x-name": "x1", "x-meaning": "", "x-room-id": "", "x-file-name": "loose.json"}) or ""))
+    big_ = os.path.join(WORK, "big.png"); open(big_, "wb").write(os.urandom(600 * 1024))
+    check("an emoji can't be bigger than 512 KB", "too big" in (inv_err_file("add_emoji", big_, {"x-kind": "emoji", "x-name": "huge", "x-meaning": "", "x-room-id": "", "x-file-name": "big.png"}) or ""))
+    ero_ = invoke("create_room", {"room": dict(room_in, name="Stove room", description="Pots and pans.", owner_kind="self", character_id=None, id=0, created_at=0)})
+    st_one = add_em(mk_png("shrug.png", (60, 60, 250), (96, 96)), "sticker", meaning="I don't know")
+    st_two = add_em(mk_png("bow.png", (60, 250, 60), (96, 96)), "sticker", meaning="a polite bow", room=ero_["id"])
+    em_two = add_em(mk_png("stove.png", (250, 250, 60)), "emoji", meaning="cooking", room=ero_["id"])
+    check("a sticker or emoji can be tied to one room", st_two["room_id"] == ero_["id"] and em_two["room_id"] == ero_["id"])
+    check("the same name can be used in another room (or everywhere) without a clash", add_em(mk_png("shrug2.png", (9, 9, 9), (96, 96)), "sticker", name="shrug", meaning="the stove room shrug", room=ero_["id"])["room_id"] == ero_["id"])
+    check("a room that doesn't exist is refused", "doesn't exist" in (inv_err_file("add_emoji", mk_png("ghost.png", (1, 1, 1)), {"x-kind": "emoji", "x-name": "ghost", "x-meaning": "", "x-room-id": "99999", "x-file-name": "ghost.png"}) or ""))
+    ren_ = invoke("update_emoji", {"id": st_one["id"], "name": "Big Shrug!", "meaning": "  not sure  ", "roomId": None})
+    check("an emoji can be renamed and its meaning changed", (ren_["name"], ren_["meaning"]) == ("big_shrug", "not sure"), str(ren_))
+    invoke("update_emoji", {"id": st_one["id"], "name": "shrug", "meaning": "I don't know", "roomId": None})
+    set_provider(provider="openai", openai_base_url="http://127.0.0.1:18999/v1", openai_model="fake-model")
+    edorm_ = invoke("create_dorm", {"name": "Stove dorm", "roomId": ero_["id"]}); echat_ = invoke("create_chat", {"dormId": edorm_["id"], "name": "stove chat", "kind": "dm", "characterIds": [dcid]})
+    invoke("add_user_message", {"chatId": echat_["id"], "text": "hello"}); gen_and_wait(echat_["id"], ["Yay! ", ":party_time: ", "\n[sticker: bow]"])
+    sysE_ = sysprompt()
+    check("in a room, the characters are told which emoji and stickers it has (those that work everywhere and the room's own, with their meanings)", ":party_time: (celebrating)" in sysE_ and ":stove: (cooking)" in sysE_ and "[sticker: bow] (a polite bow)" in sysE_ and "[sticker: shrug] (the stove room shrug)" in sysE_, sysE_[-700:])
+    check("the room's own wins where the names match (one shrug listed, not two)", sysE_.count("[sticker: shrug]") == 1 and "(I don't know)" not in sysE_)
+    edorm2_ = invoke("create_dorm", {"name": "No room dorm", "roomId": None}); echat2_ = invoke("create_chat", {"dormId": edorm2_["id"], "name": "plain chat", "kind": "dm", "characterIds": [dcid]})
+    invoke("add_user_message", {"chatId": echat2_["id"], "text": "hello"}); gen_and_wait(echat2_["id"])
+    sysP_ = sysprompt()
+    check("outside the room they only hear about what works everywhere", ":party_time: (celebrating)" in sysP_ and ":stove:" not in sysP_ and "[sticker: bow]" not in sysP_, sysP_[-500:])
+    reload_ui(); nav("Dorms"); time.sleep(0.8); click_text("button.it", "stove chat"); time.sleep(1.8)
+    check("a reply that uses :name: and [sticker: name] shows them as pictures", d.execute_script("return !!document.querySelector('.msgs img.emoji[data-emoji=party_time]') && !!document.querySelector('.msgs img.sticker[data-sticker=bow]')"))
+    check("a name that isn't in this room stays as plain text", d.execute_script("return !document.querySelector('.msgs img.sticker[data-sticker=nothere]')"))
+    d.execute_script("document.querySelector('[data-testid=emoji-button]').click()"); time.sleep(0.6)
+    check("the emoji button lists this room's emoji and stickers", d.execute_script("return !!document.querySelector('[data-pick-emoji=stove]') && !!document.querySelector('[data-pick-sticker=bow]') && !!document.querySelector('[data-pick-sticker=shrug]')"))
+    d.execute_script("document.querySelector('[data-pick-emoji=stove]').click()"); time.sleep(0.4)
+    check("choosing an emoji adds it to the message", ":stove:" in d.execute_script("return document.querySelector('.composer textarea').value"))
+    d.execute_script("document.querySelector('[data-testid=emoji-button]').click()"); time.sleep(0.5)
+    d.execute_script("document.querySelector('[data-pick-sticker=shrug]').click()"); time.sleep(2.5)
+    check("choosing a sticker sends it, and it shows as a picture", any(m["role"] == "user" and "[sticker: shrug]" in m["swipes"][0] for m in invoke("list_messages", {"chatId": echat_["id"]})) and d.execute_script("return !!document.querySelector('.msg.user img.sticker[data-sticker=shrug]')"))
+    nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent.startsWith('Emoji')).click()"); time.sleep(0.8)
+    check("Settings has an Emoji & stickers tab with a card for each", d.execute_script("return document.querySelectorAll('[data-testid=emoji-tab] [data-emoji-row]').length") == len(invoke("list_emoji")))
+    inp_ = d.find_element(By.CSS_SELECTOR, "[data-testid=emoji-file-emoji]"); d.execute_script("arguments[0].hidden=false;arguments[0].style.display='block';", inp_)
+    n_before_ = len(invoke("list_emoji")); inp_.send_keys(mk_png("from-ui.png", (5, 200, 200))); time.sleep(2.0)
+    check("emoji can be added from the tab", len(invoke("list_emoji")) == n_before_ + 1 and any(x["name"] == "from_ui" for x in invoke("list_emoji")))
+    invoke("delete_room", {"id": ero_["id"]})
+    freed_ = {x["name"]: x["room_id"] for x in invoke("list_emoji")}
+    check("deleting a room frees what was tied to it: it works everywhere from then on (nothing is lost)", freed_.get("bow") is None and freed_.get("stove") is None, str(freed_))
+    gone_ = em1["path"]
+    invoke("delete_emoji", {"id": em1["id"]})
+    check("deleting an emoji removes its picture too", not os.path.exists(gone_) and all(x["id"] != em1["id"] for x in invoke("list_emoji")))
+    for x_ in invoke("list_emoji"): invoke("delete_emoji", {"id": x_["id"]})
+    set_provider(provider=st0["provider"], openai_base_url=st0["openai_base_url"], openai_model=st0["openai_model"])
+
     # -- a character's gallery: more pictures, tagged with moods; the chat shows the one that fits the reply (or a random one)
     from PIL import Image as _Img
     def png_file(name, rgb):

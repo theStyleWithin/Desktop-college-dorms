@@ -13,6 +13,8 @@ import { PROMPT_DRAG } from "../components/PromptsMenu";
 import { detectMood, pickGalleryItem } from "../lib/mood";
 import { useTextScale, setTextScaleAnchored, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
 import { TagChip, Wreathed, useCharDeco } from "../lib/deco";
+import { availableEmoji, renderRich, resolverFor, useEmoji, type Resolve } from "../lib/emoji";
+import EmojiPicker from "../components/EmojiPicker";
 import { hideDirectives, roomBackground, roomScene, kindLabel, nearbyRooms, roomExits, pathName } from "../lib/rooms";
 import { makeWardrobe } from "../components/WardrobePanel";
 import type { Speech } from "../components/SpeechBubble";
@@ -24,9 +26,9 @@ interface Live { rid: string; characterId: string; text: string; phase: "loading
 
 const KIND_ICON: Record<ChatKind, string> = { dm: "👤", group: "👥", channel: "#" };
 
-function renderText(text: string) {
+function renderText(text: string, resolve?: Resolve) {
   return text.split(/(\*[^*\n]+\*)/g).map((part, i) =>
-    part.length > 2 && part.startsWith("*") && part.endsWith("*") ? <em key={i}>{part.slice(1, -1)}</em> : <Fragment key={i}>{part}</Fragment>,
+    part.length > 2 && part.startsWith("*") && part.endsWith("*") ? <em key={i}>{part.slice(1, -1)}</em> : <Fragment key={i}>{renderRich(part, resolve)}</Fragment>,
   );
 }
 
@@ -71,6 +73,8 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
     const d = dorms.find((x) => x.id === chat?.dorm_id); return d?.room_id != null ? rooms.find((r) => r.id === d.room_id) ?? null : null;
   }, [chat, dorms, rooms]);
   const roomBg = roomBackground(room);
+  const allEmoji = useEmoji();
+  const resolveEmoji = useMemo(() => resolverFor(allEmoji, room?.id), [allEmoji, room?.id]);
   const dormOfChat = dorms.find((x) => x.id === chat?.dorm_id);
   // the dorm's own music wins over its room's
   const music = dormOfChat?.music_path && !(chat?.room_id != null && room?.music_path) ? { src: musicUrl(dormOfChat), name: dormOfChat.music_name || "Music" } : room?.music_path ? { src: musicUrl(room), name: room.music_name || "Music" } : null;
@@ -369,7 +373,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                           <textarea value={editing.text} onChange={(e) => setEditing({ id: m.id, text: e.target.value })} />
                           <div className="row"><button className="btn primary sm" onClick={saveEdit}>Save</button><button className="btn sm" onClick={() => setEditing(null)}>Cancel</button></div>
                         </div>
-                      ) : <div className="txt">{renderText(body)}</div>}
+                      ) : <div className="txt">{renderText(body, resolveEmoji)}</div>}
                       {editing?.id !== m.id && (
                         <div className="tools">
                           {m.role === "character" && m.swipes.length > 1 && (
@@ -396,7 +400,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                   <Avatar c={byId.get(live.characterId)} name={byId.get(live.characterId)?.card.name ?? "?"} wreath={decoMap.get(live.characterId)?.wreath || undefined} art={artOf(byId.get(live.characterId))} />
                   <div>
                     <div className="who">{byId.get(live.characterId)?.card.name ?? "…"}</div>
-                    {live.text ? <div className="txt">{renderText(hideDirectives(live.text))}</div>
+                    {live.text ? <div className="txt">{renderText(hideDirectives(live.text), resolveEmoji)}</div>
                       : <div className="typing">{live.phase === "loading" ? "Waking up the model…" : "typing…"}</div>}
                   </div>
                 </div>
@@ -438,6 +442,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                   onChange={(e) => setText(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
                 />
+                <EmojiPicker items={availableEmoji(allEmoji, room?.id)} disabled={busy} onEmoji={(n) => setText((x) => `${x}${x && !/\s$/.test(x) ? " " : ""}:${n}: `)} onSticker={(n) => void sendText(`[sticker: ${n}]`)} />
                 <MicButton disabled={busy} onText={heard} onListening={setListening} />
                 {busy ? <button className="btn danger" onClick={stop}>■ Stop</button> : <button className="btn primary" onClick={send} disabled={!text.trim() && chat.kind === "dm"}>Send</button>}
               </div>

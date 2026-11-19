@@ -325,6 +325,26 @@ impl Default for UserDeco {
     }
 }
 
+/// A custom emoji (a small picture used inline as `:name:`) or sticker (a bigger picture sent as a whole message as `[sticker: name]`).
+/// It works everywhere, or only in one room (`room_id`), like a server's own emoji.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+pub struct EmojiItem {
+    pub id: String,
+    /// `emoji` or `sticker`.
+    pub kind: String,
+    pub name: String,
+    /// What it means or when to use it: told to the characters so they can use it too.
+    #[serde(default)]
+    pub meaning: String,
+    /// Path inside the data folder (`media/emoji-*`).
+    pub file: String,
+    /// The room it belongs to, or `None` for everywhere.
+    #[serde(default)]
+    pub room_id: Option<i64>,
+    #[serde(default)]
+    pub created_at: i64,
+}
+
 /// What is on a character's mind (a short line shown in the characters list), written by the model in their voice or by the user.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct CharStatus {
@@ -560,6 +580,9 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
             created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS char_status(
             id TEXT PRIMARY KEY, profile_id TEXT, text TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'ai', updated_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS emoji_items(
+            id TEXT PRIMARY KEY, profile_id TEXT, kind TEXT NOT NULL, name TEXT NOT NULL, meaning TEXT NOT NULL DEFAULT '', file TEXT NOT NULL,
+            room_id INTEGER, created_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS char_deco(
             id TEXT PRIMARY KEY, profile_id TEXT, plate TEXT NOT NULL DEFAULT 'none', bg TEXT NOT NULL DEFAULT '', wreath TEXT NOT NULL DEFAULT '',
             source TEXT NOT NULL DEFAULT 'ai', updated_at INTEGER NOT NULL);
@@ -790,6 +813,8 @@ pub fn update_room(c: &Connection, r: &Room, owner: &Owner) -> R<()> {
 pub fn delete_room(c: &Connection, id: i64, owner: &Owner) -> R<()> {
     c.execute("UPDATE dorms SET room_id=NULL WHERE room_id=?1 AND profile_id IS ?2", params![id, owner])?;
     c.execute("UPDATE chats SET room_id=NULL WHERE room_id=?1 AND profile_id IS ?2", params![id, owner])?;
+    // what was tied to the room works everywhere from now on (nothing is lost)
+    c.execute("UPDATE emoji_items SET room_id=NULL WHERE room_id=?1 AND profile_id IS ?2", params![id, owner])?;
     // what was inside it moves up a level, so nothing is lost
     let up: Option<i64> = c.query_row("SELECT parent_id FROM rooms WHERE id=?1 AND profile_id IS ?2", params![id, owner], |r| r.get(0)).optional()?.flatten();
     c.execute("UPDATE rooms SET parent_id=?3 WHERE parent_id=?1 AND profile_id IS ?2", params![id, owner, up])?;
@@ -1060,6 +1085,63 @@ pub fn save_status(c: &Connection, st: &CharStatus, owner: &Owner) -> R<()> {
 pub fn delete_status(c: &Connection, id: &str, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM char_status WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     Ok(())
+}
+
+// ----- custom emoji and stickers -----
+
+pub const MAX_EMOJI: usize = 50;
+pub const MAX_STICKERS: usize = 30;
+
+fn row_emoji(r: &rusqlite::Row) -> R<EmojiItem> {
+    Ok(EmojiItem { id: r.get(0)?, kind: r.get(1)?, name: r.get(2)?, meaning: r.get(3)?, file: r.get(4)?, room_id: r.get(5)?, created_at: r.get(6)? })
+}
+
+pub fn list_emoji(c: &Connection, owner: &Owner) -> R<Vec<EmojiItem>> {
+    let mut s = c.prepare("SELECT id,kind,name,meaning,file,room_id,created_at FROM emoji_items WHERE profile_id IS ?1 ORDER BY kind, name, created_at")?;
+    let rows = s.query_map([owner], row_emoji)?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_emoji(c: &Connection, id: &str, owner: &Owner) -> R<Option<EmojiItem>> {
+    c.query_row("SELECT id,kind,name,meaning,file,room_id,created_at FROM emoji_items WHERE id=?1 AND profile_id IS ?2", params![id, owner], row_emoji).optional()
+}
+
+/// Is there already one of this kind with this name, with the same reach (everywhere, or the same room)? (`except` is the one being renamed.)
+pub fn emoji_name_taken(c: &Connection, kind: &str, name: &str, room_id: Option<i64>, except: &str, owner: &Owner) -> R<bool> {
+    Ok(c.query_row(
+        "SELECT 1 FROM emoji_items WHERE profile_id IS ?1 AND kind=?2 AND name=?3 AND room_id IS ?4 AND id<>?5",
+        params![owner, kind, name, room_id, except],
+        |_| Ok(()),
+    )
+    .optional()?
+    .is_some())
+}
+
+pub fn save_emoji(c: &Connection, e: &EmojiItem, owner: &Owner) -> R<()> {
+    c.execute(
+        "INSERT INTO emoji_items(id,profile_id,kind,name,meaning,file,room_id,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, meaning=excluded.meaning, room_id=excluded.room_id WHERE emoji_items.profile_id IS ?2",
+        params![e.id, owner, e.kind, e.name, e.meaning, e.file, e.room_id, e.created_at],
+    )?;
+    Ok(())
+}
+
+pub fn delete_emoji(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM emoji_items WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
+/// The emoji and stickers a chat in `room` can use: the ones that work everywhere and the ones tied to that room. Where both have the same
+/// name, the room's own wins.
+pub fn emoji_available(items: &[EmojiItem], room: Option<i64>) -> Vec<&EmojiItem> {
+    let mut out: Vec<&EmojiItem> = vec![];
+    for it in items.iter().filter(|i| i.room_id.is_none() || (room.is_some() && i.room_id == room)) {
+        match out.iter().position(|o| o.kind == it.kind && o.name == it.name) {
+            Some(k) => { if it.room_id.is_some() { out[k] = it; } }
+            None => out.push(it),
+        }
+    }
+    out
 }
 
 // ----- character decorations -----
@@ -1440,6 +1522,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM prompts WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM char_status WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM char_deco WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM emoji_items WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM mechanics WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM notes WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM folders WHERE profile_id IS ?1", [owner])?;
@@ -1458,7 +1541,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "emoji_items"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
@@ -1938,5 +2021,34 @@ mod tests {
         // settings saved before decorations existed have no such field: they get the defaults
         let old: Settings = serde_json::from_str(r#"{"provider":"local","user_name":"Old"}"#).unwrap();
         assert_eq!(old.deco, UserDeco::default());
+    }
+
+    #[test]
+    fn emoji_and_stickers_work_everywhere_or_in_one_room() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        let it = |id: &str, kind: &str, name: &str, room: Option<i64>| EmojiItem { id: id.into(), kind: kind.into(), name: name.into(), meaning: "m".into(), file: format!("media/emoji-{id}.png"), room_id: room, created_at: 1 };
+        let (glob, kit, kit2, stk) = (it("1", "emoji", "party", None), it("2", "emoji", "party", Some(7)), it("3", "emoji", "stove", Some(7)), it("4", "sticker", "shrug", None));
+        for x in [&glob, &kit, &kit2, &stk] { save_emoji(&c, x, &a).unwrap(); }
+        assert_eq!(list_emoji(&c, &a).unwrap().len(), 4);
+        assert!(list_emoji(&c, &b).unwrap().is_empty(), "another profile sees none of them");
+        let all = list_emoji(&c, &a).unwrap();
+        let names = |room: Option<i64>| { let mut v: Vec<String> = emoji_available(&all, room).iter().map(|i| format!("{}:{}:{}", i.kind, i.name, i.id)).collect(); v.sort(); v };
+        assert_eq!(names(None), vec!["emoji:party:1", "sticker:shrug:4"], "outside any room only the ones that work everywhere");
+        assert_eq!(names(Some(9)), vec!["emoji:party:1", "sticker:shrug:4"], "another room doesn't get this room's");
+        assert_eq!(names(Some(7)), vec!["emoji:party:2", "emoji:stove:3", "sticker:shrug:4"], "in the room: the room's own, and its own :party: wins");
+        assert!(emoji_name_taken(&c, "emoji", "party", None, "other", &a).unwrap());
+        assert!(!emoji_name_taken(&c, "emoji", "party", None, "1", &a).unwrap(), "renaming it to itself is fine");
+        assert!(!emoji_name_taken(&c, "sticker", "party", None, "x", &a).unwrap(), "emoji and stickers have separate names");
+        assert!(!emoji_name_taken(&c, "emoji", "party", Some(9), "x", &a).unwrap(), "the same name in another room is fine");
+        save_emoji(&c, &EmojiItem { name: "stolen".into(), ..glob.clone() }, &b).unwrap();
+        assert_eq!(get_emoji(&c, "1", &a).unwrap().unwrap().name, "party", "another profile can't change them");
+        delete_emoji(&c, "1", &b).unwrap();
+        assert!(get_emoji(&c, "1", &a).unwrap().is_some(), "or remove them");
+        // deleting the room frees what was tied to it
+        let r = create_room(&c, &Room { id: 0, name: "R".into(), kind: "other".into(), description: String::new(), owner_kind: "self".into(), character_id: None, backdrop: String::new(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default() }, &a).unwrap();
+        save_emoji(&c, &it("5", "emoji", "tied", Some(r.id)), &a).unwrap();
+        delete_room(&c, r.id, &a).unwrap();
+        assert_eq!(get_emoji(&c, "5", &a).unwrap().unwrap().room_id, None, "what was tied to a deleted room works everywhere from then on");
     }
 }

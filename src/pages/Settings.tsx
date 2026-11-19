@@ -6,13 +6,14 @@ import { CreateProfileModal, PASSCODE_NOTE, ProfileAvatar } from "../components/
 import { PersonasTab, ProfilePicture } from "../components/Personas";
 import { ControllerTab } from "../components/ControllerTab";
 import DecoTab, { ProfileCard } from "../components/DecoTab";
+import EmojiTab from "../components/EmojiTab";
 import { Modal, useToast } from "../components/ui";
 import { errText, fmtBytes } from "../lib/util";
 import type { SessionState } from "../api";
 import { useStore } from "../store";
 
-type Tab = "profile" | "deco" | "personas" | "models" | "chat" | "voice" | "controller" | "look" | "privacy" | "about";
-const TABS: [Tab, string][] = [["profile", "Profile"], ["deco", "Decorations"], ["personas", "Personas"], ["models", "Models"], ["chat", "Chat"], ["voice", "Voice"], ["controller", "Controller"], ["look", "Appearance"], ["privacy", "Privacy"], ["about", "About"]];
+type Tab = "profile" | "deco" | "emoji" | "personas" | "models" | "chat" | "voice" | "controller" | "look" | "privacy" | "about";
+const TABS: [Tab, string][] = [["profile", "Profile"], ["deco", "Decorations"], ["emoji", "Emoji & stickers"], ["personas", "Personas"], ["models", "Models"], ["chat", "Chat"], ["voice", "Voice"], ["controller", "Controller"], ["look", "Appearance"], ["privacy", "Privacy"], ["about", "About"]];
 
 const ENDPOINTS: [string, string, string][] = [
   ["OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"],
@@ -51,6 +52,7 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
       </div>
       {tab === "profile" && <ProfileTab s={s} patch={patch} />}
       {tab === "deco" && <DecoTab />}
+      {tab === "emoji" && <EmojiTab />}
       {tab === "personas" && <PersonasTab />}
       {tab === "models" && <Models s={s} patch={patch} onChanged={refresh} />}
       {tab === "chat" && <ChatTab s={s} patch={patch} />}
