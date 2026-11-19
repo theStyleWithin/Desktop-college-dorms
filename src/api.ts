@@ -232,7 +232,7 @@ export interface ProviderHealth { state: "local" | "ok" | "warn" | "down" | "non
 /** How a character (or the user) is dressed: a nameplate, an animated profile background and an avatar wreath (ids from lib/decoData.json). */
 export interface CharDeco { character_id: string; plate: string; bg: string; wreath: string; source: "ai" | "user"; updated_at: number }
 /** A world: a folder of connected rooms, kept apart from other worlds, with lorebooks attached that apply to every chat in it. */
-export interface World { id: number; name: string; description: string; lorebooks: string[]; created_at: number }
+export interface World { id: number; name: string; description: string; /** background lore written to be read (not sent to the model) */ lore: string; lorebooks: string[]; created_at: number }
 export interface RoomDeco { plate: string; bg: string; wreath: string; tag: string; tag_color: string; tag_glyph: string }
 export const DEFAULT_ROOM_DECO: RoomDeco = { plate: "none", bg: "", wreath: "", tag: "", tag_color: "#5865f2", tag_glyph: "" };
 export interface UserDeco { plate: string; bg: string; wreath: string; animate: boolean; tag: string; tag_color: string; tag_glyph: string; banner: string; ai_pick: boolean }
@@ -355,7 +355,7 @@ export const api = {
   generateStatus: (characterId: string) => invoke<CharStatus>("generate_status", { characterId }),
   listWorlds: () => invoke<World[]>("list_worlds"),
   createWorld: (name: string, description: string) => invoke<World>("create_world", { name, description }),
-  updateWorld: (id: number, name: string, description: string, lorebooks: string[]) => invoke<World>("update_world", { id, name, description, lorebooks }),
+  updateWorld: (id: number, name: string, description: string, lore: string, lorebooks: string[]) => invoke<World>("update_world", { id, name, description, lore, lorebooks }),
   deleteWorld: (id: number) => invoke<void>("delete_world", { id }),
   moveRoomsToWorld: (ids: number[], worldId: number | null) => invoke<void>("move_rooms_to_world", { ids, worldId }),
   listEmoji: () => invoke<EmojiItem[]>("list_emoji"),

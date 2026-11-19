@@ -191,6 +191,10 @@ pub struct World {
     /// What this world is like, told to the characters in every chat in it.
     #[serde(default)]
     pub description: String,
+    /// The world's background lore, written to be read (the codex): its history, places and people. Shown on the world's overview page; not sent to the model
+    /// (the description and the attached lorebooks are what shape the roleplay).
+    #[serde(default)]
+    pub lore: String,
     /// Ids of the lorebooks attached to it.
     #[serde(default)]
     pub lorebooks: Vec<String>,
@@ -650,6 +654,7 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
         "CREATE TABLE IF NOT EXISTS worlds(id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id TEXT, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS world_lorebooks(world_id INTEGER NOT NULL, book_id TEXT NOT NULL, PRIMARY KEY(world_id, book_id));",
     )?;
+    ensure_column(&conn, "worlds", "lore", "TEXT NOT NULL DEFAULT ''")?; // after the table exists (worlds made before this had no lore)
     ensure_column(&conn, "rooms", "deco_plate", "TEXT NOT NULL DEFAULT 'none'")?;
     ensure_column(&conn, "rooms", "deco_bg", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "rooms", "deco_wreath", "TEXT NOT NULL DEFAULT ''")?;
@@ -844,9 +849,9 @@ fn world_books(c: &Connection, id: i64) -> Vec<String> {
 }
 
 pub fn list_worlds(c: &Connection, owner: &Owner) -> R<Vec<World>> {
-    let mut s = c.prepare("SELECT id,name,description,created_at FROM worlds WHERE profile_id IS ?1 ORDER BY id")?;
-    let rows: Vec<(i64, String, String, i64)> = s.query_map([owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.filter_map(|r| r.ok()).collect();
-    Ok(rows.into_iter().map(|(id, name, description, created_at)| World { id, name, description, lorebooks: world_books(c, id), created_at }).collect())
+    let mut s = c.prepare("SELECT id,name,description,lore,created_at FROM worlds WHERE profile_id IS ?1 ORDER BY id")?;
+    let rows: Vec<(i64, String, String, String, i64)> = s.query_map([owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?.filter_map(|r| r.ok()).collect();
+    Ok(rows.into_iter().map(|(id, name, description, lore, created_at)| World { id, name, description, lore, lorebooks: world_books(c, id), created_at }).collect())
 }
 
 pub fn get_world(c: &Connection, id: i64, owner: &Owner) -> R<Option<World>> {
@@ -859,9 +864,9 @@ pub fn create_world(c: &Connection, name: &str, description: &str, owner: &Owner
 }
 
 /// Rename it, describe it, and set exactly which of the owner's lorebooks are attached.
-pub fn update_world(c: &Connection, id: i64, name: &str, description: &str, lorebooks: &[String], owner: &Owner) -> R<()> {
+pub fn update_world(c: &Connection, id: i64, name: &str, description: &str, lore: &str, lorebooks: &[String], owner: &Owner) -> R<()> {
     if get_world(c, id, owner)?.is_none() { return Ok(()); }
-    c.execute("UPDATE worlds SET name=?2, description=?3 WHERE id=?1 AND profile_id IS ?4", params![id, name, description, owner])?;
+    c.execute("UPDATE worlds SET name=?2, description=?3, lore=?5 WHERE id=?1 AND profile_id IS ?4", params![id, name, description, owner, lore])?;
     c.execute("DELETE FROM world_lorebooks WHERE world_id=?1", [id])?;
     let mine: Vec<String> = list_lorebooks(c, owner)?.into_iter().map(|b| b.id).collect();
     for b in lorebooks.iter().filter(|b| mine.contains(b)) {
@@ -2191,9 +2196,10 @@ mod tests {
         // lorebooks attached to a world; only the owner's own books count
         let book = Lorebook { id: "book1".into(), name: "Lore".into(), book: serde_json::json!({"entries": []}), created_at: 1, updated_at: 1 };
         save_lorebook(&c, &book, &a).unwrap();
-        update_world(&c, w1.id, "Tevyat", "A big wide world.", &["book1".into(), "nope".into()], &a).unwrap();
+        update_world(&c, w1.id, "Tevyat", "A big wide world.", "Long ago, seven nations rose.", &["book1".into(), "nope".into()], &a).unwrap();
+        assert_eq!(get_world(&c, w1.id, &a).unwrap().unwrap().lore, "Long ago, seven nations rose.");
         assert_eq!(get_world(&c, w1.id, &a).unwrap().unwrap().lorebooks, vec!["book1".to_string()]);
-        update_world(&c, w1.id, "Hijack", "", &[], &b).unwrap();
+        update_world(&c, w1.id, "Hijack", "", "stolen", &[], &b).unwrap();
         assert_eq!(get_world(&c, w1.id, &a).unwrap().unwrap().name, "Tevyat", "another profile can't change it");
         // a chat is in the world of the room it is in
         let d = create_dorm(&c, "d", Some(r1.id), &a).unwrap();

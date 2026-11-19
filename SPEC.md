@@ -173,6 +173,8 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
 - A world (`worlds` table: name, description, created time; per profile) is a folder of rooms; `rooms.world_id` says which (none = not in a world). `world_lorebooks(world_id, book_id)` attaches
   lorebooks (only the owner's own). Rooms, `parent_id` and exits never cross between worlds: `valid_parent` and `set_room_links` refuse a room of another world, and `move_rooms_to_world(ids, world)`
   moves a set at once, then drops every link that now joins two different worlds (so a connected set moved together stays connected). A room made for someone else's world is put in none.
+- A world has a `description` (short, told to the characters) and a `lore` (up to 20,000 characters, written to be read: headings with `#`/`##`, lists with `-`, `**bold**` and `*italic*`; shown on the world's overview page,
+  never sent to the model). The overview lists the world's rooms (with a Start here button for each), its exits, and its attached lorebooks.
 - Deleting a world never deletes its rooms (they are simply in no world); deleting a lorebook takes it off every world. Backups carry worlds and their lorebooks (numbers remapped on import).
 - A chat is in the world of the room it is in now (so walking through a room in another world changes it). The system prompt names the world and its description, and the lorebooks attached to the
   world are merged with the speaker's own lorebooks (each book once) when the prompt is built, so they apply in every chat in any room of the world.
