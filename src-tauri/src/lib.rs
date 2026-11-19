@@ -4,6 +4,7 @@ mod db;
 mod extras;
 mod llama;
 mod llm;
+mod presence;
 mod secrets;
 mod unitypkg;
 
@@ -170,6 +171,10 @@ pub fn run() {
             extras::room_model_chunk,
             extras::room_model_finish,
             extras::room_model_cancel,
+            presence::provider_health,
+            presence::list_statuses,
+            presence::set_status,
+            presence::generate_status,
             extras::list_prompts,
             extras::save_prompt,
             extras::delete_prompt,
@@ -197,6 +202,7 @@ pub fn run() {
             commands::save_character,
             commands::delete_character,
             commands::set_favorite,
+            commands::character_usage,
             commands::set_media,
             commands::set_frame,
             commands::add_outfit,
@@ -206,6 +212,10 @@ pub fn run() {
             commands::transcribe_audio,
             commands::test_voice,
             commands::clear_media,
+            commands::add_gallery_image,
+            commands::set_gallery_moods,
+            commands::remove_gallery_item,
+            commands::set_gallery_mode,
             commands::import_card,
             commands::export_card,
             commands::list_dorms,

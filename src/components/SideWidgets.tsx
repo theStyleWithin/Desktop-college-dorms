@@ -1,0 +1,162 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { api, displayName, galleryUrl, mediaUrl, type Character, type Chat, type MediaKind } from "../api";
+import { useStore } from "../store";
+import { errText, timeAgo } from "../lib/util";
+import Art from "./Art";
+import { ProfileAvatar } from "./ProfileForms";
+import { Modal, useToast } from "./ui";
+
+/** Which of the side bar's extras are shown (this device). */
+export type WidgetId = "recent" | "favorites" | "usage" | "frame";
+export const WIDGETS: { id: WidgetId; label: string }[] = [
+  { id: "recent", label: "Recent chats" }, { id: "favorites", label: "Favorite characters" }, { id: "usage", label: "Most used characters" }, { id: "frame", label: "Picture frame" },
+];
+const PREFS_KEY = "dorms.side.widgets";
+const FOLD_KEY = "dorms.side.folded";
+
+const load = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } };
+export function useWidgetPrefs(): [Record<WidgetId, boolean>, (id: WidgetId, on: boolean) => void] {
+  const [p, setP] = useState(() => load<Record<WidgetId, boolean>>(PREFS_KEY, { recent: true, favorites: true, usage: true, frame: true }));
+  useEffect(() => { const f = () => setP(load(PREFS_KEY, { recent: true, favorites: true, usage: true, frame: true })); window.addEventListener("dorms-side-widgets", f); return () => window.removeEventListener("dorms-side-widgets", f); }, []);
+  const set = (id: WidgetId, on: boolean) => {
+    const n = { ...p, [id]: on }; setP(n);
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(n)); } catch { /* storage unavailable */ }
+    window.dispatchEvent(new Event("dorms-side-widgets"));
+  };
+  return [p, set];
+}
+
+const stillOf = (c: Character): string | null => (c.media?.kind === "image" || c.media?.kind === "gif" ? mediaUrl(c) : null);
+
+/** A small section of the side bar that can be folded away. */
+function Section({ id, title, count, action, children }: { id: string; title: string; count?: number; action?: React.ReactNode; children: React.ReactNode }) {
+  const [folded, setFolded] = useState(() => !!load<Record<string, boolean>>(FOLD_KEY, {})[id]);
+  const toggle = () => { const n = !folded; setFolded(n); try { localStorage.setItem(FOLD_KEY, JSON.stringify({ ...load<Record<string, boolean>>(FOLD_KEY, {}), [id]: n })); } catch { /* storage unavailable */ } };
+  return (
+    <section className="sw" data-testid={`side-${id}`}>
+      <div className="sw-head">
+        <button className="sw-title" aria-expanded={!folded} onClick={toggle}><span className="caret" aria-hidden>{folded ? "▸" : "▾"}</span>{title}{count != null && <span className="m-count">{count}</span>}</button>
+        {action}
+      </div>
+      {!folded && <div className="sw-body">{children}</div>}
+    </section>
+  );
+}
+
+/** Extras for the empty part of the side bar: recent chats, favorites (as many as you like), most used, and a picture frame. */
+export default function SideWidgets() {
+  const { characters, chats, go, refresh } = useStore();
+  const toast = useToast();
+  const [prefs] = useWidgetPrefs();
+  const [usage, setUsage] = useState<{ character_id: string; messages: number }[]>([]);
+  const [picker, setPicker] = useState(false);
+  const [more, setMore] = useState(false);
+  const [, bump] = useState(0);
+  const byId = useMemo(() => new Map(characters.map((c) => [c.id, c])), [characters]);
+  const recent = useMemo(() => [...chats].sort((a, b) => b.updated_at - a.updated_at), [chats]);
+  const newest = recent[0]?.updated_at ?? 0;
+
+  useEffect(() => { if (prefs.usage) api.characterUsage().then(setUsage).catch(() => {}); }, [prefs.usage, chats.length, newest]);
+  useEffect(() => { const f = () => bump((n) => n + 1); window.addEventListener("dorms-gal-pick", f); return () => window.removeEventListener("dorms-gal-pick", f); }, []);
+
+  /** Open the latest chat with a character (a one-to-one chat first), or start one. */
+  const openWith = useCallback(async (id: string) => {
+    const mine = recent.filter((c) => c.character_ids.includes(id));
+    const hit = mine.find((c) => c.kind === "dm") ?? mine[0];
+    if (hit) { go({ page: "chat", chatId: hit.id }); return; }
+    const c = byId.get(id); if (!c) return;
+    try { const ch = await api.createChat(null, displayName(c), "dm", [c.id]); await refresh(); go({ page: "chat", chatId: ch.id }); } catch (e) { toast(errText(e), "err"); }
+  }, [recent, byId, go, refresh, toast]);
+
+  const avatar = (c: Character | undefined, name: string, size = 30) => <ProfileAvatar name={name} size={size} src={c ? stillOf(c) : null} frame={c?.frame} />;
+  const chatFace = (ch: Chat) => { const c = byId.get(ch.character_ids[0]); return { c, name: c ? displayName(c) : ch.name }; };
+
+  const favorites = characters.filter((c) => c.favorite).sort((a, b) => displayName(a).localeCompare(displayName(b)));
+  const top = usage.map((u) => ({ c: byId.get(u.character_id), n: u.messages })).filter((x): x is { c: Character; n: number } => !!x.c).slice(0, 5);
+  const shownRecent = recent.slice(0, more ? 10 : 5);
+  const frameChat = recent.find((ch) => byId.has(ch.character_ids[0]));
+  if (!WIDGETS.some((w) => prefs[w.id])) return null;
+
+  // the picture in the frame: the one the character is showing in that chat (a gallery picture), else their main picture
+  let frameArt: { kind: MediaKind | null; url: string | null } = { kind: null, url: null };
+  let frameChar: Character | undefined;
+  if (frameChat) {
+    frameChar = byId.get(frameChat.character_ids[0]);
+    if (frameChar) {
+      let pickId: string | null = null;
+      try { pickId = (JSON.parse(localStorage.getItem(`dorms.gal.${frameChat.id}`) || "{}") as Record<string, string | null>)[frameChar.id] ?? null; } catch { /* nothing remembered */ }
+      const it = pickId && (frameChar.gallery_mode === "random" || frameChar.gallery_mode === "mood") ? frameChar.gallery?.find((g) => g.id === pickId) : undefined;
+      const gurl = it ? galleryUrl(frameChar, it.id) : null;
+      frameArt = gurl && it ? { kind: it.kind, url: gurl } : { kind: frameChar.media?.kind === "vrm" ? null : frameChar.media?.kind ?? null, url: frameChar.media?.kind === "vrm" ? null : mediaUrl(frameChar) };
+    }
+  }
+
+  return (
+    <div className="side-widgets" data-testid="side-widgets">
+      {prefs.recent && (
+        <Section id="recent" title="Recent chats">
+          {shownRecent.length === 0 ? <div className="hint">No chats yet.</div> : shownRecent.map((ch) => { const f = chatFace(ch); return (
+            <button key={ch.id} className="sw-row" data-chat={ch.id} onClick={() => go({ page: "chat", chatId: ch.id })} title={`${ch.name} · ${timeAgo(ch.updated_at)}`}>
+              {avatar(f.c, f.name)}<span className="sw-text"><b>{ch.name}</b><small>{f.name === ch.name ? timeAgo(ch.updated_at) : `${f.name} · ${timeAgo(ch.updated_at)}`}</small></span>
+            </button>); })}
+          {recent.length > 5 && <button className="sw-more" onClick={() => setMore((m) => !m)}>{more ? "Show fewer" : "Show more"}</button>}
+        </Section>
+      )}
+      {prefs.favorites && (
+        <Section id="favorites" title="Favorites" count={favorites.length} action={<button className="iconbtn" aria-label="Choose favorite characters" title="Choose favorites" onClick={() => setPicker(true)}>＋</button>}>
+          {favorites.length === 0 ? <div className="hint">Press ＋ to pick your favorites, or star a character. There's no limit.</div> : (
+            <div className="sw-faves">{favorites.map((c) => <button key={c.id} className="sw-fave" data-fave={displayName(c)} title={displayName(c)} aria-label={`Chat with ${displayName(c)}`} onClick={() => void openWith(c.id)}>{avatar(c, displayName(c), 36)}</button>)}</div>
+          )}
+        </Section>
+      )}
+      {prefs.usage && (
+        <Section id="usage" title="Most used">
+          {top.length === 0 ? <div className="hint">Characters you talk to most will show up here.</div> : top.map(({ c, n }) => (
+            <button key={c.id} className="sw-row" data-used={displayName(c)} onClick={() => void openWith(c.id)} title={`${displayName(c)}: ${n} message${n === 1 ? "" : "s"}`}>
+              {avatar(c, displayName(c))}<span className="sw-text"><b>{displayName(c)}</b><small>{n.toLocaleString()} message{n === 1 ? "" : "s"}</small></span>
+            </button>))}
+        </Section>
+      )}
+      {prefs.frame && (
+        <Section id="frame" title="Picture frame">
+          {frameChat && frameChar ? (
+            <button className="sw-wall" data-testid="side-frame-link" data-frame={displayName(frameChar)} onClick={() => go({ page: "chat", chatId: frameChat.id })} title={`Open your chat with ${displayName(frameChar)}`}>
+              <span className="sw-frame"><span className="sw-pic"><Art kind={frameArt.kind} url={frameArt.url} name={displayName(frameChar)} frame={frameArt.url === mediaUrl(frameChar) ? frameChar.frame : null} /></span></span>
+              <span className="sw-plaque">{displayName(frameChar)}</span>
+            </button>
+          ) : <div className="hint">Start a chat and the character you talked to last will hang here. Click it to go back.</div>}
+        </Section>
+      )}
+      {picker && <FavoritesPicker characters={characters} onClose={() => setPicker(false)} onChanged={refresh} />}
+    </div>
+  );
+}
+
+/** Tick any characters to make them favorites (no limit). */
+function FavoritesPicker({ characters, onClose, onChanged }: { characters: Character[]; onClose: () => void; onChanged: () => Promise<void> }) {
+  const toast = useToast();
+  const [q, setQ] = useState("");
+  const [local, setLocal] = useState<Record<string, boolean>>({});
+  const list = characters.filter((c) => !q.trim() || displayName(c).toLowerCase().includes(q.trim().toLowerCase())).sort((a, b) => displayName(a).localeCompare(displayName(b)));
+  const isFav = (c: Character) => local[c.id] ?? c.favorite;
+  const toggle = async (c: Character) => {
+    const on = !isFav(c); setLocal((m) => ({ ...m, [c.id]: on }));
+    try { await api.setFavorite(c.id, on); await onChanged(); } catch (e) { setLocal((m) => ({ ...m, [c.id]: !on })); toast(errText(e), "err"); }
+  };
+  return (
+    <Modal title="Your favorites" onClose={onClose}>
+      <p className="hint" style={{ marginTop: 0 }}>Tick as many as you like. They show in the side bar.</p>
+      <input type="search" placeholder="Search characters…" aria-label="Search characters" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="who-list" style={{ maxHeight: 360, overflow: "auto", marginTop: 8 }}>
+        {list.map((c) => (
+          <label key={c.id} className="row" data-pickfav={displayName(c)} style={{ gap: 10, padding: "5px 8px", cursor: "pointer" }}>
+            <input type="checkbox" checked={isFav(c)} onChange={() => void toggle(c)} />
+            <ProfileAvatar name={displayName(c)} size={28} src={stillOf(c)} frame={c.frame} /><span className="grow">{displayName(c)}</span>
+          </label>
+        ))}
+        {list.length === 0 && <div className="hint">Nobody matches.</div>}
+      </div>
+      <div className="row" style={{ marginTop: 10 }}><button className="btn primary" onClick={onClose}>Done</button></div>
+    </Modal>
+  );
+}

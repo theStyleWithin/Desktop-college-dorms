@@ -183,10 +183,9 @@ pub async fn stream_chat(
     Ok(full)
 }
 
-/// Ask an endpoint which models it offers (`GET {base}/models`). Accepts the
-/// OpenAI shape (`data[].id`), Ollama-style (`models[].name`), or a bare array.
-pub async fn list_remote_models(http: &reqwest::Client, ep: &Endpoint) -> Result<Vec<String>, String> {
-    let req = match ep {
+/// The `GET .../models` request for an endpoint (with its key and headers).
+fn models_request(http: &reqwest::Client, ep: &Endpoint) -> reqwest::RequestBuilder {
+    match ep {
         Endpoint::OpenAi { base, key, auth, extras, .. } => {
             let mut r = with_headers(http.get(format!("{}/models", base.trim_end_matches('/'))), extras);
             if let Some(k) = key.as_ref().filter(|k| !k.is_empty()) {
@@ -205,7 +204,40 @@ pub async fn list_remote_models(http: &reqwest::Client, ep: &Endpoint) -> Result
                 .header("anthropic-version", "2023-06-01"),
             extras,
         ),
+    }
+}
+
+/// Is the server behind an endpoint up? A quick `GET .../models`.
+#[derive(Debug, PartialEq)]
+pub enum Health {
+    /// It answered normally (a server with no model list, answering 404, still counts: it is up).
+    Ok,
+    /// It is up but something needs attention: the key was refused, or it is limiting requests.
+    Warn(String),
+    /// It could not be reached, or it is failing (a 5xx).
+    Down(String),
+}
+
+pub async fn probe(http: &reqwest::Client, ep: &Endpoint) -> Health {
+    let resp = match models_request(http, ep).timeout(std::time::Duration::from_secs(8)).send().await {
+        Ok(r) => r,
+        Err(e) if e.is_timeout() => return Health::Down("The server didn't answer in time.".into()),
+        Err(e) => return Health::Down(format!("Could not reach the server: {}", e.without_url())),
     };
+    let code = resp.status();
+    match code.as_u16() {
+        200..=299 | 404 | 405 => Health::Ok,
+        401 | 403 => Health::Warn("The server is up but refused the API key.".into()),
+        429 => Health::Warn("The server is up but is limiting requests right now.".into()),
+        500..=599 => Health::Down(format!("The server is having trouble ({code}).")),
+        _ => Health::Warn(format!("The server answered {code}.")),
+    }
+}
+
+/// Ask an endpoint which models it offers (`GET {base}/models`). Accepts the
+/// OpenAI shape (`data[].id`), Ollama-style (`models[].name`), or a bare array.
+pub async fn list_remote_models(http: &reqwest::Client, ep: &Endpoint) -> Result<Vec<String>, String> {
+    let req = models_request(http, ep);
     let resp = req.timeout(std::time::Duration::from_secs(20)).send().await.map_err(|e| format!("Could not reach the server: {e}"))?;
     if !resp.status().is_success() {
         let status = resp.status();
