@@ -85,6 +85,11 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
 - **Rooms**: make a place (a living room, a rooftop, a character's bedroom) with a name, a description and a backdrop (your own
   image or a built-in scene), set a dorm in it, and the characters know where they are while the chat shows the room behind it.
   Make the room first and the dorm after ("Create & enter"), or add a room to a dorm you already have.
+- **Playbooks**: give a story memory and rules. A playbook keeps **values** (trust, hunger, the weather: numbers, yes/no, text or a choice) with a note on what each means and
+  what a number means as it grows, and **rules** that change them before or after each reply (when you say a word, every few turns, by chance, or when a value reaches a point;
+  a rule can even ask the model a question, with a plain-check fallback). The characters are told the values and what they mean, lorebook entries can become available only at
+  certain states, and a playbook can offer starting scenarios. A chat runs one playbook at a time, from the character or chosen for the chat with **🎲 Playbook**. Regenerate
+  replays a turn from the values before it, Continue doesn't move the story on, and editing a message doesn't re-run the rules. Four starters come with the app.
 - **Pathways**: build a place out of rooms. "Our house" can hold a kitchen, a living room and an attic (each with its own picture and
   description), and a room can lead on to other rooms by **exits**: one-way pathways, up to three per room (the garden gate leads to the street and the
   alley). Rooms can lead on to more rooms for as long as you keep connecting them; a room is a dead end only when you haven't connected an exit.

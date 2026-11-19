@@ -1,0 +1,25 @@
+{
+  "name": "Slow burn",
+  "description": "A relationship that develops over time: trust grows with kindness and honesty and drops with cruelty.",
+  "instructions": "Be kind and honest to build trust; rudeness costs trust. One rule asks the model to judge whether a message showed real care. If you switch the model's judgment off for the chat, simple word checks are used instead.",
+  "variables": [
+    { "id": "trust", "label": "Trust", "kind": "number", "default": 2, "min": 0, "max": 10, "note": "How much they trust the player.",
+      "bands": [ { "from": 0, "text": "a wary stranger" }, { "from": 3, "text": "a cautious acquaintance" }, { "from": 6, "text": "a friend" }, { "from": 9, "text": "a trusted partner" } ] },
+    { "id": "mood", "label": "Mood", "kind": "choice", "default": "calm", "options": ["calm", "cheerful", "tense", "sad"], "note": "How they feel right now." }
+  ],
+  "rules": [
+    { "id": "kind_words", "name": "Kind words", "phase": "before", "when": [ { "type": "user_says", "words": ["thank", "please", "sorry", "appreciate", "you matter"] } ],
+      "then": [ { "var": "trust", "op": "add", "value": 1 }, { "var": "mood", "op": "set", "value": "cheerful" } ] },
+    { "id": "cruel_words", "name": "Cruel words", "phase": "before", "when": [ { "type": "user_says", "words": ["shut up", "idiot", "stupid", "hate you"] } ],
+      "then": [ { "var": "trust", "op": "subtract", "value": 2 }, { "var": "mood", "op": "set", "value": "tense" } ] },
+    { "id": "real_care", "name": "A moment of real care", "phase": "after", "ask": "Did the player's last message show real care, honesty or vulnerability toward the character?",
+      "fallback": [ { "type": "user_says", "words": ["i care", "i'm here", "i worry", "the truth", "honestly", "i trust you"] } ],
+      "then": [ { "var": "trust", "op": "add", "value": 1 } ] },
+    { "id": "calm_down", "name": "Calming down", "phase": "after", "when": [ { "type": "var", "var": "mood", "op": "!=", "value": "calm" }, { "type": "every_n", "n": 3 } ],
+      "then": [ { "var": "mood", "op": "set", "value": "calm" } ] }
+  ],
+  "scenarios": [
+    { "name": "Strangers", "description": "They have only just met.", "values": { "trust": 1 } },
+    { "name": "Old friends", "description": "A long shared history.", "values": { "trust": 6, "mood": "cheerful" } }
+  ]
+}

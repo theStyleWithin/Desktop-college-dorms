@@ -6,6 +6,7 @@ mod llama;
 mod llm;
 mod deco;
 mod emoji;
+mod playbook;
 mod presence;
 mod secrets;
 mod unitypkg;
@@ -190,6 +191,14 @@ pub fn run() {
             deco::set_char_deco,
             deco::clear_char_deco,
             deco::generate_char_deco,
+            playbook::list_playbooks,
+            playbook::save_playbook,
+            playbook::delete_playbook,
+            playbook::playbook_templates,
+            playbook::get_chat_playbook,
+            playbook::set_chat_playbook,
+            playbook::set_playbook_values,
+            playbook::set_playbook_llm,
             emoji::list_emoji,
             emoji::add_emoji,
             emoji::update_emoji,

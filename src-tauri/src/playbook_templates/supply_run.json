@@ -1,0 +1,31 @@
+{
+  "name": "Supply run",
+  "description": "An expedition with supplies, injuries and an objective. Walking gets you closer, time costs food and water, and bad luck happens.",
+  "instructions": "Say what you do. Walking, marching and climbing move you toward the goal; foraging and hunting restock you. Run dry and people get hurt.",
+  "variables": [
+    { "id": "food", "label": "Food", "kind": "number", "default": 6, "min": 0, "max": 10, "note": "How much food the party has left.", "bands": [ { "from": 0, "text": "nothing left" }, { "from": 3, "text": "getting low" }, { "from": 7, "text": "plenty" } ] },
+    { "id": "water", "label": "Water", "kind": "number", "default": 6, "min": 0, "max": 10, "note": "How much water the party has left.", "bands": [ { "from": 0, "text": "dry" }, { "from": 3, "text": "getting low" }, { "from": 7, "text": "plenty" } ] },
+    { "id": "injuries", "label": "Injuries", "kind": "number", "default": 0, "min": 0, "max": 3, "note": "How hurt the party is.", "bands": [ { "from": 0, "text": "unhurt" }, { "from": 1, "text": "hurt, slowed down" }, { "from": 3, "text": "badly hurt, in danger" } ] },
+    { "id": "distance", "label": "Distance covered", "kind": "number", "default": 0, "min": 0, "max": 20, "note": "How far along the way to the goal the party is (20 is the goal).", "bands": [ { "from": 0, "text": "just setting out" }, { "from": 8, "text": "about halfway" }, { "from": 16, "text": "nearly there" } ] },
+    { "id": "objective", "label": "Objective", "kind": "text", "default": "Reach the beacon", "note": "What the party is trying to do." }
+  ],
+  "rules": [
+    { "id": "march", "name": "Moving on", "phase": "before", "when": [ { "type": "user_says", "words": ["walk", "march", "onward", "travel", "climb", "head out", "move on"] } ],
+      "then": [ { "var": "distance", "op": "add", "value": 2 } ] },
+    { "id": "hungry", "name": "Hungry and thirsty", "phase": "before", "when": [ { "type": "every_n", "n": 2 } ],
+      "then": [ { "var": "food", "op": "subtract", "value": 1 }, { "var": "water", "op": "subtract", "value": 1 } ] },
+    { "id": "bad_step", "name": "A bad step", "phase": "before", "when": [ { "type": "chance", "percent": 15 }, { "type": "var", "var": "injuries", "op": "<", "value": 3 } ],
+      "then": [ { "var": "injuries", "op": "add", "value": 1 } ] },
+    { "id": "starving", "name": "Running dry", "phase": "before", "when_any": [ { "type": "var", "var": "food", "op": "<=", "value": 0 }, { "type": "var", "var": "water", "op": "<=", "value": 0 } ],
+      "then": [ { "var": "injuries", "op": "add", "value": 1 } ] },
+    { "id": "found_supplies", "name": "Found supplies", "phase": "after", "ask": "Did the party find or gain food or water in the last exchange?",
+      "fallback": [ { "type": "user_says", "words": ["forage", "find water", "fish", "hunt", "refill", "gather"] } ],
+      "then": [ { "var": "food", "op": "add", "value": 2 }, { "var": "water", "op": "add", "value": 2 } ] },
+    { "id": "arrived", "name": "Arrived", "phase": "after", "when": [ { "type": "var", "var": "distance", "op": ">=", "value": 20 } ],
+      "then": [ { "var": "objective", "op": "set", "value": "Reached the beacon!" } ] }
+  ],
+  "scenarios": [
+    { "name": "Well stocked", "description": "A good start.", "values": { "food": 9, "water": 9 } },
+    { "name": "Barely prepared", "description": "Short on everything.", "values": { "food": 3, "water": 3 } }
+  ]
+}

@@ -6,6 +6,7 @@ import {
 import Art from "../components/Art";
 import MicButton from "../components/MicButton";
 import MechanicsPanel from "../components/MechanicsPanel";
+import PlaybookPanel from "../components/PlaybookPanel";
 import PhoneView from "../components/PhoneView";
 import MusicPlayer from "../components/MusicPlayer";
 import MusicField from "../components/MusicField";
@@ -56,7 +57,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
   const [replyAs, setReplyAs] = useState<string>("");
   const [focus, setFocus] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
-  const [modal, setModal] = useState<null | { type: "chat"; dormId: number | null } | { type: "dorm" } | { type: "who" } | { type: "mech" } | { type: "dormroom"; dormId: number }>(null);
+  const [modal, setModal] = useState<null | { type: "chat"; dormId: number | null } | { type: "dorm" } | { type: "who" } | { type: "mech" } | { type: "playbook" } | { type: "dormroom"; dormId: number }>(null);
   const [listOpen, setListOpen] = useState(false);
   const [optsOpen, setOptsOpen] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
@@ -344,6 +345,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               )}
               <button className={`btn sm ${phone ? "primary" : ""}`} aria-pressed={phone} onClick={() => patchChat({ style: phone ? "chat" : "phone" })} title="Switch between the normal chat and a texting view">📱 Phone</button>
               <button className="btn sm" onClick={() => setModal({ type: "mech" })} title="Optional story layers: affection, status, and more">🧩 Mechanics</button>
+              <button className="btn sm" onClick={() => setModal({ type: "playbook" })} title="The story's values and rules" data-testid="pb-open">🎲 Playbook</button>
               <button className="btn sm" onClick={() => setModal({ type: "who" })}>👥 Who's here</button>
               <button className="btn sm" onClick={async () => { if (window.confirm("Clear every message in this chat?")) { await api.clearChat(chat.id); setMsgs([]); } }}>Clear</button>
               <button className="btn sm danger" onClick={deleteChat}>Delete</button>
@@ -481,6 +483,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
         ) : <div className="hint">Characters in this chat show up here.</div>}
       </aside>
 
+      {modal?.type === "playbook" && chat && <PlaybookPanel chatId={chat.id} onClose={() => setModal(null)} />}
       {modal?.type === "mech" && chat && <MechanicsPanel chatId={chat.id} onClose={() => setModal(null)} />}
       {modal?.type === "dormroom" && <DormRoom dormId={modal.dormId} onClose={() => setModal(null)} />}
       {modal?.type === "dorm" && <NewDorm onClose={() => setModal(null)} onDone={refresh} />}

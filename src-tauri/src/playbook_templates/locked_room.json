@@ -1,0 +1,25 @@
+{
+  "name": "Locked room",
+  "description": "A mystery with clues to uncover and an accusation to make. Clues turn up as you search; the outcome depends on how many you found.",
+  "instructions": "Search, examine and question to find clues. When you have enough, accuse someone. Accuse too early and you are likely to be wrong.",
+  "variables": [
+    { "id": "clues", "label": "Clues found", "kind": "number", "default": 0, "min": 0, "max": 5, "note": "How many real clues the player has found so far.",
+      "bands": [ { "from": 0, "text": "nothing solid yet" }, { "from": 2, "text": "a few leads" }, { "from": 4, "text": "nearly enough to be sure" } ] },
+    { "id": "stage", "label": "Stage", "kind": "choice", "default": "investigating", "options": ["investigating", "accusing", "closed"], "note": "Where the investigation stands." },
+    { "id": "outcome", "label": "Outcome", "kind": "choice", "default": "open", "options": ["open", "the culprit is caught", "an innocent is accused"], "note": "How the case ended, once it has." }
+  ],
+  "rules": [
+    { "id": "search", "name": "A search turns something up", "phase": "before", "when": [ { "type": "user_says", "words": ["search", "examine", "inspect", "look at", "check"] }, { "type": "chance", "percent": 60 }, { "type": "var", "var": "stage", "op": "==", "value": "investigating" } ],
+      "then": [ { "var": "clues", "op": "add", "value": 1 } ] },
+    { "id": "enough", "name": "Enough to accuse", "phase": "before", "when": [ { "type": "var", "var": "clues", "op": ">=", "value": 3 }, { "type": "var", "var": "stage", "op": "==", "value": "investigating" } ],
+      "then": [ { "var": "stage", "op": "set", "value": "accusing" } ] },
+    { "id": "right", "name": "A well-founded accusation", "phase": "before", "when": [ { "type": "user_says", "words": ["i accuse", "it was you", "you did it"] }, { "type": "var", "var": "clues", "op": ">=", "value": 4 }, { "type": "var", "var": "stage", "op": "!=", "value": "closed" } ],
+      "then": [ { "var": "outcome", "op": "set", "value": "the culprit is caught" }, { "var": "stage", "op": "set", "value": "closed" } ] },
+    { "id": "wrong", "name": "A hasty accusation", "phase": "before", "when": [ { "type": "user_says", "words": ["i accuse", "it was you", "you did it"] }, { "type": "var", "var": "clues", "op": "<", "value": 4 }, { "type": "var", "var": "stage", "op": "!=", "value": "closed" } ],
+      "then": [ { "var": "outcome", "op": "set", "value": "an innocent is accused" }, { "var": "stage", "op": "set", "value": "closed" } ] }
+  ],
+  "scenarios": [
+    { "name": "Fresh case", "description": "Nothing is known yet.", "values": {} },
+    { "name": "Halfway there", "description": "Two clues are already found.", "values": { "clues": 2 } }
+  ]
+}

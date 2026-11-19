@@ -1,0 +1,16 @@
+{
+  "name": "Wildcard",
+  "description": "Random events at random times, with no lorebooks needed. Now and then something happens, for one turn, and the story has to deal with it.",
+  "instructions": "Nothing to manage. Every so often an event shows up for a turn; the characters work it into the scene.",
+  "variables": [
+    { "id": "event", "label": "Something happening", "kind": "choice", "default": "nothing", "options": ["nothing", "a stranger arrives", "sudden rain", "a strange noise", "a lost thing turns up"], "note": "An unexpected event that is happening right now and that the scene has to deal with (nothing special if it says nothing)." }
+  ],
+  "rules": [
+    { "id": "stranger", "name": "A stranger arrives", "phase": "before", "when": [ { "type": "var", "var": "event", "op": "==", "value": "nothing" }, { "type": "chance", "percent": 6 } ], "then": [ { "var": "event", "op": "set", "value": "a stranger arrives" } ] },
+    { "id": "rain", "name": "Sudden rain", "phase": "before", "when": [ { "type": "var", "var": "event", "op": "==", "value": "nothing" }, { "type": "chance", "percent": 6 } ], "then": [ { "var": "event", "op": "set", "value": "sudden rain" } ] },
+    { "id": "noise", "name": "A strange noise", "phase": "before", "when": [ { "type": "var", "var": "event", "op": "==", "value": "nothing" }, { "type": "chance", "percent": 6 } ], "then": [ { "var": "event", "op": "set", "value": "a strange noise" } ] },
+    { "id": "lost_thing", "name": "A lost thing turns up", "phase": "before", "when": [ { "type": "var", "var": "event", "op": "==", "value": "nothing" }, { "type": "chance", "percent": 6 } ], "then": [ { "var": "event", "op": "set", "value": "a lost thing turns up" } ] },
+    { "id": "passes", "name": "It passes", "phase": "after", "when": [ { "type": "var", "var": "event", "op": "!=", "value": "nothing" } ], "then": [ { "var": "event", "op": "clear" } ] }
+  ],
+  "scenarios": []
+}
