@@ -992,6 +992,87 @@ try:
     check("your messages show the persona's name and picture", d.execute_script("const u=document.querySelector('.msg.user');return !!u && u.querySelector('.who').textContent.includes('Kai') && !!u.querySelector('.avatar img')"))
     invoke("set_active_persona", {"id": None}); invoke("delete_persona", {"id": pe[0]["id"]})
 
+    # -- the characters list on the right, the draggable walls between the panels, and the side bar's own order
+    st0 = invoke("get_settings")
+    def set_provider(**kw):
+        st = invoke("get_settings"); st.update(kw); invoke("save_settings", {"settings": st})
+    set_provider(provider="local"); reload_ui(); nav("Characters"); time.sleep(0.8)
+    d.execute_script("const t=document.querySelector('.members-tab'); if (t) t.click();"); time.sleep(0.8)
+    chars_now = invoke("list_characters")
+    check("the characters list opens on the right with every character in it", d.execute_script("return !!document.querySelector('[data-testid=members] .members')") and d.execute_script("return document.querySelectorAll('[data-testid=members] .m-row').length") == len(chars_now), str(len(chars_now)))
+    pres = lambda: d.execute_script("const h=document.querySelector('[data-testid=members-health]');return h?h.dataset.presence:''")
+    lights = lambda: d.execute_script("return [...new Set([...document.querySelectorAll('[data-testid=member-light]')].map(x=>[...x.classList].find(c=>['on','warn','off','idle'].includes(c))))].join(',')")
+    wait(10).until(lambda x: pres() not in ("", "checking"))
+    check("with the built-in model the light is green", pres() == "local" and lights() == "on", f"{pres()} {lights()}")
+    set_provider(provider="openai", openai_base_url="http://127.0.0.1:18999/v1", openai_model="fake-model"); reload_ui(); nav("Characters"); time.sleep(1.5)
+    wait(10).until(lambda x: pres() not in ("", "checking"))
+    check("a cloud model that answers makes the light green and names the model", pres() == "ok" and lights() == "on" and "fake-model" in d.execute_script("return document.querySelector('[data-testid=members-health]').innerText"), f"{pres()} {lights()}")
+    set_provider(openai_base_url="http://127.0.0.1:1/v1"); reload_ui(); nav("Characters"); time.sleep(1.5)
+    wait(15).until(lambda x: pres() not in ("", "checking"))
+    check("a cloud model that can't be reached turns every light red and says why", pres() == "down" and lights() == "off" and "reach" in d.execute_script("return document.querySelector('[data-testid=members-health]').innerText").lower(), f"{pres()} {lights()}")
+    set_provider(openai_base_url="http://127.0.0.1:18999/v1")
+    # statuses: in the character's voice (written by the model) or in the user's own words
+    cid = chars_now[0]["id"]
+    old_pieces = seen.get("pieces"); seen["pieces"] = ["studying ", "hard"]
+    gen = invoke("generate_status", {"characterId": cid}); seen["pieces"] = old_pieces
+    check("the model writes a status for a character, kept as theirs", gen["source"] == "ai" and gen["text"] == "studying hard" and [x["text"] for x in invoke("list_statuses")] == [gen["text"]], str(gen))
+    own = invoke("set_status", {"characterId": cid, "text": "  studying for finals  "})
+    check("a status can be written by hand (trimmed, marked as the user's)", own["text"] == "studying for finals" and own["source"] == "user")
+    check("a status can't be made up for a character that doesn't exist", "doesn't exist" in (inv_err("set_status", {"characterId": "nope", "text": "x"}) or ""))
+    reload_ui(); nav("Characters"); time.sleep(1.5)
+    check("the status shows above the character's name", d.execute_script("const r=[...document.querySelectorAll('[data-testid=members] .m-row')].find(x=>x.dataset.id===arguments[0]);return !!r && r.querySelector('[data-testid=member-status]')?.textContent==='studying for finals'", cid))
+    check("clearing the status removes it", invoke("set_status", {"characterId": cid, "text": ""}) is None and invoke("list_statuses") == [])
+    set_provider(provider=st0["provider"], openai_base_url=st0["openai_base_url"], openai_model=st0["openai_model"])
+
+    # the walls between the panels can be dragged (left mouse button), double-click puts them back
+    reload_ui(); nav("Characters"); time.sleep(1.0)
+    drag_wall = """
+      const w = document.querySelector('.resizer.' + arguments[0]); const x = arguments[1];
+      w.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, clientX: 0, pointerId: 1}));
+      window.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, clientX: x, pointerId: 1}));
+      window.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, clientX: x, pointerId: 1}));"""
+    var = lambda n: d.execute_script("return getComputedStyle(document.querySelector('.shell')).getPropertyValue(arguments[0]).trim()", n)
+    width_of = lambda sel: d.execute_script("return Math.round(document.querySelector(arguments[0]).getBoundingClientRect().width)", sel)
+    d.execute_script(drag_wall, "left", 330); time.sleep(0.4)
+    check("dragging the wall by the side bar makes the side bar wider", var("--side-w") == "330px" and abs(width_of("nav.side") - 330) <= 2, f"{var('--side-w')} {width_of('nav.side')}")
+    win_w = d.execute_script("return window.innerWidth")
+    d.execute_script(drag_wall, "right", win_w - 350); time.sleep(0.4)
+    check("dragging the wall by the characters list resizes it too", var("--members-w") == "350px" and abs(width_of(".members") - 350) <= 2, f"{var('--members-w')} {width_of('.members')}")
+    d.execute_script(drag_wall, "left", 5); time.sleep(0.3)
+    check("a panel can't be dragged narrower than its minimum", var("--side-w") == "160px")
+    reload_ui(); nav("Characters"); time.sleep(1.0)
+    check("the widths are remembered after a restart", var("--side-w") == "160px" and var("--members-w") == "350px")
+    for side_ in ("left", "right"): d.execute_script("document.querySelector('.resizer.' + arguments[0]).dispatchEvent(new MouseEvent('dblclick', {bubbles: true}))", side_)
+    time.sleep(0.4)
+    check("double-clicking a wall puts the panel back to its normal width", var("--side-w") == "220px" and var("--members-w") == "264px")
+    d.execute_script("document.querySelector('[aria-label=\"Hide the characters list\"]').click()"); time.sleep(0.5)
+    check("the characters list can be hidden, and a small tab brings it back", not d.execute_script("return !!document.querySelector('.members')") and d.execute_script("return !!document.querySelector('.members-tab')"))
+
+    # the side bar's items can be dragged into your own order; Prompts stays last
+    labels = lambda: d.execute_script("return [...document.querySelectorAll('nav.side button.nav[data-nav]')].map(b=>b.textContent.trim())")
+    order0 = labels()
+    check("the side bar starts in its normal order, with Prompts after them", order0[0] == "Home" and order0[-1] == "Settings" and d.execute_script("return document.querySelector('nav.side .prompts').previousElementSibling.dataset.nav") == "settings")
+    drag_nav = """
+      const a = document.querySelector('[data-nav=' + arguments[0] + ']'), b = document.querySelector('[data-nav=' + arguments[1] + ']');
+      const r = b.getBoundingClientRect(); const y = arguments[2] ? r.bottom - 2 : r.top + 2; const dt = new DataTransfer();
+      a.dispatchEvent(new DragEvent('dragstart', {bubbles: true, dataTransfer: dt}));
+      b.dispatchEvent(new DragEvent('dragover', {bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 5, clientY: y}));
+      b.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 5, clientY: y}));
+      a.dispatchEvent(new DragEvent('dragend', {bubbles: true, dataTransfer: dt}));"""
+    d.execute_script(drag_nav, "notes", "home", False); time.sleep(0.5)
+    check("dropping an item on the top half of another puts it before that one", labels()[0] == "Notes" and labels()[1] == "Home", str(labels()))
+    d.execute_script(drag_nav, "home", "settings", True); time.sleep(0.5)
+    check("dropping on the bottom half puts it after, and Prompts is still last", labels()[-1] == "Home" and d.execute_script("const ps=document.querySelector('nav.side .prompts');return [...document.querySelectorAll('nav.side button.nav[data-nav]')].every(b=>b.compareDocumentPosition(ps)&Node.DOCUMENT_POSITION_FOLLOWING)"), str(labels()))
+    check("Prompts can't be dragged", d.execute_script("return document.querySelector('[data-testid=prompts-toggle]').getAttribute('draggable')") is None)
+    reload_ui(); time.sleep(0.8)
+    check("the order is remembered after a restart", labels()[0] == "Notes" and labels()[-1] == "Home", str(labels()))
+    d.execute_script("document.querySelector('[data-nav=notes]').focus()")
+    ActionChains(d).key_down(Keys.ALT).send_keys(Keys.ARROW_DOWN).key_up(Keys.ALT).perform(); time.sleep(0.5)
+    check("Alt and the down arrow moves the focused item down one place", labels()[:2] == ["Characters", "Notes"], str(labels()))
+    nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Appearance"); time.sleep(0.6)
+    click_text("button", "Reset the side bar order"); time.sleep(0.5)
+    check("the order can be reset from Settings, Appearance", labels() == order0, str(labels()))
+
     # -- text size in chats: a slider that makes the roleplay text bigger, kept on this device
     nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Appearance"); time.sleep(0.6)
     px = lambda: float(d.execute_script("return parseFloat(getComputedStyle(document.querySelector('[data-testid=text-size-sample] .txt')).fontSize)"))

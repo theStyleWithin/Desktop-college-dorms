@@ -211,6 +211,8 @@ export interface PackageExtract {
   materials: { name: string; tex: string | null; tex_ext: string | null; color: [number, number, number] | null }[];
   notes: string[];
 }
+export interface ProviderHealth { state: "local" | "ok" | "warn" | "down" | "none"; detail: string; model: string; checked_at: number }
+export interface CharStatus { character_id: string; text: string; source: "ai" | "user"; updated_at: number }
 export interface SavedPrompt { id: string; title: string; body: string; tag: string; created_at: number; updated_at: number }
 export interface DecorItem { id: string; name: string; file: string; bytes: number; share: boolean; created_at: number; /** absolute path of the .glb */ path: string }
 export interface ExportInfo { token: string; file_name: string; size: number; characters: number; dorms: number; chats: number; messages: number; media: number; /** rooms whose 3D model was left out because it isn't marked as shareable */ withheld_rooms: string[]; /** decorations left out because they aren't marked as shareable */ withheld_items: string[] }
@@ -312,6 +314,11 @@ export const api = {
   saveLorebook: (b: { id?: string; name: string; book: CharacterBook }) => invoke<Lorebook>("save_lorebook", { lorebook: { created_at: 0, updated_at: 0, ...b, id: b.id ?? "" } }),
   deleteLorebook: (id: string) => invoke<void>("delete_lorebook", { id }),
   // notes
+  // the characters list: is the model up, and what is on each character's mind
+  providerHealth: () => invoke<ProviderHealth>("provider_health"),
+  listStatuses: () => invoke<CharStatus[]>("list_statuses"),
+  setStatus: (characterId: string, text: string) => invoke<CharStatus | null>("set_status", { characterId, text }),
+  generateStatus: (characterId: string) => invoke<CharStatus>("generate_status", { characterId }),
   // saved prompts
   listPrompts: () => invoke<SavedPrompt[]>("list_prompts"),
   savePrompt: (p: { id?: string; title: string; body: string; tag?: string }) => invoke<SavedPrompt>("save_prompt", { prompt: { created_at: 0, updated_at: 0, tag: "", ...p, id: p.id ?? "" } }),

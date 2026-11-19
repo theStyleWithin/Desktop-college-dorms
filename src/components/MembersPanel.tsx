@@ -28,7 +28,7 @@ export const presenceLabel = (p: Presence) => LIGHT[p].label;
 
 /** The members list itself (a round avatar, a light, and a status bubble above each name); the connected panel gives it real data. */
 export function MembersList({
-  rows, total, presence, detail, modelLabel, expandedId, query, onQuery, onToggle, expanded, autoStatus, onAutoStatus, onCollapse, busyIds,
+  rows, total, presence, detail, modelLabel, expandedId, query, onQuery, onToggle, expanded, autoStatus, onAutoStatus, onCollapse, busyIds, note,
 }: {
   rows: MemberRow[];
   /** how many characters there are in all, when `rows` is only the ones that match a search */
@@ -47,6 +47,8 @@ export function MembersList({
   onAutoStatus?: (on: boolean) => void;
   onCollapse?: () => void;
   busyIds?: Set<string>;
+  /** a short message under the options (why statuses aren't being written, for example) */
+  note?: string;
 }) {
   const L = LIGHT[presence];
   const online = presence === "local" || presence === "ok";
@@ -65,10 +67,11 @@ export function MembersList({
           <input type="checkbox" checked={!!autoStatus} onChange={(e) => onAutoStatus(e.target.checked)} /> Let characters write their status
         </label>
       )}
+      {note && <div className="m-note" role="status">{note}</div>}
       {onQuery && rows.length > 8 && <input className="m-search" type="search" placeholder="Search characters…" aria-label="Search characters" value={query ?? ""} onChange={(e) => onQuery(e.target.value)} />}
       <div className="m-list">
         {rows.map((r) => (
-          <div key={r.id} className={`m-row${expandedId === r.id ? " open" : ""}`} data-member={r.name}>
+          <div key={r.id} className={`m-row${expandedId === r.id ? " open" : ""}`} data-member={r.name} data-id={r.id}>
             <button className="m-main" onClick={() => onToggle?.(r.id)} aria-expanded={expandedId === r.id}>
               <span className="m-av"><ProfileAvatar name={r.name} size={38} src={r.avatar} frame={r.frame} /><span className={`m-dot ${L.cls}`} title={L.label} data-testid="member-light" /></span>
               <span className="m-text">

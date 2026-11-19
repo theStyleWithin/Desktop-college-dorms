@@ -232,6 +232,17 @@ pub struct SavedPrompt {
     pub updated_at: i64,
 }
 
+/// What is on a character's mind (a short line shown in the characters list), written by the model in their voice or by the user.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CharStatus {
+    /// The character's id.
+    pub character_id: String,
+    pub text: String,
+    /// `ai` or `user`.
+    pub source: String,
+    pub updated_at: i64,
+}
+
 /// A mechanic pack in the library (the imported .bundle.json, verbatim).
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MechanicRow {
@@ -448,6 +459,8 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
          CREATE TABLE IF NOT EXISTS prompts(
             id TEXT PRIMARY KEY, profile_id TEXT, title TEXT NOT NULL, body TEXT NOT NULL, tag TEXT NOT NULL DEFAULT '',
             created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS char_status(
+            id TEXT PRIMARY KEY, profile_id TEXT, text TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'ai', updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS lorebooks(
             id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS folders(
@@ -534,6 +547,7 @@ pub fn list_characters(c: &Connection, owner: &Owner) -> R<Vec<Character>> {
 
 pub fn delete_character(c: &Connection, id: &str, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM characters WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    c.execute("DELETE FROM char_status WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     Ok(())
 }
 
@@ -854,6 +868,29 @@ pub fn save_prompt(c: &Connection, p: &SavedPrompt, owner: &Owner) -> R<()> {
 
 pub fn delete_prompt(c: &Connection, id: &str, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM prompts WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(())
+}
+
+// ----- character statuses -----
+
+pub fn list_statuses(c: &Connection, owner: &Owner) -> R<Vec<CharStatus>> {
+    let mut s = c.prepare("SELECT id,text,source,updated_at FROM char_status WHERE profile_id IS ?1")?;
+    let rows = s.query_map([owner], |r| Ok(CharStatus { character_id: r.get(0)?, text: r.get(1)?, source: r.get(2)?, updated_at: r.get(3)? }))?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Insert or replace (only ever a status of this owner).
+pub fn save_status(c: &Connection, st: &CharStatus, owner: &Owner) -> R<()> {
+    c.execute(
+        "INSERT INTO char_status(id,profile_id,text,source,updated_at) VALUES(?1,?2,?3,?4,?5)
+         ON CONFLICT(id) DO UPDATE SET text=excluded.text, source=excluded.source, updated_at=excluded.updated_at WHERE char_status.profile_id IS ?2",
+        params![st.character_id, owner, st.text, st.source, st.updated_at],
+    )?;
+    Ok(())
+}
+
+pub fn delete_status(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM char_status WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     Ok(())
 }
 
@@ -1183,6 +1220,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM rooms WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM decor WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM prompts WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM char_status WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM mechanics WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM notes WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM folders WHERE profile_id IS ?1", [owner])?;
@@ -1201,7 +1239,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
@@ -1367,6 +1405,24 @@ mod tests {
         assert_eq!((got.len(), got[0].title.as_str(), got[0].body.as_str()), (1, "Soft redirect", "[OOC: keep it gentle]"));
         wipe_owner(&c, &a).unwrap();
         assert!(list_prompts(&c, &a).unwrap().is_empty());
+    }
+
+    #[test]
+    fn character_statuses_are_private_and_follow_their_character() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        save_character(&c, &ch("x", "X"), &a).unwrap();
+        let st = CharStatus { character_id: "x".into(), text: "brewing tea".into(), source: "ai".into(), updated_at: 1 };
+        save_status(&c, &st, &a).unwrap();
+        assert!(list_statuses(&c, &b).unwrap().is_empty());
+        save_status(&c, &CharStatus { text: "stolen".into(), ..st.clone() }, &b).unwrap();
+        delete_status(&c, "x", &b).unwrap();
+        assert_eq!(list_statuses(&c, &a).unwrap()[0].text, "brewing tea", "B can't change or remove A's status");
+        save_status(&c, &CharStatus { text: "napping".into(), source: "user".into(), updated_at: 2, ..st }, &a).unwrap();
+        let got = list_statuses(&c, &a).unwrap();
+        assert_eq!((got.len(), got[0].text.as_str(), got[0].source.as_str()), (1, "napping", "user"));
+        delete_character(&c, "x", &a).unwrap();
+        assert!(list_statuses(&c, &a).unwrap().is_empty(), "deleting the character removes the status");
     }
 
     #[test]

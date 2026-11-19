@@ -4,6 +4,7 @@ mod db;
 mod extras;
 mod llama;
 mod llm;
+mod presence;
 mod secrets;
 mod unitypkg;
 
@@ -168,6 +169,10 @@ pub fn run() {
             extras::room_model_chunk,
             extras::room_model_finish,
             extras::room_model_cancel,
+            presence::provider_health,
+            presence::list_statuses,
+            presence::set_status,
+            presence::generate_status,
             extras::list_prompts,
             extras::save_prompt,
             extras::delete_prompt,

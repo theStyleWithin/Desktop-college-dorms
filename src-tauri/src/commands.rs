@@ -826,26 +826,34 @@ fn profile_endpoint(st: &AppState, o: &db::Owner, p: &ApiProfile) -> R<Endpoint>
 }
 
 /// The endpoint to talk to, plus the context window we must stay inside.
-async fn resolve_endpoint(st: &Shared, o: &db::Owner, s: &Settings) -> R<(Endpoint, usize)> {
+/// The endpoint for a cloud or network provider (None when the provider is the local engine, which has to be started instead).
+pub(crate) fn remote_endpoint(st: &AppState, o: &db::Owner, s: &Settings) -> Option<R<Endpoint>> {
     match s.provider.as_str() {
-        "anthropic" => {
-            let key = secrets::get(&st.data_dir, &skey(o, "anthropic")).ok_or("Add your Anthropic API key in Settings.")?;
-            Ok((Endpoint::Anthropic { base: "https://api.anthropic.com".into(), key, model: s.anthropic_model.clone(), extras: Extras::default() }, s.context_tokens))
-        }
+        "anthropic" => Some(match secrets::get(&st.data_dir, &skey(o, "anthropic")) {
+            Some(key) => Ok(Endpoint::Anthropic { base: "https://api.anthropic.com".into(), key, model: s.anthropic_model.clone(), extras: Extras::default() }),
+            None => Err("Add your Anthropic API key in Settings.".into()),
+        }),
         "openai" => {
             let key = secrets::get(&st.data_dir, &skey(o, "openai"));
-            Ok((Endpoint::openai(s.openai_base_url.clone(), key, s.openai_model.clone()), s.context_tokens))
+            Some(Ok(Endpoint::openai(s.openai_base_url.clone(), key, s.openai_model.clone())))
         }
         p if p.starts_with("custom:") => {
             let id = &p["custom:".len()..];
-            let prof = s.profiles.iter().find(|x| x.id == id).ok_or("The selected Other API no longer exists. Pick another in Settings.")?;
-            Ok((profile_endpoint(st, o, prof)?, s.context_tokens))
+            Some(match s.profiles.iter().find(|x| x.id == id) {
+                Some(prof) => profile_endpoint(st, o, prof),
+                None => Err("The selected Other API no longer exists. Pick another in Settings.".into()),
+            })
         }
-        _ => {
-            let (base, n_ctx) = llama::ensure_running(st, &s.local_model, s.context_tokens, s.local_gpu).await?;
-            Ok((Endpoint::openai(base, None, "local".into()), s.context_tokens.min(n_ctx)))
-        }
+        _ => None,
     }
+}
+
+async fn resolve_endpoint(st: &Shared, o: &db::Owner, s: &Settings) -> R<(Endpoint, usize)> {
+    if let Some(r) = remote_endpoint(st, o, s) {
+        return r.map(|ep| (ep, s.context_tokens));
+    }
+    let (base, n_ctx) = llama::ensure_running(st, &s.local_model, s.context_tokens, s.local_gpu).await?;
+    Ok((Endpoint::openai(base, None, "local".into()), s.context_tokens.min(n_ctx)))
 }
 
 fn pick_speaker(chat: &Chat, history: &[&Message], chars: &HashMap<String, Character>) -> String {

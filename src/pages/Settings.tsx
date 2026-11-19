@@ -314,6 +314,11 @@ function Look({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void
           <button key={k} className={`chip ${s.theme === k ? "on" : ""}`} style={{ padding: "6px 14px", fontSize: ".9rem" }} onClick={() => { patch({ theme: k }); document.documentElement.dataset.theme = k; }}>{l}</button>
         ))}
       </div>
+      <h3 style={{ marginTop: 22 }}>Side bar order</h3>
+      <div className="row" style={{ marginTop: 10 }}>
+        <button className="btn sm" onClick={() => { try { localStorage.removeItem("dorms.nav.order"); } catch { /* storage unavailable */ } window.dispatchEvent(new Event("dorms-nav-order")); }}>Reset the side bar order</button>
+        <span className="hint">Hold a side bar item and drag it to where you want it. Prompts stays at the bottom. The order is kept on this device.</span>
+      </div>
       <h3 style={{ marginTop: 22 }}>Text size in chats</h3>
       <TextSizeSetting />
     </div>
