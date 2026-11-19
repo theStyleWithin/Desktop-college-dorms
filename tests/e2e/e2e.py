@@ -1065,7 +1065,7 @@ try:
     check("a sad reply shows the sad picture", gitems["sad"] in last_avatar() and gitems["sad"] in stage_img(), f"{last_avatar()} | {stage_img()}")
     say_and_wait("what time is it?", ["It is nine o'clock ", "and the shop is closed."])
     check("a reply with no particular mood falls back to the picture tagged neutral", gitems["calm"] in last_avatar(), last_avatar())
-    check("earlier messages keep the picture they had (only the latest wears the new one)", d.execute_script("const a=[...document.querySelectorAll('.msgs .msg:not(.user) .avatar img')];return a.length>=3 && decodeURIComponent(a[a.length-2].src)!==decodeURIComponent(a[a.length-1].src)"))
+    check("earlier messages keep the picture they had (this character has no main picture, so only the latest message wears a picture)", d.execute_script("return document.querySelectorAll('.msgs .msg:not(.user)').length>=4 && document.querySelectorAll('.msgs .msg:not(.user) .avatar img').length===1"))
     reload_ui(); nav("Dorms"); time.sleep(1.0)
     d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'Gal chat')]").click(); time.sleep(1.0)
     check("the picture is remembered when the chat is opened again", gitems["calm"] in last_avatar(), last_avatar())
