@@ -696,3 +696,13 @@ body.resizing * { cursor: col-resize !important; }
 .world-rooms { display: grid; gap: 8px; margin: 8px 0 12px; }
 .world-room { display: flex; gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
 .world-room small { display: block; color: var(--muted); }
+
+/* a room's gallery */
+.room-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin: 8px 0; }
+.room-pic { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); align-content: start; }
+.room-pic-img { padding: 0; border: 0; background: none; cursor: zoom-in; display: block; }
+.room-pic-img img { width: 100%; height: 120px; object-fit: cover; border-radius: 8px; display: block; }
+.room-pic.add { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 150px; border-style: dashed; color: var(--muted); cursor: pointer; font: inherit; }
+.world-room .thumbs { display: inline-flex; gap: 4px; }
+.world-room .thumbs button { padding: 0; border: 0; background: none; cursor: zoom-in; }
+.world-room .thumbs img { width: 38px; height: 38px; object-fit: cover; border-radius: 6px; display: block; }

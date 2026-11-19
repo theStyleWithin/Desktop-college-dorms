@@ -111,6 +111,9 @@ export interface Room {
   parent_id?: number | null; links?: number[];
   /** The world this room is in (a folder of connected rooms), or none. */
   world_id?: number | null;
+  /** Pictures of the room (its look); their captions are told to the characters too. */
+  gallery?: { id: string; file: string; caption: string }[];
+  gallery_paths?: { id: string; path: string }[];
   /** Optional decorations and a tag, like a server's: the same nameplate, background and wreath a profile can wear. */
   deco?: RoomDeco;
   /** An imported 3D scene that replaces the built-in room: its file name, where it is (use roomModelUrl()), how it is set, and whether its owner allowed sharing it. */
@@ -353,6 +356,12 @@ export const api = {
   listStatuses: () => invoke<CharStatus[]>("list_statuses"),
   setStatus: (characterId: string, text: string) => invoke<CharStatus | null>("set_status", { characterId, text }),
   generateStatus: (characterId: string) => invoke<CharStatus>("generate_status", { characterId }),
+  async addRoomPicture(roomId: number, file: File, caption: string): Promise<Room> {
+    return bin("add_room_picture", new Uint8Array(await file.arrayBuffer()), { "x-room-id": String(roomId), "x-file-name": enc(file.name), "x-caption": enc(caption) });
+  },
+  setRoomPictureCaption: (id: number, itemId: string, caption: string) => invoke<Room>("set_room_picture_caption", { id, itemId, caption }),
+  removeRoomPicture: (id: number, itemId: string) => invoke<Room>("remove_room_picture", { id, itemId }),
+  useRoomPictureAsBackdrop: (id: number, itemId: string) => invoke<Room>("use_room_picture_as_backdrop", { id, itemId }),
   listWorlds: () => invoke<World[]>("list_worlds"),
   createWorld: (name: string, description: string) => invoke<World>("create_world", { name, description }),
   updateWorld: (id: number, name: string, description: string, lore: string, lorebooks: string[]) => invoke<World>("update_world", { id, name, description, lore, lorebooks }),
@@ -555,6 +564,7 @@ export const musicUrl = (x: { music_path?: string | null }) => (x.music_path ? c
 export const roomBackdrop = (r: { backdrop_path?: string | null }) => (r.backdrop_path ? convertFileSrc(r.backdrop_path) : null);
 /** A gallery picture's address (the web view can't open a path directly). */
 export const emojiUrl = (e: { path: string }) => convertFileSrc(e.path);
+export const roomPicUrl = (r: Room, itemId: string) => { const p = r.gallery_paths?.find((g) => g.id === itemId)?.path; return p ? convertFileSrc(p) : null; };
 export const galleryUrl = (c: Character, itemId: string) => { const p = c.gallery_paths?.find((g) => g.id === itemId)?.path; return p ? convertFileSrc(p) : null; };
 export const mediaUrl = (c: { media_path: string | null }) => (c.media_path ? convertFileSrc(c.media_path) : null);
 

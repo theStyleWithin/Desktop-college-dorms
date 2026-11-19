@@ -166,6 +166,9 @@ pub struct Room {
     /// The room this one is part of (the kitchen of "our house"). Rooms without one are top-level places.
     #[serde(default)]
     pub parent_id: Option<i64>,
+    /// Pictures of the room: its look, as a gallery (up to `MAX_ROOM_PICS`).
+    #[serde(default)]
+    pub gallery: Vec<RoomPic>,
     /// The world this room is in (a folder of connected rooms); `None` = not in one.
     #[serde(default)]
     pub world_id: Option<i64>,
@@ -197,6 +200,16 @@ pub struct World {
     pub lorebooks: Vec<String>,
     #[serde(default)]
     pub created_at: i64,
+}
+
+/// A picture in a room's gallery: part of how the place looks, with an optional caption (which the characters are told too).
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Default)]
+#[serde(default)]
+pub struct RoomPic {
+    pub id: String,
+    /// Path inside the data folder (`media/roompic-*`).
+    pub file: String,
+    pub caption: String,
 }
 
 /// A room dressed like a server: optional decorations and a short tag (all empty by default).
@@ -640,6 +653,7 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
     // pathways: rooms inside rooms, rooms joined to each other, and the room a chat has moved into
     ensure_column(&conn, "rooms", "parent_id", "INTEGER")?;
     ensure_column(&conn, "rooms", "world_id", "INTEGER")?;
+    ensure_column(&conn, "rooms", "gallery", "TEXT NOT NULL DEFAULT '[]'")?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS worlds(id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id TEXT, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS world_lorebooks(world_id INTEGER NOT NULL, book_id TEXT NOT NULL, PRIMARY KEY(world_id, book_id));",
@@ -759,9 +773,9 @@ pub fn get_dorm(c: &Connection, id: i64, owner: &Owner) -> R<Option<Dorm>> {
 // ----- rooms -----
 
 fn row_room(r: &rusqlite::Row) -> R<Room> {
-    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)?, model: r.get(10)?, model_name: r.get(11)?, model_scale: r.get(12)?, model_rot: r.get(13)?, model_y: r.get(14)?, model_share: r.get::<_, i64>(15)? != 0, parent_id: r.get(16)?, links: vec![], deco: RoomDeco { plate: r.get(17)?, bg: r.get(18)?, wreath: r.get(19)?, tag: r.get(20)?, tag_color: r.get(21)?, tag_glyph: r.get(22)? }, world_id: r.get(23)? })
+    Ok(Room { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, description: r.get(3)?, owner_kind: r.get(4)?, character_id: r.get(5)?, backdrop: r.get(6)?, created_at: r.get(7)?, music: r.get(8)?, music_name: r.get(9)?, model: r.get(10)?, model_name: r.get(11)?, model_scale: r.get(12)?, model_rot: r.get(13)?, model_y: r.get(14)?, model_share: r.get::<_, i64>(15)? != 0, parent_id: r.get(16)?, links: vec![], deco: RoomDeco { plate: r.get(17)?, bg: r.get(18)?, wreath: r.get(19)?, tag: r.get(20)?, tag_color: r.get(21)?, tag_glyph: r.get(22)? }, world_id: r.get(23)?, gallery: serde_json::from_str(&r.get::<_, String>(24)?).unwrap_or_default() })
 }
-const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share,parent_id,deco_plate,deco_bg,deco_wreath,deco_tag,deco_tag_color,deco_tag_glyph,world_id";
+const ROOM_COLS: &str = "id,name,kind,description,owner_kind,character_id,backdrop,created_at,music,music_name,model,model_name,model_scale,model_rot,model_y,model_share,parent_id,deco_plate,deco_bg,deco_wreath,deco_tag,deco_tag_color,deco_tag_glyph,world_id,gallery";
 
 pub fn list_rooms(c: &Connection, owner: &Owner) -> R<Vec<Room>> {
     let mut s = c.prepare(&format!("SELECT {ROOM_COLS} FROM rooms WHERE profile_id IS ?1 ORDER BY id DESC"))?;
@@ -889,6 +903,15 @@ pub fn move_rooms_to_world(c: &Connection, ids: &[i64], world: Option<i64>, owne
 /// The world a chat is in: the world of the room it is in now.
 pub fn chat_world(c: &Connection, chat: &Chat, owner: &Owner) -> R<Option<World>> {
     match chat_room(c, chat, owner)?.and_then(|r| r.world_id) { Some(w) => get_world(c, w, owner), None => Ok(None) }
+}
+
+/// The most pictures one room's gallery holds.
+pub const MAX_ROOM_PICS: usize = 24;
+
+/// Replaces a room's gallery (the pictures themselves are files the caller has already put in place).
+pub fn set_room_gallery(c: &Connection, id: i64, gallery: &[RoomPic], owner: &Owner) -> R<()> {
+    c.execute("UPDATE rooms SET gallery=?2 WHERE id=?1 AND profile_id IS ?3", params![id, serde_json::to_string(gallery).unwrap_or_else(|_| "[]".into()), owner])?;
+    Ok(())
 }
 
 pub fn create_room(c: &Connection, r: &Room, owner: &Owner) -> R<Room> {
@@ -1690,7 +1713,7 @@ mod tests {
     fn rooms_and_packs_belong_to_their_owner_and_dorms_can_only_use_their_own_rooms() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default(), world_id: None };
+        let room = |n: &str| Room { id: 0, name: n.into(), kind: "kitchen".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default(), world_id: None, gallery: vec![] };
         let ra = create_room(&c, &room("A's kitchen"), &a).unwrap();
         let rb = create_room(&c, &room("B's kitchen"), &b).unwrap();
         assert_eq!(list_rooms(&c, &a).unwrap().len(), 1);
@@ -2057,7 +2080,7 @@ mod tests {
     fn pathways_nest_rooms_link_them_and_move_a_chat() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let room = |n: &str| Room { id: 0, name: n.into(), kind: "other".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default(), world_id: None };
+        let room = |n: &str| Room { id: 0, name: n.into(), kind: "other".into(), description: "d".into(), owner_kind: "self".into(), character_id: None, backdrop: "".into(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default(), world_id: None, gallery: vec![] };
         let house = create_room(&c, &room("House"), &a).unwrap();
         let kitchen = create_room(&c, &room("Kitchen"), &a).unwrap();
         let attic = create_room(&c, &room("Attic"), &a).unwrap();
@@ -2147,17 +2170,30 @@ mod tests {
         delete_emoji(&c, "1", &b).unwrap();
         assert!(get_emoji(&c, "1", &a).unwrap().is_some(), "or remove them");
         // deleting the room frees what was tied to it
-        let r = create_room(&c, &Room { id: 0, name: "R".into(), kind: "other".into(), description: String::new(), owner_kind: "self".into(), character_id: None, backdrop: String::new(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default(), world_id: None }, &a).unwrap();
+        let r = create_room(&c, &Room { id: 0, name: "R".into(), kind: "other".into(), description: String::new(), owner_kind: "self".into(), character_id: None, backdrop: String::new(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default(), world_id: None, gallery: vec![] }, &a).unwrap();
         save_emoji(&c, &it("5", "emoji", "tied", Some(r.id)), &a).unwrap();
         delete_room(&c, r.id, &a).unwrap();
         assert_eq!(get_emoji(&c, "5", &a).unwrap().unwrap().room_id, None, "what was tied to a deleted room works everywhere from then on");
     }
 
     #[test]
+    fn a_room_keeps_its_gallery_for_its_owner_only() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        let r = create_room(&c, &Room { id: 0, name: "Attic".into(), kind: "other".into(), description: String::new(), owner_kind: "self".into(), character_id: None, backdrop: String::new(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default(), world_id: None, gallery: vec![] }, &a).unwrap();
+        let pics = vec![RoomPic { id: "p1".into(), file: "media/roompic-1.png".into(), caption: "a cracked blue teapot".into() }];
+        set_room_gallery(&c, r.id, &pics, &b).unwrap();
+        assert!(get_room(&c, r.id, &a).unwrap().unwrap().gallery.is_empty(), "another profile can't change it");
+        set_room_gallery(&c, r.id, &pics, &a).unwrap();
+        let g = get_room(&c, r.id, &a).unwrap().unwrap().gallery;
+        assert_eq!((g.len(), g[0].caption.as_str()), (1, "a cracked blue teapot"));
+    }
+
+    #[test]
     fn worlds_keep_their_rooms_apart_and_carry_lorebooks() {
         let c = fresh();
         let (a, b) = (me("a"), me("b"));
-        let mk = |n: &str, w: Option<i64>, o: &Owner| create_room(&c, &Room { id: 0, name: n.into(), kind: "other".into(), description: String::new(), owner_kind: "self".into(), character_id: None, backdrop: String::new(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default(), world_id: w }, o).unwrap();
+        let mk = |n: &str, w: Option<i64>, o: &Owner| create_room(&c, &Room { id: 0, name: n.into(), kind: "other".into(), description: String::new(), owner_kind: "self".into(), character_id: None, backdrop: String::new(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: RoomDeco::default(), world_id: w, gallery: vec![] }, o).unwrap();
         let (w1, w2, wb) = (create_world(&c, "Tevyat", "A big wide world.", &a).unwrap(), create_world(&c, "Earth", "", &a).unwrap(), create_world(&c, "Theirs", "", &b).unwrap());
         assert_eq!(list_worlds(&c, &a).unwrap().len(), 2);
         assert_eq!(list_worlds(&c, &b).unwrap().len(), 1, "another profile's worlds are its own");
