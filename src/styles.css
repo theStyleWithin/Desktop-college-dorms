@@ -439,3 +439,8 @@ button.chip { cursor: pointer; } button.chip.on { background: var(--accent); col
   .prompt-acts { display: flex; }
   .nav .caret { display: none; }
 }
+
+/* pathways: the line that says the story walked into another room */
+.msgs .travel { display: flex; align-items: center; gap: 10px; margin: 14px 0; color: var(--muted, #9a94b0); font-size: 0.85em; }
+.msgs .travel::before, .msgs .travel::after { content: ""; flex: 1; height: 1px; background: currentColor; opacity: 0.35; }
+.msgs .travel span { white-space: nowrap; max-width: 70%; overflow: hidden; text-overflow: ellipsis; }

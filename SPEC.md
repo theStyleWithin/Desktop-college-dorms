@@ -141,6 +141,16 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   applied with CSS, so the original image is untouched.
 - **Notes** and **lorebooks** are per profile. Backups carry all of it (rooms, music, packs and their per-chat state, notes, folders, lorebooks, framing).
 
+## Pathways
+
+- A room may be part of another room (`parent_id`, never itself or anything inside it, checked on the backend) and may be joined to other rooms by
+  pathways (`room_links`, stored both ways; only the owner's own rooms). Deleting a room lifts what was inside it one level and removes its pathways.
+- A chat has an optional `room_id`: the room the story has walked into. The room of a chat is that one, else its dorm's. `move_chat(chat_id, room_id)` sets it,
+  refuses the room the chat is already in, and appends a message with role `travel` (its text is the room's name). The chat page shows it as a divider line;
+  the prompt gets it as narration (`[The scene moves to Kitchen.]`) and the system prompt describes the current room, the room it is part of, and
+  where one can go (its sub-rooms, its neighbours in the same parent and its pathways). Deleting the room a chat is in puts the chat back in its dorm's room.
+- A moved chat prefers the new room's music over the dorm's. Backups carry parents, pathways and each chat's current room (numbers are remapped on import).
+
 ## Imported 3D rooms (v0.6)
 
 - A room may carry a 3D model (`.glb`, `.gltf` with everything inside it, or `.fbx`, 300 MB at most, checked by its first bytes) that replaces the built-in 3D room in chats set in that room.
