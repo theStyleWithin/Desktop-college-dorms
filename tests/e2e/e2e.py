@@ -747,7 +747,7 @@ try:
     invoke("set_chat_playbook", {"chatId": pchat["id"], "mode": "none", "playbookId": None, "scenario": None})
     invoke("add_user_message", {"chatId": pchat["id"], "text": "and now?"}); gen_and_wait(pchat["id"])
     check("with no playbook the characters are told nothing about values", "tracked by these values" not in sysprompt())
-    pm = invoke("save_character", {"character": dict(by_name("Mira"), playbook=pbs["id"])})
+    pm = invoke("save_character", {"character": dict(invoke("get_character", {"id": mira["id"]}), playbook=pbs["id"])})
     check("a character can come with a playbook", pm.get("playbook") == pbs["id"], str(pm.get("playbook")))
     check("a playbook that isn't yours can't be attached", invoke("save_character", {"character": dict(pm, playbook="not-mine")}).get("playbook") in ("", None))
     invoke("save_character", {"character": dict(pm, playbook=pbs["id"])})
