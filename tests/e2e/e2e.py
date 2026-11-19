@@ -1124,7 +1124,7 @@ try:
     check("your profile card shows the moving background", d.execute_script("return !!document.querySelector('[data-testid=profile-card] .deco-bg[data-bg=boba]')"))
     check("the art is drawn by the page (one moving set, one still set)", d.execute_script("const s=document.getElementById('deco-art');return !!s && s.textContent.includes('data-wreath=\"bobacup\"') && s.textContent.includes('data-deco-anim=\"off\"')"))
     d.execute_script("[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('Name tag and banner')).click()"); time.sleep(0.7)
-    d.find_element(By.CSS_SELECTOR, "input[aria-label='Name tag']").send_keys("koi!")
+    tag_in_ = d.find_element(By.CSS_SELECTOR, "input[aria-label='Name tag']"); tag_in_.clear(); tag_in_.send_keys("koi!")   # (it opens holding the tag you already have)
     d.execute_script("document.querySelector('.modal [aria-label=Green]').click()"); d.execute_script("[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Save').click()"); time.sleep(1.2)
     sd_ = invoke("get_settings")["deco"]
     check("a name tag can be made (letters only, in capitals, in a chosen colour)", (sd_["tag"], sd_["tag_color"]) == ("KOI", "#23a55a"), str(sd_))
@@ -1178,7 +1178,7 @@ try:
     reload_ui(); nav("Dorms"); time.sleep(0.8); click_text("button.it", "in the deco room"); time.sleep(1.5)
     check("the chat's header shows the room's tag", d.execute_script("const t=document.querySelector('.chathead .srv-tag');return !!t && t.textContent.includes('INN')"))
     st_ = invoke("get_settings"); st_["deco"] = dict(st_["deco"], plate="embers", wreath="catears", tag="zen", tag_color="#23a55a"); invoke("save_settings", {"settings": st_})
-    nav("Rooms"); time.sleep(0.8)
+    reload_ui(); nav("Rooms"); time.sleep(1.0)   # (the page has to hear about the settings that were just saved behind its back)
     d.execute_script("const c=[...document.querySelectorAll('.room-card')].find(x=>x.textContent.includes('Deco room'));[...c.querySelectorAll('button')].find(b=>b.textContent.trim()==='Edit').click()"); time.sleep(1.2)
     d.execute_script("document.querySelector('[data-testid=room-deco-same]').click()"); time.sleep(0.6)
     d.execute_script("[...document.querySelectorAll('button.btn.primary')].find(b=>/Save/.test(b.textContent)).click()"); time.sleep(1.5)
