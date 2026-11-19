@@ -28,7 +28,7 @@ const DEFAULTS: Settings = {
   temperature: 0.8, top_p: 0.95, local_model: "", local_gpu: true, openai_base_url: "https://api.openai.com/v1",
   openai_model: "gpt-4o-mini", anthropic_model: "claude-haiku-5-5", use_card_system_prompt: true,
   default_system: "", theme: "dusk",
-  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true, active_persona: "", deco: DEFAULT_DECO,
+  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true, active_persona: "", deco: DEFAULT_DECO, novel_daily_limit: 0, novel_reserve: 5,
 };
 
 const SIDE_DEF = 220, SIDE_MIN = 160, SIDE_MAX = 420;
@@ -100,6 +100,21 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
   };
   const [winW, setWinW] = useState(window.innerWidth);
   useEffect(() => { setDecoMotion(settings.deco?.animate !== false); }, [settings.deco?.animate]);
+  // closing the window while a novel is being written would stop it: say so first (it is saved up to the last finished chapter)
+  useEffect(() => {
+    let un: (() => void) | undefined; let gone = false;
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const f = await getCurrentWindow().onCloseRequested(async (ev) => {
+          const running = await api.novelsRunning().catch(() => [] as number[]);
+          if (running.length && !window.confirm("A novel is still being written. If you close the app now, it stops after the last finished chapter, and you can pick it up again later with Keep going.\n\nClose anyway?")) ev.preventDefault();
+        });
+        if (gone) f(); else un = f;
+      } catch { /* not in the app window */ }
+    })();
+    return () => { gone = true; un?.(); };
+  }, []);
   useEffect(() => { const f = () => setWinW(window.innerWidth); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
   const showMembers = membersOpen && winW > 1100;
   const MIN_MAIN = 480;

@@ -168,6 +168,15 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   keeps the card positions; **Discard** drops the draft, and leaving the editor with unsaved changes asks first. Two rooms that lead to each other show two arcs. Card positions are kept in `dorms.rooms.map` on the device; dashed lines are `parent_id`.
 - A moved chat prefers the new room's music over the dorm's. Backups carry parents, pathways and each chat's current room (numbers are remapped on import).
 
+## Novel writing
+
+- `novel_start(chat, plot, tone, pov, chapters 1..60, chapter_tokens 300..4000, resume)` writes one chapter per reply (`generate_once` with a `[NOVEL MODE]` directive added to the system
+  prompt and the reply length raised to `chapter_tokens`); the plan and progress are kept in `chat_novel`. `novel_stop` cancels the running reply and drops it (nothing half-written is kept).
+  Replies are normal character messages; the stop message is a `note` message (never sent to the model).
+- Requests are counted per profile per day in `novel_usage`. With `novel_daily_limit` > 0 the plan is cut to `limit - used - novel_reserve` chapters; when nothing is left it stops after a
+  finished chapter ("budget"). A 429/quota error waits and retries (30 s, then 90 s) unless it says the day's allowance is gone, in which case the day counts as used up ("limit").
+- The writer runs inside the app: closing the window warns first. It does not keep running after the app is quit (it resumes from the last finished chapter).
+
 ## Playbooks
 
 - A playbook (`playbooks` table, JSON per profile; up to 10 values, 15 rules of which 3 may ask the model, 4 lorebooks, 8 scenarios) holds typed values (`number` with range and

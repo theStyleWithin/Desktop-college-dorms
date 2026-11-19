@@ -767,6 +767,36 @@ try:
     d.execute_script("document.querySelector('[data-testid=pb-save]').click()"); time.sleep(1.2)
     built = [x for x in invoke("list_playbooks") if x["name"] == "Built in the UI"]
     check("a playbook built in the editor is saved, with its value and its rule", len(built) == 1 and len(built[0]["variables"]) == 1 and len(built[0]["rules"]) == 1 and len(built[0]["rules"][0]["then"]) == 1, str(built)[:300])
+
+    # ---- writing a novel: chapter by chapter, planned to fit the day's allowance, stopped after a finished chapter ----
+    nchat = invoke("create_chat", {"dormId": wdorm["id"], "name": "novel chat", "kind": "dm", "characterIds": [mira["id"]]})
+    invoke("add_user_message", {"chatId": nchat["id"], "text": "Tell me a story."})
+    def wait_note(chat_id, secs=40):
+        for _ in range(secs * 2):
+            time.sleep(0.5)
+            ms_ = invoke("list_messages", {"chatId": chat_id})
+            if ms_ and ms_[-1]["role"] == "note": return ms_
+        return invoke("list_messages", {"chatId": chat_id})
+    seen["pieces"] = ["Chapter 1: The Loft\n\n", "The radiator knocked twice."]
+    np_ = invoke("novel_start", {"chatId": nchat["id"], "plot": "  a mystery in the old library  ", "tone": "Mystery", "pov": "first person, past tense", "chapters": 3, "chapterTokens": 800, "resume": False})
+    check("a novel is planned from the plot, tone and length", np_["chapters"] == 3 and np_["plot"] == "a mystery in the old library" and np_["chapter_tokens"] == 800, str(np_))
+    ms_ = wait_note(nchat["id"]); seen["pieces"] = None
+    chs_ = [m for m in ms_ if m["role"] == "character"]
+    check("each chapter is its own reply, and the writer says when the novel is finished", len(chs_) == 3 and ms_[-1]["role"] == "note" and "finished" in ms_[-1]["swipes"][0] and "Enjoy your story" in ms_[-1]["swipes"][0], str([(m["role"], m["swipes"][0][:60]) for m in ms_]))
+    sp_ = sysprompt()
+    check("the last chapter is asked for as the final chapter, from the plot", "chapter 3 of 3" in sp_ and "final chapter" in sp_ and "a mystery in the old library" in sp_ and "Mystery" in sp_ and "first person, past tense" in sp_ and "Carry on exactly" in sp_, sp_[-700:])
+    ns_ = invoke("novel_status", {"chatId": nchat["id"]})
+    check("the plan is kept, with how far it got, and nothing is left running", ns_["plan"]["done"] == 3 and not ns_["running"] and ns_["used_today"] >= 3, str(ns_))
+    check("the writer's own note is never sent to the model as part of the story", "Enjoy your story" not in json.dumps(seen["body"]["messages"]))
+    # planned to fit a free model's day: 9 a day, 3 kept for chatting, 3 already used
+    st = invoke("get_settings"); st["novel_daily_limit"] = ns_["used_today"] + 6; st["novel_reserve"] = 3; invoke("save_settings", {"settings": st})
+    seen["pieces"] = ["Chapter 1\n\n", "More story."]
+    np2_ = invoke("novel_start", {"chatId": nchat["id"], "plot": "again", "tone": "", "pov": "", "chapters": 10, "chapterTokens": 800, "resume": False})
+    check("a story that would not fit the day's allowance is planned shorter so it can end properly", np2_["chapters"] == 3, str(np2_))
+    ms2_ = wait_note(nchat["id"], 60); seen["pieces"] = None
+    check("it writes the chapters that fit and finishes", "finished" in ms2_[-1]["swipes"][0] and len([m for m in ms2_ if m["role"] == "character"]) == 6, str([(m["role"], m["swipes"][0][:50]) for m in ms2_[-4:]]))
+    check("with the allowance spent, a new novel is refused with the reason", "used up" in (inv_err("novel_start", {"chatId": nchat["id"], "plot": "", "tone": "", "pov": "", "chapters": 2, "chapterTokens": 800, "resume": False}) or ""))
+    st = invoke("get_settings"); st["novel_daily_limit"] = 0; invoke("save_settings", {"settings": st})
     d.execute_script("localStorage.setItem('dorms.rooms.view','cards'); localStorage.removeItem('dorms.rooms.world')")
     reload_ui(); nav("Rooms"); time.sleep(1.2)
     check("the Rooms page has a bar of worlds", d.execute_script("return !!document.querySelector('[data-testid=worlds-bar]') && !!document.querySelector('[data-testid=world-chip-%d]')" % w1["id"]))
@@ -1421,6 +1451,10 @@ try:
     check("a sad reply shows the sad picture", gitems["sad"] in last_avatar() and gitems["sad"] in stage_img(), f"{last_avatar()} | {stage_img()}")
     say_and_wait("what time is it?", ["It is nine o'clock ", "and the shop is closed."])
     check("a reply with no particular mood falls back to the picture tagged neutral", gitems["calm"] in last_avatar(), last_avatar())
+    check("the last reply offers Write a novel next to Regenerate and Continue", d.execute_script("return !!document.querySelector('[data-testid=novel-open]')"))
+    d.execute_script("document.querySelector('[data-testid=novel-open]').click()"); time.sleep(0.8)
+    check("it asks what story to write, and how it fits the allowance, before writing anything", d.execute_script("return !!document.querySelector('[data-testid=novel-plot]') && document.querySelector('[data-testid=novel-estimate]').innerText.includes('One request to your model per chapter') && !!document.querySelector('[data-testid=novel-start]')"), page_text()[-400:])
+    dismiss(); time.sleep(0.4)
     check("earlier messages keep the picture they had (this character has no main picture, so only the latest message wears a picture)", d.execute_script("return document.querySelectorAll('.msgs .msg:not(.user)').length>=4 && document.querySelectorAll('.msgs .msg:not(.user) .avatar img').length===1"))
     reload_ui(); nav("Dorms"); time.sleep(1.0)
     d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'Gal chat')]").click(); time.sleep(1.0)

@@ -4,6 +4,7 @@ mod db;
 mod extras;
 mod llama;
 mod llm;
+mod novel;
 mod deco;
 mod emoji;
 mod playbook;
@@ -36,6 +37,8 @@ pub struct AppState {
     pub login_fails: Mutex<HashMap<String, (u32, std::time::Instant)>>,
     /// A profile file being brought in piece by piece (so a big file never has to cross into the app in one go, which phones can't do).
     pub staged: Mutex<Option<(String, Arc<Vec<u8>>)>>,
+    /// Novels being written, by chat.
+    pub novels: Mutex<HashMap<i64, novel::Run>>,
 }
 
 pub type Shared = Arc<AppState>;
@@ -121,11 +124,16 @@ pub fn run() {
                 pending_export: Default::default(),
                 login_fails: Default::default(),
                 staged: Default::default(),
+                novels: Default::default(),
             }));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            novel::novel_status,
+            novel::novel_start,
+            novel::novel_stop,
+            novel::novels_running,
             accounts::stage_begin,
             accounts::stage_chunk,
             accounts::stage_clear,

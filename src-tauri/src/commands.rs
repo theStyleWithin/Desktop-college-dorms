@@ -1084,7 +1084,7 @@ async fn run_generation(
 
     let items: Vec<HistoryItem> = history
         .iter()
-        .filter(|m| m.role != "system")
+        .filter(|m| m.role != "system" && m.role != "note")
         .map(|m| {
             // a move to another room is told to the characters as narration
             if m.role == "travel" {
@@ -1120,11 +1120,17 @@ async fn run_generation(
         let recent: String = history.iter().rev().take(6).map(|m| m.content()).collect::<Vec<_>>().join("\n");
         crate::extras::extra_system(&db, &chat, o, &recent)
     };
+    // a novel being written: this reply is a chapter
+    let novel = crate::novel::running_directive(st, chat_id);
+    let extra = match &novel {
+        Some((d, _)) => format!("{extra}\n\n{d}"),
+        None => extra,
+    };
     let ps = PromptSettings {
         user_name: settings.user_name.clone(),
         user_description: settings.user_description.clone(),
         context_tokens,
-        max_response_tokens: settings.max_tokens.min(context_tokens / 2),
+        max_response_tokens: novel.as_ref().map_or(settings.max_tokens, |(_, t)| *t).min(context_tokens / 2),
         use_card_system_prompt: settings.use_card_system_prompt,
         default_system: Some(settings.default_system.clone()).filter(|s| !s.trim().is_empty()),
         default_scan_depth: 4,
@@ -1223,7 +1229,7 @@ async fn run_generation(
 }
 
 /// One full reply, with busy/cancel bookkeeping and error events.
-async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option<String>, regen: Option<i64>, cont: Option<i64>, rid: String) -> R<Message> {
+pub(crate) async fn generate_once(st: &Shared, o: &db::Owner, chat_id: i64, speaker: Option<String>, regen: Option<i64>, cont: Option<i64>, rid: String) -> R<Message> {
     if !st.busy.lock().unwrap().insert(chat_id) {
         let err = "This chat is already generating a reply.".to_string();
         emit(st, "dorms://gen", json!({ "request_id": rid, "chat_id": chat_id, "kind": "error", "error": err }));

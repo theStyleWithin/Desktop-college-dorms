@@ -1,12 +1,13 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api, displayName, mediaUrl, musicUrl, onAutoStopped, onGen, tagline, type Character, type Chat, type ChatKind, type Message, type TurnMode,
-  galleryUrl, type MediaKind,
+  galleryUrl, onNovel, type MediaKind, type NovelStatus,
 } from "../api";
 import Art from "../components/Art";
 import MicButton from "../components/MicButton";
 import MechanicsPanel from "../components/MechanicsPanel";
 import PlaybookPanel from "../components/PlaybookPanel";
+import NovelDialog from "../components/NovelDialog";
 import PhoneView from "../components/PhoneView";
 import MusicPlayer from "../components/MusicPlayer";
 import MusicField from "../components/MusicField";
@@ -57,7 +58,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
   const [replyAs, setReplyAs] = useState<string>("");
   const [focus, setFocus] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
-  const [modal, setModal] = useState<null | { type: "chat"; dormId: number | null } | { type: "dorm" } | { type: "who" } | { type: "mech" } | { type: "playbook" } | { type: "dormroom"; dormId: number }>(null);
+  const [modal, setModal] = useState<null | { type: "chat"; dormId: number | null } | { type: "dorm" } | { type: "who" } | { type: "mech" } | { type: "playbook" } | { type: "novel" } | { type: "dormroom"; dormId: number }>(null);
   const [listOpen, setListOpen] = useState(false);
   const [optsOpen, setOptsOpen] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
@@ -157,11 +158,27 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
   // keep the view pinned to the newest message
   useEffect(() => {
     const el = scroller.current;
-    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 260) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    // while a novel is written, only someone who is at the very bottom is followed; anyone reading above is left alone
+    const near = novelRef.current ? !readingAbove.current : el.scrollHeight - el.scrollTop - el.clientHeight < 260;
+    if (near) el.scrollTop = el.scrollHeight;
   }, [msgs, live]);
   useEffect(() => { const el = scroller.current; if (el) el.scrollTop = el.scrollHeight; }, [selected]);
 
   const busy = live !== null;
+
+  // a novel being written: it keeps going while you read, and the view only follows it if you are at the very bottom
+  const [novel, setNovel] = useState<NovelStatus | null>(null);
+  const [novelNote, setNovelNote] = useState("");
+  const novelOn = !!novel?.running;
+  const novelRef = useRef(false);
+  novelRef.current = novelOn;
+  const readingAbove = useRef(false);
+  const [away, setAway] = useState(false);
+  const loadNovel = useCallback(() => { if (selected != null) api.novelStatus(selected).then(setNovel).catch(() => setNovel(null)); }, [selected]);
+  useEffect(() => { setNovelNote(""); loadNovel(); }, [loadNovel]);
+  useEffect(() => { const u = onNovel((e) => { if (e.chat_id !== selected) return; setNovelNote(e.state === "waiting" ? e.detail : ""); loadNovel(); }); return () => { void u.then((f) => f()); }; }, [selected, loadNovel]);
+  const onScrollMsgs = () => { const el = scroller.current; if (!el) return; const gap = el.scrollHeight - el.scrollTop - el.clientHeight; readingAbove.current = gap > 24; setAway(novelRef.current && gap > 24); };
 
   const [listening, setListening] = useState(false);
   const sendText = async (raw: string) => {
@@ -355,9 +372,10 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
             {phone ? (
               <PhoneView msgs={msgs} live={live} members={members} userName={me.name} busy={busy} text={text} setText={setText} send={send} stop={stop} nameOf={nameOf} onExit={() => patchChat({ style: "chat" })} />
             ) : (<>
-            <div className="msgs" ref={scroller}>
+            <div className="msgs" ref={scroller} onScroll={onScrollMsgs}>
               {msgs.length === 0 && !live && <div className="empty">{chat.kind === "channel" ? "A quiet channel. Say something, or press Next to let a character start." : "No messages yet."}</div>}
               {msgs.filter((m) => m.role !== "system").map((m, idx, arr) => {
+                if (m.role === "note") return <div className="novel-note" key={m.id} data-testid="novel-note" role="status">{m.swipes[0]}</div>;
                 if (m.role === "travel") return <div className="travel" key={m.id} data-testid="travel-line" role="separator"><span>➜ {m.swipes[0] ?? "Somewhere else"}</span></div>;
                 const c = m.character_id ? byId.get(m.character_id) : undefined;
                 const isLast = idx === arr.length - 1;
@@ -389,6 +407,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                           )}
                           {m.role === "character" && isLast && <button className="btn ghost sm" disabled={busy} onClick={() => api.generate(chat.id, null, m.id)}>↻ Regenerate</button>}
                           {m.role === "character" && isLast && <button className="btn ghost sm" disabled={busy} onClick={() => api.generate(chat.id, null, null, m.id)} title="Ask the character to go on and write more">⏩ Continue</button>}
+                          {m.role === "character" && isLast && !novelOn && <button className="btn ghost sm" disabled={busy} onClick={() => setModal({ type: "novel" })} title="Have the character write a full story, chapter by chapter" data-testid="novel-open">📖 Write a novel</button>}
                           <button className="btn ghost sm" onClick={() => setEditing({ id: m.id, text: body })}>✎ Edit</button>
                           <button className="btn ghost sm" onClick={async () => { await api.deleteMessage(m.id); setMsgs((x) => x.filter((y) => y.id !== m.id)); }}>🗑</button>
                         </div>
@@ -409,6 +428,18 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               )}
             </div>
 
+            {(novelOn || (novel?.plan && novel.plan.done < novel.plan.chapters)) && (
+              <div className="novel-bar" data-testid="novel-bar" role="status">
+                {novelOn ? <>
+                  <span>📖 Writing chapter {Math.min((novel?.plan?.done ?? 0) + 1, novel?.plan?.chapters ?? 1)} of {novel?.plan?.chapters ?? "?"}{novelNote ? ` · ${novelNote}` : ""}</span>
+                  {away && <button className="btn sm" onClick={() => { const el = scroller.current; if (el) el.scrollTop = el.scrollHeight; readingAbove.current = false; setAway(false); }} data-testid="novel-jump">↓ Jump to latest</button>}
+                  <button className="btn sm danger" onClick={() => void api.novelStop(chat.id)} data-testid="novel-stop">Stop</button>
+                </> : <>
+                  <span>📖 {novel?.plan?.done} of {novel?.plan?.chapters} chapters written</span>
+                  <button className="btn sm primary" disabled={busy} onClick={() => api.novelStart(chat.id, "", "", "", 1, 800, true).then(loadNovel).catch((er) => toast(errText(er), "err"))} data-testid="novel-resume">Keep going</button>
+                </>}
+              </div>
+            )}
             <div className="composer">
               <div className="row">
                 {chat.kind !== "dm" && members.length > 0 && (
@@ -483,6 +514,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
         ) : <div className="hint">Characters in this chat show up here.</div>}
       </aside>
 
+      {modal?.type === "novel" && chat && <NovelDialog chatId={chat.id} onClose={() => setModal(null)} onStarted={() => { readingAbove.current = false; setAway(false); loadNovel(); }} />}
       {modal?.type === "playbook" && chat && <PlaybookPanel chatId={chat.id} onClose={() => setModal(null)} />}
       {modal?.type === "mech" && chat && <MechanicsPanel chatId={chat.id} onClose={() => setModal(null)} />}
       {modal?.type === "dormroom" && <DormRoom dormId={modal.dormId} onClose={() => setModal(null)} />}

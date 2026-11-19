@@ -246,6 +246,16 @@ function ChatTab({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => v
       <label className="f"><span>Creativity ({s.temperature.toFixed(2)}):</span><input type="range" min={0} max={2} step={0.05} value={s.temperature} onChange={(e) => patch({ temperature: Number(e.target.value) })} /></label>
       <label className="f"><span>Top-p ({s.top_p.toFixed(2)}):</span><input type="range" min={0.1} max={1} step={0.05} value={s.top_p} onChange={(e) => patch({ top_p: Number(e.target.value) })} /></label>
       <label className="f"><span>Default system prompt:</span><span><textarea value={s.default_system} placeholder="Leave empty for the built-in roleplay prompt." onChange={(e) => patch({ default_system: e.target.value })} /><div className="hint">Use {"{{char}}"} and {"{{user}}"}.</div></span></label>
+      <label className="f"><span>Novel writing:</span><span>
+        <span className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <input type="number" min={0} max={100000} aria-label="Requests a day for novels" data-testid="novel-limit" value={s.novel_daily_limit} onChange={(e) => patch({ novel_daily_limit: Math.max(0, Number(e.target.value) || 0) })} style={{ width: 100 }} />
+          <span>requests a day</span>
+          <button type="button" className="btn sm" onClick={() => patch({ novel_daily_limit: 40, novel_reserve: 5 })}>Free model (40 a day)</button>
+          <button type="button" className="btn sm" onClick={() => patch({ novel_daily_limit: 0 })}>No limit</button>
+        </span>
+        <div className="hint">When you ask for a novel, it takes one request per chapter. If your model is free or has a daily allowance, enter it here (0 means none): the story is planned to fit what is left today, and it stops after a finished chapter, never in the middle of one. Only requests made by the novel writer are counted.</div>
+        <span className="row" style={{ gap: 8, marginTop: 6 }}><input type="number" min={0} max={1000} aria-label="Requests kept for chatting" value={s.novel_reserve} onChange={(e) => patch({ novel_reserve: Math.max(0, Number(e.target.value) || 0) })} style={{ width: 100 }} /><span>kept back for chatting</span></span>
+      </span></label>
       <label className="f"><span>Character prompts:</span><label className="row"><input type="checkbox" checked={s.use_card_system_prompt} onChange={(e) => patch({ use_card_system_prompt: e.target.checked })} /> Use each card's own system prompt and post-history instructions</label></label>
     </div>
   );
