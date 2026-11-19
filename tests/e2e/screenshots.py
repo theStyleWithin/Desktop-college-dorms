@@ -235,7 +235,7 @@ try:
     inv("set_gallery_mode", {"id": mira, "mode": "mood"})
     reload_ui(); nav("Characters")
     d.execute_script("[...document.querySelectorAll('.ccard h3')].find(x=>x.textContent==='Mira Okafor').click()"); time.sleep(1.2)
-    d.execute_script("const e=[...document.querySelectorAll('h1,h2,h3,h4,label,span,b,div')].find(x=>x.children.length===0&&x.textContent.trim()==='Gallery'); if(e) e.scrollIntoView({block:'start'});"); time.sleep(0.6)
+    d.execute_script("const e=[...document.querySelectorAll('h1,h2,h3,h4,label,span,b,div')].find(x=>x.children.length===0&&x.textContent.trim().startsWith('Gallery')); if(e) e.scrollIntoView({block:'start'});"); time.sleep(0.6)
     snap("desktop-gallery-editor", DESK)
     nav("Dorms")
     d.execute_script("[...document.querySelectorAll('.chatlist .it')].find(b=>b.textContent.includes('Mira Okafor')).click()"); time.sleep(1.0)
@@ -254,9 +254,10 @@ try:
     shop = mk("Corner shop", "other", "Open all night. The owner knows everyone's order.", "preset:neon")
     inv("set_room_links", {"id": kitchen["id"], "links": [gate["id"]]}); inv("set_room_links", {"id": gate["id"], "links": [kitchen["id"], shop["id"]]}); inv("set_room_links", {"id": living["id"], "links": [gate["id"]]})
     pos = {str(house["id"]): {"x": 10, "y": 20}, str(kitchen["id"]): {"x": 340, "y": 20}, str(living["id"]): {"x": 670, "y": 20}, str(attic["id"]): {"x": 10, "y": 290}, str(gate["id"]): {"x": 340, "y": 290}, str(shop["id"]): {"x": 670, "y": 290}}
-    d.execute_script("localStorage.setItem('dorms.rooms.map', arguments[0]); localStorage.setItem('dorms.rooms.view','map')", json.dumps(pos))
+    d.execute_script("localStorage.setItem('dorms.rooms.map', arguments[0]); localStorage.setItem('dorms.rooms.view','map'); localStorage.setItem('dorms.members.open','0')", json.dumps(pos))
     reload_ui(); nav("Rooms"); time.sleep(0.8)
     snap("desktop-pathways-map", DESK)
+    d.execute_script("localStorage.setItem('dorms.members.open','1')")
 
     home = inv("create_dorm", {"name": "Our house", "roomId": house["id"]})
     walk = inv("create_chat", {"dormId": home["id"], "name": "Coffee at home", "kind": "dm", "characterIds": [mira]})
@@ -274,6 +275,8 @@ try:
     d.execute_script("document.querySelector('[aria-label=\"Choose who hangs in the picture frame\"]').click()"); time.sleep(0.8)
     snap("desktop-picture-frame", DESK)
     d.execute_script("[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Cancel').click()"); time.sleep(0.4)
+    snap("desktop-side-bar", (1440, 1150))   # tall enough to show every side bar extra
+    d.set_window_size(*DESK); time.sleep(0.5)
 
     # profiles: the Profile tab, then the welcome screen you see once a profile exists
     inv("create_profile", {"handle": "Alex", "displayName": "Alex", "passcode": "demo-pass"}); reload_ui()
