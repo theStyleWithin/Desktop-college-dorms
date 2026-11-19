@@ -1098,6 +1098,17 @@ pub fn get_message(c: &Connection, id: i64) -> R<Option<Message>> {
     .optional()
 }
 
+/// How many messages each character has written across all of this profile's chats (most first): their "most used" ranking.
+pub fn character_usage(c: &Connection, owner: &Owner) -> R<Vec<(String, i64)>> {
+    let mut s = c.prepare(
+        "SELECT m.character_id, COUNT(*) FROM messages m JOIN chats ch ON ch.id = m.chat_id
+         WHERE ch.profile_id IS ?1 AND m.role = 'character' AND m.character_id IS NOT NULL
+         GROUP BY m.character_id ORDER BY 2 DESC, 1",
+    )?;
+    let rows = s.query_map([owner], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
 pub fn add_message(c: &Connection, chat_id: i64, role: &str, character_id: Option<&str>, swipes: &[String]) -> R<Message> {
     c.execute(
         "INSERT INTO messages(chat_id,role,character_id,swipes,swipe_index,created_at) VALUES(?1,?2,?3,?4,0,?5)",
@@ -1464,6 +1475,19 @@ mod tests {
         let old: Character = serde_json::from_str(&serde_json::to_string(&ch("y", "Y")).unwrap().replace(",\"gallery\":[]", "").replace(",\"gallery_mode\":\"\"", "")).unwrap();
         assert!(old.gallery.is_empty() && old.gallery_mode.is_empty());
         assert!(GALLERY_MOODS.contains(&"embarrassed") && GALLERY_MOODS.len() == 12);
+    }
+
+    #[test]
+    fn character_usage_counts_their_messages_per_profile() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        for id in ["x", "y"] { save_character(&c, &ch(id, id), &a).unwrap(); }
+        let chat = create_chat(&c, None, "t", "dm", &["x".to_string()], &a).unwrap();
+        for _ in 0..3 { add_message(&c, chat.id, "character", Some("x"), &["hi".to_string()]).unwrap(); }
+        add_message(&c, chat.id, "character", Some("y"), &["yo".to_string()]).unwrap();
+        add_message(&c, chat.id, "user", None, &["me".to_string()]).unwrap();
+        assert_eq!(character_usage(&c, &a).unwrap(), vec![("x".to_string(), 3), ("y".to_string(), 1)], "the user's own messages are not counted");
+        assert!(character_usage(&c, &b).unwrap().is_empty(), "another profile sees nothing");
     }
 
     #[test]

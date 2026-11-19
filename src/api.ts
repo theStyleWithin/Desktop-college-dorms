@@ -249,6 +249,7 @@ export const api = {
   saveCharacter: (character: Partial<Character> & { card: CardData }) =>
     invoke<Character>("save_character", { character }),
   deleteCharacter: (id: string) => invoke<void>("delete_character", { id }),
+  characterUsage: () => invoke<{ character_id: string; messages: number }[]>("character_usage"),
   setFavorite: (id: string, favorite: boolean) => invoke<void>("set_favorite", { id, favorite }),
   /** Sends a WAV recording to the voice server from Settings → Voice and returns what was said. */
   transcribe: (wav: Uint8Array) => bin("transcribe_audio", wav, {}) as Promise<string>,

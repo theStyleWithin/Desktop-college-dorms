@@ -1,4 +1,5 @@
 import { useTextScale, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
+import { WIDGETS, useWidgetPrefs } from "../components/SideWidgets";
 import { useEffect, useState } from "react";
 import { api, newProfile, profileAvatar, onModelProgress, saveExportFile, type ApiProfile, type EngineStatus, type ExportInfo, type Hardware, type ModelFile, type ModelProgress, type Settings } from "../api";
 import { CreateProfileModal, PASSCODE_NOTE, ProfileAvatar } from "../components/ProfileForms";
@@ -319,8 +320,25 @@ function Look({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void
         <button className="btn sm" onClick={() => { try { localStorage.removeItem("dorms.nav.order"); } catch { /* storage unavailable */ } window.dispatchEvent(new Event("dorms-nav-order")); }}>Reset the side bar order</button>
         <span className="hint">Hold a side bar item and drag it to where you want it. Prompts stays at the bottom. The order is kept on this device.</span>
       </div>
+      <h3 style={{ marginTop: 22 }}>Side bar extras</h3>
+      <SideExtras />
       <h3 style={{ marginTop: 22 }}>Text size in chats</h3>
       <TextSizeSetting />
+    </div>
+  );
+}
+
+/** Which extras show under Prompts in the side bar. Kept on this device. */
+function SideExtras() {
+  const [prefs, set] = useWidgetPrefs();
+  return (
+    <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+      {WIDGETS.map((w) => (
+        <label key={w.id} className="row" style={{ gap: 8, cursor: "pointer" }}>
+          <input type="checkbox" style={{ width: "auto", minHeight: 0 }} checked={prefs[w.id]} data-widget={w.id} onChange={(e) => set(w.id, e.target.checked)} /> {w.label}
+        </label>
+      ))}
+      <div className="hint">Recent chats, the characters you've marked as favorites (as many as you like), the ones you talk to most, and a picture frame that shows the character you talked to last (click it to go back to that chat).</div>
     </div>
   );
 }

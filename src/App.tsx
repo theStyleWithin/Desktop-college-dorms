@@ -13,6 +13,7 @@ import Notes from "./pages/Notes";
 import Lorebooks from "./pages/Lorebooks";
 import Decor from "./pages/Decor";
 import PromptsMenu from "./components/PromptsMenu";
+import SideWidgets from "./components/SideWidgets";
 import MembersRail from "./components/MembersRail";
 import PanelResizer from "./components/PanelResizer";
 import Editor from "./pages/Editor";
@@ -169,6 +170,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
             </button>
           ))}
           <PromptsMenu />
+          <SideWidgets />
           <div className="grow" />
           <button className="nav" style={{ gap: 8 }} onClick={() => setRoute({ page: "settings", tab: "profile" })} title="Profile settings">
             <ProfileAvatar name={session.profile?.handle ?? "Guest"} size={26} src={profileAvatar(session.profile)} frame={session.profile?.avatar_frame} />

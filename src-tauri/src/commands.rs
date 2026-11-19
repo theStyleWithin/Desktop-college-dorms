@@ -237,6 +237,20 @@ pub fn delete_character(state: State<'_, Shared>, id: String) -> R<()> {
     db::delete_character(&db, &id, &o).map_err(e)
 }
 
+#[derive(Serialize)]
+pub struct Usage {
+    character_id: String,
+    messages: i64,
+}
+
+/// How many messages each character has written (most first): the "most used characters" list.
+#[tauri::command]
+pub fn character_usage(state: State<'_, Shared>) -> R<Vec<Usage>> {
+    let o = owner(&state)?;
+    let l = db::character_usage(&state.db.lock().unwrap(), &o).map_err(e)?;
+    Ok(l.into_iter().map(|(character_id, messages)| Usage { character_id, messages }).collect())
+}
+
 #[tauri::command]
 pub fn set_favorite(state: State<'_, Shared>, id: String, favorite: bool) -> R<()> {
     let o = owner(&state)?;

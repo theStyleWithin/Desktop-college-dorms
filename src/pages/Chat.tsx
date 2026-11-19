@@ -90,6 +90,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
     setPicks((p) => {
       const next = { ...p, [c.id]: pickGalleryItem(c, detectMood(hideDirectives(text)), p[c.id] ?? null) };
       try { localStorage.setItem(`dorms.gal.${chat.id}`, JSON.stringify(next)); } catch { /* storage unavailable */ }
+      window.setTimeout(() => window.dispatchEvent(new Event("dorms-gal-pick")), 0);   // the picture frame in the side bar follows
       return next;
     });
   }, [msgs, chat, byId]);

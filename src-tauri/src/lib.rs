@@ -200,6 +200,7 @@ pub fn run() {
             commands::save_character,
             commands::delete_character,
             commands::set_favorite,
+            commands::character_usage,
             commands::set_media,
             commands::set_frame,
             commands::add_outfit,
