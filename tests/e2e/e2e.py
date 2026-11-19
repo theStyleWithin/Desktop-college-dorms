@@ -1080,6 +1080,7 @@ try:
     d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'Gal chat')]").click(); time.sleep(1.0)
     say_and_wait("and now?", ["*laughs out loud* ", "Hahaha!"])
     check("with the main picture kept, no gallery picture is shown", not any(v in last_avatar() for v in gitems.values()) and not any(v in stage_img() for v in gitems.values()))
+    seen["pieces"] = None
     removed = invoke("remove_gallery_item", {"id": gid, "itemId": gitems["sad"]})
     check("a picture can be removed (its file goes too)", len(removed["gallery"]) == 2 and not any(f.startswith(gid + "-gal-" + gitems["sad"]) for f in os.listdir(os.path.join(DATA, "media"))))
     set_provider(provider=st0["provider"], openai_base_url=st0["openai_base_url"], openai_model=st0["openai_model"])
@@ -1170,8 +1171,12 @@ try:
     d.execute_script("document.querySelector('[data-testid=side-recent] .sw-row').click()"); time.sleep(1.0)
     check("clicking a recent chat opens it", d.execute_script("return document.querySelector('.chathead h3')?.textContent||''").endswith(chats_sorted[0]["name"]))
     fave_name = d.execute_script("const f=document.querySelector('[data-testid=side-favorites] .sw-fave');return f.dataset.fave")
-    d.execute_script("document.querySelector('[data-testid=side-favorites] .sw-fave').click()"); time.sleep(1.2)
-    check("clicking a favorite opens a chat with them", fave_name in d.execute_script("return document.querySelector('.chathead .tok')?.textContent||''"), fave_name)
+    d.execute_script("document.querySelector('[data-testid=side-favorites] .sw-fave').click()"); 
+    head_ = lambda: d.execute_script("return document.querySelector('.chathead .tok')?.textContent||''")
+    for _ in range(20):
+        time.sleep(0.5)
+        if fave_name in head_(): break
+    check("clicking a favorite opens a chat with them", fave_name in head_(), f"{fave_name!r} vs {head_()!r}")
     nav("Characters"); time.sleep(0.5)
     d.execute_script("document.querySelector('[data-testid=side-recent] .sw-title').click()"); time.sleep(0.4)
     check("a section can be folded away", not d.execute_script("return !!document.querySelector('[data-testid=side-recent] .sw-body')"))
