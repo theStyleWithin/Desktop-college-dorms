@@ -484,6 +484,9 @@ struct Data {
     /// Added in v0.8: saved prompts.
     #[serde(default)]
     prompts: Vec<db::SavedPrompt>,
+    /// Custom emoji and stickers (pictures travel in the archive's media folder).
+    #[serde(default)]
+    emoji: Vec<db::EmojiItem>,
     /// Profile decorations of the characters (the user's own are part of the settings).
     #[serde(default)]
     char_deco: Vec<db::CharDeco>,
@@ -595,7 +598,7 @@ pub struct ExportInfo {
 }
 
 fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
-    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco) = {
+    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji) = {
         let db = st.db.lock().unwrap();
         let characters = db::list_characters(&db, o).map_err(e)?;
         let dorms = db::list_dorms(&db, o).map_err(e)?;
@@ -611,6 +614,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
         let rooms = db::list_rooms(&db, o).map_err(e)?;
         let decor = db::list_decor(&db, o).map_err(e)?;
         let char_deco = db::list_char_deco(&db, o).map_err(e)?;
+        let emoji = db::list_emoji(&db, o).map_err(e)?;
         let prompts = db::list_prompts(&db, o).map_err(e)?;
         let mechanics = db::list_mechanics(&db, o).map_err(e)?;
         let notes = db::list_notes(&db, o).map_err(e)?;
@@ -623,7 +627,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
             Some(id) => db::get_profile(&db, id).map_err(e)?,
             None => None,
         };
-        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco)
+        (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji)
     };
     let mut chats = chats;
     for c in chats.iter_mut() {
@@ -689,6 +693,23 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
             keep.push(db::GalleryItem { id: g.id, file: format!("media/{base}"), kind: g.kind, moods: g.moods });
         }
         c.gallery = keep;
+    }
+    // the emoji and stickers travel with their pictures
+    let mut emoji = emoji;
+    {
+        let mut keep = Vec::new();
+        for (k, it) in emoji.clone().into_iter().enumerate() {
+            let Ok(bytes) = std::fs::read(st.data_dir.join(&it.file)) else { continue };
+            let ext = std::path::Path::new(&it.file).extension().and_then(|x| x.to_str()).unwrap_or("png").to_lowercase();
+            let base = format!("emoji-{k}-{}.{ext}", it.id.chars().filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-').collect::<String>());
+            if safe_media_name(&base) && seen.insert(base.clone()) {
+                zip.start_file(format!("media/{base}"), stored).map_err(e)?;
+                zip.write_all(&bytes).map_err(e)?;
+                media_count += 1;
+            }
+            keep.push(db::EmojiItem { file: format!("media/{base}"), ..it });
+        }
+        emoji = keep;
     }
     // folder pictures travel with their folders
     let mut folders = folders;
@@ -782,7 +803,7 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     // API keys, passcodes and per-device model choices are deliberately not part of the file.
     let mut exported_settings = settings;
     exported_settings.local_model = String::new();
-    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, profile_avatar };
+    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, emoji, profile_avatar };
     zip.start_file("manifest.json", deflated).map_err(e)?;
     zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(e)?).map_err(e)?;
     zip.start_file("data.json", deflated).map_err(e)?;
@@ -888,6 +909,7 @@ fn remove_owner_data(st: &AppState, o: &Owner) -> R<()> {
         files.extend(db::list_rooms(&db, o).map_err(e)?.into_iter().flat_map(|r| r.backdrop.strip_prefix("file:").map(str::to_string).into_iter().chain(Some(r.music).filter(|m| !m.is_empty())).chain(Some(r.model).filter(|m| !m.is_empty()))));
         files.extend(db::list_dorms(&db, o).map_err(e)?.into_iter().filter(|d| !d.music.is_empty()).map(|d| d.music));
         files.extend(db::list_decor(&db, o).map_err(e)?.into_iter().map(|d| d.file));
+        files.extend(db::list_emoji(&db, o).map_err(e)?.into_iter().map(|d| d.file));
         (settings, files)
     };
     end_session(st);
@@ -1241,6 +1263,27 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             let Some(cid) = char_map.get(&d.character_id) else { continue };
             let (plate, bg, wreath) = crate::deco::clean_look(&d.plate, &d.bg, &d.wreath);
             db::save_char_deco(&db, &db::CharDeco { character_id: cid.clone(), plate, bg, wreath, source: if d.source == "user" { "user".into() } else { "ai".into() }, updated_at: db::now() }, &o).map_err(e)?;
+        }
+        // custom emoji and stickers: pictures only, fresh names, valid names, within the limits; a room that didn't come along means "everywhere"
+        {
+            let (mut n_emoji, mut n_stickers) = (0usize, 0usize);
+            for (k, it) in parsed.data.emoji.iter().enumerate() {
+                let (kind, cap, count) = if it.kind == "sticker" { ("sticker", db::MAX_STICKERS, &mut n_stickers) } else { ("emoji", db::MAX_EMOJI, &mut n_emoji) };
+                let base = it.file.strip_prefix("media/").unwrap_or("").to_string();
+                let ext = std::path::Path::new(&base).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+                if !["png", "jpg", "jpeg", "webp", "gif"].contains(&ext.as_str()) || *count >= cap { continue; }
+                let Some(name) = crate::emoji::clean_name(&it.name) else { continue };
+                let Some(bytes) = parsed.media.get(&base).filter(|_| safe_media_name(&base)) else { continue };
+                let room_id = it.room_id.and_then(|r| room_map.get(&r).copied());
+                if db::emoji_name_taken(&db, kind, &name, room_id, "", &o).map_err(e)? { continue; }
+                let id = uid();
+                let rel = format!("media/emoji-{id}.{ext}");
+                let abs = st.data_dir.join(&rel);
+                std::fs::write(&abs, bytes).map_err(e)?;
+                written.push(abs);
+                db::save_emoji(&db, &db::EmojiItem { id, kind: kind.into(), name, meaning: it.meaning.chars().filter(|c| !c.is_control()).take(80).collect(), file: rel, room_id, created_at: db::now() + k as i64 }, &o).map_err(e)?;
+                *count += 1;
+            }
         }
         let mut mech_map: HashMap<String, String> = HashMap::new();
         for m in &parsed.data.mechanics {

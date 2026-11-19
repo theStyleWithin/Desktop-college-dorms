@@ -764,7 +764,8 @@ fn active(db: &Connection, chat_id: i64, o: &db::Owner) -> Vec<(ChatMechanic, Bu
 
 /// Everything beyond the character card that goes into the system prompt: the room, the texting style, the packs.
 pub fn extra_system(db: &Connection, chat: &db::Chat, o: &db::Owner, recent: &str) -> String {
-    let mut parts = vec![room_block(db, chat, o), style_block(chat)];
+    let room = db::chat_room(db, chat, o).ok().flatten().map(|r| r.id);
+    let mut parts = vec![room_block(db, chat, o), style_block(chat), crate::emoji::prompt_block(&db::list_emoji(db, o).unwrap_or_default(), room)];
     for (cm, b) in active(db, chat.id, o) {
         parts.push(mech::prompt_block(&b, &cm.state, recent));
     }

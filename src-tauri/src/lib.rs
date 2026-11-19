@@ -5,6 +5,7 @@ mod extras;
 mod llama;
 mod llm;
 mod deco;
+mod emoji;
 mod presence;
 mod secrets;
 mod unitypkg;
@@ -180,6 +181,10 @@ pub fn run() {
             deco::set_char_deco,
             deco::clear_char_deco,
             deco::generate_char_deco,
+            emoji::list_emoji,
+            emoji::add_emoji,
+            emoji::update_emoji,
+            emoji::delete_emoji,
             extras::list_prompts,
             extras::save_prompt,
             extras::delete_prompt,
