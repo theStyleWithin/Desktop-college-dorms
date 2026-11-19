@@ -154,7 +154,7 @@ export interface Chat {
 export interface Message {
   id: number;
   chat_id: number;
-  role: "user" | "character" | "system" | "travel";
+  role: "user" | "character" | "system" | "travel" | "note";
   character_id: string | null;
   swipes: string[];
   swipe_index: number;
@@ -204,6 +204,9 @@ export interface Settings {
   stt_model: string;
   stt_language: string;
   stt_auto_send: boolean;
+  /** Novel writing: requests a day the model allows (0 = none set), and how many are kept for chatting. */
+  novel_daily_limit: number;
+  novel_reserve: number;
   /** The user's own profile decorations. */
   deco: UserDeco;
 }
@@ -261,6 +264,11 @@ export interface PbScenario { name: string; description: string; values: Record<
 export interface Playbook { id: string; name: string; description: string; instructions: string; variables: PbVar[]; rules: PbRule[]; lorebooks: string[]; lore: PbLore[]; scenarios: PbScenario[]; created_at: number; updated_at: number }
 export interface PbValue { id: string; label: string; kind: PbVar["kind"]; value: unknown; meaning: string; note: string; min?: number | null; max?: number | null; options: string[] }
 export interface ChatPlaybook { mode: "inherit" | "none" | "set"; selected: string | null; active: Playbook | null; values: PbValue[]; turn: number; llm: boolean; from_character: boolean }
+/** Writing a novel: the plot, how far it has got, and what today's request allowance leaves. */
+export interface NovelPlan { plot: string; tone: string; pov: string; chapters: number; chapter_tokens: number; done: number }
+export interface NovelStatus { running: boolean; plan: NovelPlan | null; used_today: number; limit: number; reserve: number }
+export type NovelEvent = { chat_id: number; state: "writing" | "chapter" | "waiting" | "finished" | "stopped" | "budget" | "limit" | "error"; chapter: number; of: number; detail: string };
+export const onNovel = (cb: (e: NovelEvent) => void): Promise<UnlistenFn> => listen<NovelEvent>("dorms://novel", (ev) => cb(ev.payload));
 export const blankPlaybook = (): Playbook => ({ id: "", name: "", description: "", instructions: "", variables: [], rules: [], lorebooks: [], lore: [], scenarios: [], created_at: 0, updated_at: 0 });
 export interface CharStatus { character_id: string; text: string; source: "ai" | "user"; updated_at: number }
 export interface SavedPrompt { id: string; title: string; body: string; tag: string; created_at: number; updated_at: number }
@@ -382,6 +390,13 @@ export const api = {
   setRoomPictureCaption: (id: number, itemId: string, caption: string) => invoke<Room>("set_room_picture_caption", { id, itemId, caption }),
   removeRoomPicture: (id: number, itemId: string) => invoke<Room>("remove_room_picture", { id, itemId }),
   useRoomPictureAsBackdrop: (id: number, itemId: string) => invoke<Room>("use_room_picture_as_backdrop", { id, itemId }),
+  novelStatus: (chatId: number) => invoke<NovelStatus>("novel_status", { chatId }),
+  novelStart: (chatId: number, plot: string, tone: string, pov: string, chapters: number, chapterTokens: number, resume: boolean) => invoke<NovelPlan>("novel_start", { chatId, plot, tone, pov, chapters, chapterTokens, resume }),
+  novelStop: (chatId: number) => invoke<void>("novel_stop", { chatId }),
+  novelsRunning: () => invoke<number[]>("novels_running"),
+  trayAvailable: () => invoke<boolean>("tray_available"),
+  hideToTray: () => invoke<void>("hide_to_tray"),
+  quitApp: () => invoke<void>("quit_app"),
   listWorlds: () => invoke<World[]>("list_worlds"),
   createWorld: (name: string, description: string) => invoke<World>("create_world", { name, description }),
   updateWorld: (id: number, name: string, description: string, lore: string, lorebooks: string[]) => invoke<World>("update_world", { id, name, description, lore, lorebooks }),

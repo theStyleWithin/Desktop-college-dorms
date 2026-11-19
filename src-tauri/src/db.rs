@@ -539,6 +539,9 @@ pub struct Settings {
     pub active_persona: String,
     /// The user's own profile decorations.
     pub deco: UserDeco,
+    /// Novel writing: how many requests a day the model's plan allows (0 = no limit set), and how many of them are kept for chatting.
+    pub novel_daily_limit: usize,
+    pub novel_reserve: usize,
 }
 
 impl Default for Settings {
@@ -566,6 +569,8 @@ impl Default for Settings {
             stt_auto_send: true,
             active_persona: String::new(),
             deco: UserDeco::default(),
+            novel_daily_limit: 0,
+            novel_reserve: 5,
         }
     }
 }
@@ -646,6 +651,7 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
             chat_id INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE, mech_id TEXT NOT NULL,
             enabled INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL DEFAULT '{}', PRIMARY KEY(chat_id, mech_id));",
     )?;
+    crate::novel::init(&conn)?;
     ensure_column(&conn, "folders", "parent", "TEXT")?;
     ensure_column(&conn, "folders", "cover_char", "TEXT")?;
     ensure_column(&conn, "dorms", "room_id", "INTEGER")?;

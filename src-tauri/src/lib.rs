@@ -4,6 +4,8 @@ mod db;
 mod extras;
 mod llama;
 mod llm;
+mod novel;
+mod tray;
 mod deco;
 mod emoji;
 mod playbook;
@@ -36,6 +38,10 @@ pub struct AppState {
     pub login_fails: Mutex<HashMap<String, (u32, std::time::Instant)>>,
     /// A profile file being brought in piece by piece (so a big file never has to cross into the app in one go, which phones can't do).
     pub staged: Mutex<Option<(String, Arc<Vec<u8>>)>>,
+    /// Novels being written, by chat.
+    pub novels: Mutex<HashMap<i64, novel::Run>>,
+    /// The window is hidden to the tray while a novel is written.
+    pub hidden: std::sync::atomic::AtomicBool,
 }
 
 pub type Shared = Arc<AppState>;
@@ -121,11 +127,20 @@ pub fn run() {
                 pending_export: Default::default(),
                 login_fails: Default::default(),
                 staged: Default::default(),
+                novels: Default::default(),
+                hidden: Default::default(),
             }));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            novel::novel_status,
+            novel::novel_start,
+            novel::novel_stop,
+            novel::novels_running,
+            tray::tray_available,
+            tray::hide_to_tray,
+            tray::quit_app,
             accounts::stage_begin,
             accounts::stage_chunk,
             accounts::stage_clear,
@@ -295,6 +310,20 @@ pub fn run() {
             commands::vrm_guard_end,
             commands::set_auto_chat,
         ])
+        .on_window_event(|window, event| {
+            // closing the window while a novel is being written: ask first (hide to the tray, or close and stop)
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                use tauri::{Emitter, Manager};
+                if window.label() == "main" {
+                    if let Some(st) = window.app_handle().try_state::<Shared>() {
+                        if !st.novels.lock().unwrap().is_empty() {
+                            api.prevent_close();
+                            let _ = window.emit("dorms://close-while-writing", ());
+                        }
+                    }
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running Desktop College Dorms");
 }
