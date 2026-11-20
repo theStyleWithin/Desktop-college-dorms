@@ -294,6 +294,23 @@ Not built yet. The Settings page has eleven tabs; the plan is to fold four of th
 - Other tabs stay as they are (Emoji & stickers, Personas, Models, Voice, Controller, Privacy, About). An alternative that was discussed and not chosen: Customization holding only Appearance and the chat-display settings, with the reply settings moved into Models.
 - Changes to make when it is built: the tab list, the section order, redirecting old tab names, the tests that click the tabs by name, and the README mentions of Settings → Decorations and Settings → Appearance.
 
+## Planned: moving a profile between devices over home Wi-Fi
+
+Not built yet. Today a profile moves between a computer and a phone as a file (Settings → Profile → backup, then copied across, for example with a USB cable). The plan is an optional way to do it over the home network, with no file copying:
+
+- **Transfer, not cloud.** The data goes straight from one device to the other over the local Wi-Fi network, encrypted, and never leaves the home network. No account, no server of ours. It is optional and off by default: the sending device only listens while its "Send" screen is open.
+- **A QR code is only the pairing.** A QR code holds about 2 KB, so it cannot carry a profile (which can be hundreds of megabytes). The QR carries the sending device's address and a one-time secret that stops working after a few minutes or one use; the phone scans it with its camera and the data then travels over Wi-Fi. A short typed code is the fallback when there is no camera, or when a router or guest network stops devices talking to each other.
+- **The receiving device says what arrived** before adding anything ("Profile: Alex, 12 characters, 4 lorebooks. Add as a new profile, or replace this one?"; for one item, "Character: Mira, 3 pictures, 1 lorebook. Add it?"). If the same thing is already there, it asks whether to replace it or add a copy.
+- **Safety rules.** API keys are not sent unless the person ticks a box to include them. A profile with a passcode asks for it. A profile that uses the built-in local model switches to a cloud or network model on a phone, as import already does. Pairings can be forgotten.
+- **Stages.**
+  1. *One-time transfer of a whole profile*, in both directions, using the existing profile file format and the existing piece-by-piece import that phones already use for big files.
+  2. *Single items*: "Send to phone" on a character, lorebook, playbook, persona, prompt, note or world (with a tick box for attached lorebooks and playbook), several at once, and a **QR code** tab in Settings plus a Scan button on the phone to receive them.
+  3. *Refresh my phone*: a remembered pairing that sends only what has changed since the last transfer. This needs a record of where each item came from, because chats and messages are numbered separately on each device and would otherwise become duplicate copies after a second transfer.
+  4. *Two-way sync*, where both devices keep each other up to date, is a different and much larger job (the same chat or character edited on both, deletions, conflicts) and is not planned for now.
+- **Optional backup for tiny items:** a short run of flashing QR codes read by the camera (a lorebook or text-only character is about 10 to 100 codes). It is not practical for anything with pictures.
+- **Likely snags to design for:** the operating system asking permission (Windows firewall, Android camera and local network), and routers that isolate devices.
+- **Before building:** show rendered pictures of the QR screen, the "what arrived" prompt and the new tab. It cannot be fully tested without real devices on a real network.
+
 ## Status
 
 v0.3.0 adds a real 3D viewer for VRM / VRoid models (room, idle life, physics, hands, wardrobe) and voice input. v0.2.0 added local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.
