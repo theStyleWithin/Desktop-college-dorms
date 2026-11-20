@@ -6,7 +6,7 @@ import { StoreCtx, type Route, type Store } from "./store";
 import { Logo, ToastProvider, useToast } from "./components/ui";
 import { ProfileAvatar } from "./components/ProfileForms";
 import { DEFAULT_DECO, personaAvatar, profileAvatar } from "./api";
-import { TagChip, Wreathed, plateProps, setDecoMotion } from "./lib/deco";
+import { TagChip, Wreathed, pauseDecoWhenAway, plateProps, setDecoMotion } from "./lib/deco";
 import Welcome from "./pages/Welcome";
 import Home from "./pages/Home";
 import Library from "./pages/Library";
@@ -101,6 +101,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
   };
   const [winW, setWinW] = useState(window.innerWidth);
   useEffect(() => { setDecoMotion(settings.deco?.animate !== false); }, [settings.deco?.animate]);
+  useEffect(() => pauseDecoWhenAway(), []);
   // closing the window while a novel is being written would stop it: offer to keep writing from the tray
   useEffect(() => {
     const u = listen("dorms://close-while-writing", async () => {

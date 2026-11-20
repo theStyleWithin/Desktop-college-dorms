@@ -23,6 +23,19 @@ export function setDecoMotion(animate: boolean) {
   document.documentElement.dataset.decoAnim = animate && !calm ? "on" : "off";
 }
 
+/** Decorations stand still while the app is hidden, minimised or not in front, so they cost nothing in the background. */
+export function pauseDecoWhenAway() {
+  const sync = () => {
+    const away = document.hidden || !document.hasFocus();
+    if (away) document.documentElement.setAttribute("data-deco-paused", ""); else document.documentElement.removeAttribute("data-deco-paused");
+  };
+  document.addEventListener("visibilitychange", sync);
+  window.addEventListener("blur", sync);
+  window.addEventListener("focus", sync);
+  sync();
+  return () => { document.removeEventListener("visibilitychange", sync); window.removeEventListener("blur", sync); window.removeEventListener("focus", sync); };
+}
+
 /** How the characters are dressed (shared by every part of the app that shows a character). */
 let charMap = new Map<string, CharDeco>();
 let version = 0, loaded = false;
