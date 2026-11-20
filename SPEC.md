@@ -273,6 +273,44 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
 - Controllers are read through the standard Gamepad layout (buttons by position). Bindings are per device in local storage; labels come from the pad's vendor (Xbox, PlayStation,
   Nintendo, Steam).
 
+## Planned: world attachments (quality of life for worlds)
+
+Not built yet. A world already carries lorebooks that apply to every chat in its rooms. The plan is to let a world carry more, so a place can come with its own set-up:
+
+- **Persona.** A persona can be assigned to a world. While a chat is in a room of that world, the AI reads the world's persona instead of the active one; the active persona is never changed or deleted and returns when the chat leaves the world (walking through an exit into a room of another world changes it, as the world's lorebooks already do). The chat's "Playing as" box says "World persona: X (from Y)" and has a switch to ignore the world's extras for that one chat. Messages already written keep the name and picture they had. If the persona is deleted, the world falls back to the active persona. Backups carry the assignment.
+- **Playbook.** A world can have a default playbook. Only one playbook runs in a chat, so the order is: what was chosen for the chat, then the character's own playbook, then the world's. The world's is only a fallback and never replaces a character's.
+- **Lorebooks** (already there): they merge with the character's own, each book once; if they compete for space the character's own entries come first.
+- **Prompts.** Both of these, with a switch on each attached prompt: (1) a world's prompt shelf, where its prompts show first in the Prompts menu while in that world, sent only when the person chooses; (2) standing instructions, always told to the characters, placed after the character card's own system prompt, which wins if they disagree.
+- **The rule: a world adds things and never replaces a character's own.** The persona is the one exception, because it is the person's own choice about who they are.
+- The Rooms page's world panel gets the pickers (persona, playbook, prompts) next to the lorebooks, and the chat shows one line, for example "From this world: playbook X, 2 lorebooks, persona Kai".
+- Intended as a small patch release (0.13.2), tested with the app's own tests and a fake model (a real roleplay was not tested).
+
+## Planned: fewer Settings tabs
+
+Not built yet. The Settings page has eleven tabs; the plan is to fold four of them into two:
+
+- **Profiles** = today's **Profile** and **Decorations** tabs, as sections of one tab: You (name, picture, passcode), Decorations, Hidden accounts, then backup and delete. The Decorations section is folded away by default (its picker is large), with the "Wearing: …" line showing while it is closed. Anything that opens the old Decorations tab opens Profiles with that section open, so no link or shortcut breaks. Nothing stored changes: decorations already save straight to the settings and the Profile tab's saves are its own.
+- **Customization** = today's **Chat** and **Appearance** tabs, as sections of one tab. A catch to handle: Appearance changes apply at once, but the Chat fields (context size, max reply length, creativity, top-p, the system prompt, card prompts, the novel daily limit) only save with the **Save settings** button. In one tab that mix is easy to get wrong, so the plan is for each Chat setting to save as it is changed, so nothing in Customization needs the Save button.
+- Other tabs stay as they are (Emoji & stickers, Personas, Models, Voice, Controller, Privacy, About). An alternative that was discussed and not chosen: Customization holding only Appearance and the chat-display settings, with the reply settings moved into Models.
+- Changes to make when it is built: the tab list, the section order, redirecting old tab names, the tests that click the tabs by name, and the README mentions of Settings → Decorations and Settings → Appearance.
+
+## Planned: moving a profile between devices over home Wi-Fi
+
+Not built yet. Today a profile moves between a computer and a phone as a file (Settings → Profile → backup, then copied across, for example with a USB cable). The plan is an optional way to do it over the home network, with no file copying:
+
+- **Transfer, not cloud.** The data goes straight from one device to the other over the local Wi-Fi network, encrypted, and never leaves the home network. No account, no server of ours. It is optional and off by default: the sending device only listens while its "Send" screen is open.
+- **A QR code is only the pairing.** A QR code holds about 2 KB, so it cannot carry a profile (which can be hundreds of megabytes). The QR carries the sending device's address and a one-time secret that stops working after a few minutes or one use; the phone scans it with its camera and the data then travels over Wi-Fi. A short typed code is the fallback when there is no camera, or when a router or guest network stops devices talking to each other.
+- **The receiving device says what arrived** before adding anything ("Profile: Alex, 12 characters, 4 lorebooks. Add as a new profile, or replace this one?"; for one item, "Character: Mira, 3 pictures, 1 lorebook. Add it?"). If the same thing is already there, it asks whether to replace it or add a copy.
+- **Safety rules.** API keys are not sent unless the person ticks a box to include them. A profile with a passcode asks for it. A profile that uses the built-in local model switches to a cloud or network model on a phone, as import already does. Pairings can be forgotten.
+- **Stages.**
+  1. *One-time transfer of a whole profile*, in both directions, using the existing profile file format and the existing piece-by-piece import that phones already use for big files.
+  2. *Single items*: "Send to phone" on a character, lorebook, playbook, persona, prompt, note or world (with a tick box for attached lorebooks and playbook), several at once, and a **QR code** tab in Settings plus a Scan button on the phone to receive them.
+  3. *Refresh my phone*: a remembered pairing that sends only what has changed since the last transfer. This needs a record of where each item came from, because chats and messages are numbered separately on each device and would otherwise become duplicate copies after a second transfer.
+  4. *Two-way sync*, where both devices keep each other up to date, is a different and much larger job (the same chat or character edited on both, deletions, conflicts) and is not planned for now.
+- **Optional backup for tiny items:** a short run of flashing QR codes read by the camera (a lorebook or text-only character is about 10 to 100 codes). It is not practical for anything with pictures.
+- **Likely snags to design for:** the operating system asking permission (Windows firewall, Android camera and local network), and routers that isolate devices.
+- **Before building:** show rendered pictures of the QR screen, the "what arrived" prompt and the new tab. It cannot be fully tested without real devices on a real network.
+
 ## Status
 
 v0.3.0 adds a real 3D viewer for VRM / VRoid models (room, idle life, physics, hands, wardrobe) and voice input. v0.2.0 added local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.
