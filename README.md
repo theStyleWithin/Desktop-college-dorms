@@ -12,7 +12,19 @@ Cloud APIs are optional and use your own key.
 
 Rendered from the real app with original demo characters. (Cards, chats and avatars here are made up for the screenshots.)
 
-**What's new**
+**New in 0.13**
+
+| | |
+|---|---|
+| ![Profile decorations](docs/screenshots/desktop-decorations.png)<br>**Profile decorations**: nameplates, wreaths, moving backgrounds and a name tag for you, for your characters (or let the model dress them) and for rooms | ![Playbook panel](docs/screenshots/desktop-playbook-panel.png)<br>**Playbooks**: a story's values and rules. The characters are told the values (trust, mood, hunger...), and rules change them as you talk |
+| ![Playbooks](docs/screenshots/desktop-playbooks.png)<br>**Playbooks page**: your playbooks and ready-made starters, with folders to keep them tidy | ![Playbook editor](docs/screenshots/desktop-playbook-editor.png)<br>**Playbook editor**: values, rules (checks, chances, even a question for the model), lorebooks and starting scenarios |
+| ![Write a novel](docs/screenshots/desktop-novel.png)<br>**Write a novel**: beside Regenerate and Continue. Pick the plot, tone and length; read at your own pace while it keeps writing, planned to fit a free model's daily limit | ![World overview](docs/screenshots/desktop-world-overview.png)<br>**Worlds**: folders of connected rooms, with background lore to read before you dive in, and lorebooks that apply to every chat there |
+| ![Folders](docs/screenshots/desktop-folders.png)<br>**Folders** for lorebooks and playbooks: nest them, drag things in, rename any time | ![Profile menu](docs/screenshots/desktop-profile-menu.png)<br>**Right-click your profile**: quick settings, switch accounts, hide an account (shown again from Settings) |
+| ![Quick settings](docs/screenshots/desktop-quick-settings.png)<br>**Quick settings**: theme, text size, animation and who you are playing as | ![Side bar](docs/screenshots/desktop-side-bar.png)<br>**Side bar**: rename Recent, Favorites and Most used, and flip between several picture frames with the arrows |
+
+Also new: **emoji and stickers** (everywhere or per room, and the characters use them), **room galleries**, moving **GIF backdrops** kept light, **Left / Right / Backspace** to go back and forward, and personas are now optional.
+
+**Before that**
 
 | | |
 |---|---|
@@ -95,6 +107,11 @@ Rendered from the real app with original demo characters. (Cards, chats and avat
   bottom, and a "Jump to latest" button waits for you. For a free model with a daily allowance, enter it in **Settings → Chat** (there is a "Free model, 40 a day" preset): the story
   is planned to fit what is left today, a few requests are kept back for chatting, and it stops after a finished chapter with a message that says why. Stop and **Keep going** work
   any time; every finished chapter is saved. The app has to stay running while it writes: closing the window asks whether to **keep writing in the system tray** (the window comes back when the novel is finished; on Linux desktops without tray icons just wait for it), or close and stop. On a phone the app has to stay open.
+- **Moving backdrops (GIF)** are kept light: a GIF used as a room backdrop is saved at no more than about 854 pixels across, 8 pictures a second and 60 frames (your original file is untouched), with a still picture of its first frame. Only the backdrop of the chat in front moves, and only while the app is in front: small spots (room icons, cards, the map) and the app in the background show the still. Turning off Settings → Decorations → Animate decorations and moving backdrops makes backdrops stand still too.
+- **Your profile at the bottom of the side bar**: right-click it for **Quick settings** (theme, text size, animation, who you are playing as), **Switch accounts**, and **Hide profile**. A hidden account leaves the account list on the start screen (nothing is deleted) and is listed under **Settings → Profile → Hidden accounts**, where it can be shown again (an account with a passcode asks for it). Hiding your only account offers to create another account or use the guest space. Hiding keeps an account out of sight; a passcode is what locks it. The sections of the side bar (recent chats, favorites, most used, picture frame) can be renamed any time: double-click a section's name or press its ✎, or use Settings → Appearance.
+- **Folders for lorebooks and playbooks**: 📁 New folder on the Lorebooks and Playbooks pages. Folders can sit inside folders (four deep), are kept in name order, and things go in by dragging them onto a folder or with "Move to…". Rename with ✎ or by double-clicking, delete a folder without deleting what is in it (it moves up). Folders are in backups.
+- **Going back and forward**: the Left arrow or Backspace goes back to the page before, and the Right arrow goes forward again (not while you are typing or while a window is open).
+- **Personas are optional.** There is no separate "default persona": with none chosen, characters know you by your name. Anything written in the old "About you" box became a real persona.
 - **Pathways**: build a place out of rooms. "Our house" can hold a kitchen, a living room and an attic (each with its own picture and
   description), and a room can lead on to other rooms by **exits**: one-way pathways, up to three per room (the garden gate leads to the street and the
   alley). Rooms can lead on to more rooms for as long as you keep connecting them; a room is a dead end only when you haven't connected an exit.

@@ -726,7 +726,10 @@ pub fn clear_chat(state: State<'_, Shared>, chat_id: i64) -> R<()> {
 
 #[tauri::command]
 pub fn get_settings(state: State<'_, Shared>) -> R<Settings> {
-    Ok(db::get_settings(&state.db.lock().unwrap(), &owner(&state)?))
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    db::migrate_default_persona(&db, &o);
+    Ok(db::get_settings(&db, &o))
 }
 
 #[tauri::command]

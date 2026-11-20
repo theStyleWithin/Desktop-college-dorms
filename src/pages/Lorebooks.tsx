@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type CharacterBook, type Lorebook } from "../api";
 import BookEditor from "../components/BookEditor";
+import ShelfView, { NewFolderButton, useShelf } from "../components/Shelf";
 import { useToast } from "../components/ui";
 import { emptyBook, readLorebook } from "../lib/lore";
 import { errText, tokens } from "../lib/util";
@@ -16,6 +17,7 @@ export default function Lorebooks() {
   const [book, setBook] = useState<CharacterBook>(emptyBook());
   const [dirty, setDirty] = useState(false);
   const file = useRef<HTMLInputElement>(null);
+  const shelf = useShelf("lorebooks");
 
   const open = (b: Lorebook) => { setSel(b.id); setName(b.name); setBook({ ...emptyBook(), ...b.book }); setDirty(false); };
   const load = async (pick?: string) => {
@@ -55,16 +57,17 @@ export default function Lorebooks() {
       <aside className="notes-list">
         <div className="row" style={{ marginBottom: 8 }}>
           <button className="btn primary grow" onClick={() => void create()}>＋ New lorebook</button>
+          <NewFolderButton api={shelf} />
           <button className="btn" onClick={() => file.current?.click()} title="Import a lorebook or world info .json">⇪</button>
           <input ref={file} type="file" hidden multiple accept=".json,application/json" aria-label="Import lorebooks" onChange={(e) => { void importFiles(e.target.files); e.target.value = ""; }} />
         </div>
         <div className="notes-items">
-          {books.map((b) => (
-            <button key={b.id} className={`note-item ${b.id === sel ? "on" : ""}`} onClick={() => open(b)}>
+          <ShelfView kind="lorebooks" api={shelf} items={books} renderItem={(b) => (
+            <button className={`note-item ${b.id === sel ? "on" : ""}`} onClick={() => open(b)}>
               <b>📚 {b.name}</b>
               <span className="hint">{(b.book?.entries?.length ?? 0)} entr{(b.book?.entries?.length ?? 0) === 1 ? "y" : "ies"} · {characters.filter((c) => c.lorebooks?.includes(b.id)).length} character(s)</span>
             </button>
-          ))}
+          )} />
           {!books.length && <div className="hint" style={{ padding: 10 }}>No lorebooks yet. Make one, or import a world info file.</div>}
         </div>
       </aside>

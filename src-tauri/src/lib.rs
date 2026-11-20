@@ -5,6 +5,7 @@ mod extras;
 mod llama;
 mod llm;
 mod novel;
+mod shelf;
 mod tray;
 mod deco;
 mod emoji;
@@ -130,10 +131,21 @@ pub fn run() {
                 novels: Default::default(),
                 hidden: Default::default(),
             }));
+            // backdrops that are GIFs from before they were made lighter: do it once, in the background
+            {
+                let st: Shared = app.state::<Shared>().inner().clone();
+                std::thread::spawn(move || extras::lighten_old_backdrops(&st));
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            shelf::get_shelf,
+            shelf::create_shelf_folder,
+            shelf::rename_shelf_folder,
+            shelf::move_shelf_folder,
+            shelf::delete_shelf_folder,
+            shelf::move_to_shelf_folder,
             novel::novel_status,
             novel::novel_start,
             novel::novel_stop,
@@ -293,6 +305,8 @@ pub fn run() {
             commands::list_remote_models,
             accounts::session_state,
             accounts::sign_in,
+            accounts::hide_profile,
+            accounts::unhide_profile,
             accounts::sign_out,
             accounts::create_profile,
             accounts::claim_guest_profile,

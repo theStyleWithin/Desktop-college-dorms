@@ -278,6 +278,79 @@ try:
     snap("desktop-side-bar", (1440, 1340))   # tall enough to show every side bar extra
     d.set_window_size(*DESK); time.sleep(0.5)
 
+    # ---- new in 0.13 ------------------------------------------------------------------------------------------------
+    def safe(label, fn):
+        try: fn()
+        except Exception as ex: print("SKIPPED", label, "->", str(ex)[:200], flush=True)
+    def tab(label): d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent===arguments[0]).click()", label); time.sleep(0.8)
+    def click_btn(sel, text=None): d.execute_script("const e=[...document.querySelectorAll(arguments[0])].find(b=>!arguments[1]||b.textContent.includes(arguments[1]));e.click()", sel, text); time.sleep(0.8)
+    chars_all = inv("list_characters")
+
+    def decorations():
+        st = inv("get_settings"); st["deco"] = dict(st["deco"], plate="bubbletea", bg="boba", wreath="bobacup", tag="KOI", animate=False)
+        inv("save_settings", {"settings": st})
+        looks = [("sakura", "", "catphones"), ("aurora", "", "lotus"), ("embers", "", "sprout"), ("tide", "", "koi"), ("starfield", "", "pearlring"), ("neongrid", "", "redlantern")]
+        for c, (pl, bg, wr) in zip(chars_all, looks): inv("set_char_deco", {"characterId": c["id"], "plate": pl, "bg": bg, "wreath": wr})
+        reload_ui(); nav("Settings"); tab("Decorations")
+        snap("desktop-decorations", (1440, 1100))
+    safe("decorations", decorations)
+
+    def world():
+        w = inv("create_world", {"name": "Lantern Quarter", "description": "A neon-lit district of tea houses, rooftops and one very crowded house."})
+        inv("update_world", {"id": w["id"], "name": "Lantern Quarter", "description": "A neon-lit district of tea houses, rooftops and one very crowded house.", "lore": "# The Lantern Quarter\n\nBuilt along an old canal, the Quarter never quite sleeps. Paper lanterns hang between the rooftops and the corner shop is open all night.\n\n## Who lives here\n- Students who forgot to go home\n- A tea seller who knows everyone's order\n\n## Good to know\nThe attic has one round window and no way out but down.", "lorebooks": []})
+        inv("move_rooms_to_world", {"ids": [house["id"], kitchen["id"], living["id"], attic["id"]], "worldId": w["id"]})
+        d.execute_script("localStorage.setItem('dorms.rooms.view','cards'); localStorage.removeItem('dorms.rooms.world')")
+        reload_ui(); nav("Rooms"); time.sleep(0.8)
+        d.execute_script("document.querySelector('[data-testid=world-chip-%d]').click()" % w["id"]); time.sleep(0.8)
+        d.execute_script("document.querySelector('[data-testid=world-read]').click()"); time.sleep(1.0)
+        snap("desktop-world-overview", (1440, 1000))
+        d.execute_script("document.querySelector('.modal button[aria-label=Close]').click()"); time.sleep(0.4)
+    safe("world", world)
+
+    pb = {}
+    def playbooks():
+        tpl = inv("playbook_templates")
+        pb["p"] = inv("save_playbook", {"playbook": tpl[0]}); inv("save_playbook", {"playbook": tpl[1]})
+        reload_ui(); nav("Playbooks"); time.sleep(0.8)
+        snap("desktop-playbooks", (1440, 1000))
+        click_btn("[data-pb] button", pb["p"]["name"]); time.sleep(0.8)
+        snap("desktop-playbook-editor", (1440, 1100))
+    safe("playbooks", playbooks)
+
+    def playbook_panel():
+        if "p" not in pb: raise RuntimeError("no playbook")
+        inv("set_chat_playbook", {"chatId": walk["id"], "mode": "set", "playbookId": pb["p"]["id"], "scenario": None})
+        v = pb["p"]["variables"][0]; hi = (v.get("max") or 10); inv("set_playbook_values", {"chatId": walk["id"], "values": {v["id"]: hi * 0.6}})
+        reload_ui(); nav("Dorms")
+        d.execute_script("[...document.querySelectorAll('.chatlist .it')].find(b=>b.textContent.includes('Coffee at home')).click()"); time.sleep(1.5)
+        d.execute_script("document.querySelector('[data-testid=pb-open]').click()"); time.sleep(1.0)
+        snap("desktop-playbook-panel", (1440, 1000))
+        d.execute_script("document.querySelector('.modal button[aria-label=Close]').click()"); time.sleep(0.5)
+        d.execute_script("document.querySelector('[data-testid=novel-open]').click()"); time.sleep(1.0)
+        d.execute_script("const t=document.querySelector('[data-testid=novel-plot]');const set=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;set.call(t,'A slow-burn mystery in the old library, ending on a twist.');t.dispatchEvent(new Event('input',{bubbles:true}))"); time.sleep(0.6)
+        snap("desktop-novel", (1440, 1000))
+        d.execute_script("document.querySelector('.modal button[aria-label=Close]').click()"); time.sleep(0.4)
+    safe("playbook panel and novel", playbook_panel)
+
+    def folders():
+        bk = lambda n: {"name": n, "description": "", "scan_depth": None, "token_budget": None, "recursive_scanning": None, "extensions": {}, "entries": [{"keys": ["lantern"], "content": "Paper lanterns hang between the rooftops.", "extensions": {}, "enabled": True, "insertion_order": 0, "case_sensitive": None, "name": "Lanterns", "priority": None, "id": 0, "comment": "", "selective": False, "secondary_keys": [], "constant": False, "position": "before_char"}]}
+        made = {n: inv("save_lorebook", {"lorebook": {"id": "", "name": n, "book": bk(n), "created_at": 0, "updated_at": 0}}) for n in ["Lantern Quarter", "Corner shop regulars", "House rules", "Tea menu", "Old canal history", "Rooftop secrets"]}
+        f1 = inv("create_shelf_folder", {"kind": "lorebooks", "name": "World building", "parent": None}); f2 = inv("create_shelf_folder", {"kind": "lorebooks", "name": "Places", "parent": f1["id"]}); f3 = inv("create_shelf_folder", {"kind": "lorebooks", "name": "People", "parent": f1["id"]})
+        for n, f in [("Lantern Quarter", f2), ("Old canal history", f2), ("Rooftop secrets", f2), ("Corner shop regulars", f3), ("Tea menu", f3)]: inv("move_to_shelf_folder", {"kind": "lorebooks", "itemId": made[n]["id"], "folder": f["id"]})
+        reload_ui(); nav("Lorebooks"); time.sleep(1.0)
+        snap("desktop-folders", (1440, 900))
+    safe("folders", folders)
+
+    def profile_menu():
+        reload_ui(); nav("Characters"); time.sleep(0.6)
+        d.execute_script("const e=document.querySelector('[data-testid=me-row]');const r=e.getBoundingClientRect();e.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:r.left+30,clientY:r.top+8}))"); time.sleep(0.6)
+        snap("desktop-profile-menu", DESK)
+        d.execute_script("document.querySelector('[data-testid=pm-quick]').click()"); time.sleep(0.8)
+        snap("desktop-quick-settings", DESK)
+        d.execute_script("document.querySelector('.modal button[aria-label=Close]').click()"); time.sleep(0.4)
+    safe("profile menu", profile_menu)
+    d.set_window_size(*DESK); time.sleep(0.5)
+
     # profiles: the Profile tab, then the welcome screen you see once a profile exists
     inv("create_profile", {"handle": "Alex", "displayName": "Alex", "passcode": "demo-pass"}); reload_ui()
     nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Profile').click()"); time.sleep(0.6)

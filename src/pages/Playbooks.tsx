@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, blankPlaybook, type Lorebook, type PbBand, type PbRule, type PbVar, type Playbook } from "../api";
 import { ActList, CondList, Section, ValueInput } from "../components/PlaybookParts";
+import ShelfView, { NewFolderButton, useShelf } from "../components/Shelf";
 import { useToast } from "../components/ui";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
@@ -15,6 +16,7 @@ export default function Playbooks({ edit }: { edit?: string | "new" }) {
   const toast = useToast();
   const [list, setList] = useState<Playbook[] | null>(null);
   const [starters, setStarters] = useState<Playbook[]>([]);
+  const shelf = useShelf("playbooks");
   const load = async () => { try { setList(await api.listPlaybooks()); setStarters(await api.playbookTemplates()); } catch (e) { toast(errText(e), "err"); } };
   useEffect(() => { void load(); /* eslint-disable-next-line */ }, []);
   if (edit) return <Editor id={edit} starters={starters} onDone={() => go({ page: "playbooks" })} />;
@@ -26,16 +28,17 @@ export default function Playbooks({ edit }: { edit?: string | "new" }) {
     <div className="pb-page" data-testid="playbooks-page">
       <h2>🎲 Playbooks</h2>
       <p className="sub">A playbook keeps track of a story: values like trust, hunger or the weather, and rules that change them before and after every reply. The characters are told the values and what they mean, so they act on them. One playbook runs in a chat at a time, from a character or chosen for that chat.</p>
-      <div className="row"><button className="btn primary" onClick={() => open("new")} data-testid="pb-new">＋ New playbook</button></div>
-      <div className="pb-grid">
-        {list.map((p) => (
-          <div className="pb-tile" key={p.id} data-pb={p.id}>
+      <div className="row"><button className="btn primary" onClick={() => open("new")} data-testid="pb-new">＋ New playbook</button>
+        <NewFolderButton api={shelf} /></div>
+      <div>
+        <ShelfView kind="playbooks" api={shelf} layout="grid" items={list} renderItem={(p) => (
+          <div className="pb-tile" data-pb={p.id}>
             <button type="button" className="btn ghost" style={{ textAlign: "left", padding: 0 }} onClick={() => open(p.id)}><b>{p.name}</b></button>
             <span className="hint">{p.description || "No description."}</span>
             <span className="tok">{p.variables.length} values · {p.rules.length} rules</span>
             <span className="row"><button className="btn sm" onClick={() => open(p.id)}>Edit</button><button className="btn sm" onClick={() => void copy(p)}>Duplicate</button></span>
           </div>
-        ))}
+        )} />
         {!list.length && <div className="hint">No playbooks yet. Start from one below, or make your own.</div>}
       </div>
       <h3>Starters</h3>

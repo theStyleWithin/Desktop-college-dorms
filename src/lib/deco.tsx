@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { api, type CharDeco } from "../api";
 import DecoCore from "./decoCore";
 
@@ -21,6 +21,33 @@ export function ensureDecoArt() {
 export function setDecoMotion(animate: boolean) {
   const calm = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   document.documentElement.dataset.decoAnim = animate && !calm ? "on" : "off";
+}
+
+/** Whether the app is hidden, minimised or not in front (so a moving backdrop can stand still). */
+export function useAway(): boolean {
+  const [away, setAway] = useState(() => typeof document !== "undefined" && (document.hidden || !document.hasFocus()));
+  useEffect(() => {
+    const sync = () => setAway(document.hidden || !document.hasFocus());
+    document.addEventListener("visibilitychange", sync);
+    window.addEventListener("blur", sync);
+    window.addEventListener("focus", sync);
+    sync();
+    return () => { document.removeEventListener("visibilitychange", sync); window.removeEventListener("blur", sync); window.removeEventListener("focus", sync); };
+  }, []);
+  return away;
+}
+
+/** Decorations stand still while the app is hidden, minimised or not in front, so they cost nothing in the background. */
+export function pauseDecoWhenAway() {
+  const sync = () => {
+    const away = document.hidden || !document.hasFocus();
+    if (away) document.documentElement.setAttribute("data-deco-paused", ""); else document.documentElement.removeAttribute("data-deco-paused");
+  };
+  document.addEventListener("visibilitychange", sync);
+  window.addEventListener("blur", sync);
+  window.addEventListener("focus", sync);
+  sync();
+  return () => { document.removeEventListener("visibilitychange", sync); window.removeEventListener("blur", sync); window.removeEventListener("focus", sync); };
 }
 
 /** How the characters are dressed (shared by every part of the app that shows a character). */

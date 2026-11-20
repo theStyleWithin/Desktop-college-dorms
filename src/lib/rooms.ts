@@ -1,3 +1,4 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { roomBackdrop, roomModelUrl, type Room, type RoomKind } from "../api";
 import type { SceneCfg } from "./roomModel";
 
@@ -33,10 +34,14 @@ export const PRESETS: { key: string; label: string; css: string; shelf: RoomKind
 
 export const presetFor = (key: string) => PRESETS.find((p) => `preset:${p.key}` === key);
 
-/** CSS `background` for a room: its uploaded image, its preset scene, or nothing. */
-export function roomBackground(r?: Room | null): string | undefined {
+/**
+ * CSS `background` for a room: its uploaded image, its preset scene, or nothing. A moving (GIF) backdrop shows its still picture
+ * unless `live` is asked for, so only the one big backdrop that is in front moves and small spots (icons, cards, the map) stand still.
+ */
+export function roomBackground(r?: Room | null, live = false): string | undefined {
   if (!r) return undefined;
-  const up = roomBackdrop(r);
+  const still = !live && r.backdrop_still_path ? convertFileSrc(r.backdrop_still_path) : null;
+  const up = still ?? roomBackdrop(r);
   if (up) return `center / cover no-repeat url("${up}")`;
   return presetFor(r.backdrop)?.css;
 }

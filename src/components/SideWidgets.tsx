@@ -12,6 +12,33 @@ export const WIDGETS: { id: WidgetId; label: string }[] = [
   { id: "recent", label: "Recent chats" }, { id: "favorites", label: "Favorite characters" }, { id: "usage", label: "Most used characters" }, { id: "frame", label: "Picture frame" },
 ];
 const PREFS_KEY = "dorms.side.widgets";
+const NAMES_KEY = "dorms.side.names";
+/** What each section is called until you name it yourself. */
+export const DEFAULT_NAMES: Record<WidgetId, string> = { recent: "Recent chats", favorites: "Favorites", usage: "Most used", frame: "Picture frame" };
+/** The names you gave the side bar's sections (kept on this device); an empty name means the default. */
+export function useWidgetNames(): [Record<WidgetId, string>, (id: WidgetId, name: string) => void, () => void] {
+  const read = (): Record<WidgetId, string> => {
+    let saved: Partial<Record<WidgetId, string>> = {};
+    try { saved = JSON.parse(localStorage.getItem(NAMES_KEY) || "{}") ?? {}; } catch { /* the default names */ }
+    const out = { ...DEFAULT_NAMES };
+    (Object.keys(DEFAULT_NAMES) as WidgetId[]).forEach((k) => { const v = typeof saved[k] === "string" ? saved[k]!.trim().slice(0, 24) : ""; if (v) out[k] = v; });
+    return out;
+  };
+  const [names, setNames] = useState(read);
+  useEffect(() => { const f = () => setNames(read()); window.addEventListener("dorms-side-names", f); return () => window.removeEventListener("dorms-side-names", f); }, []);
+  const store = (obj: Partial<Record<WidgetId, string>>) => {
+    try { if (Object.keys(obj).length) localStorage.setItem(NAMES_KEY, JSON.stringify(obj)); else localStorage.removeItem(NAMES_KEY); } catch { /* storage unavailable: it still applies until the app is closed */ }
+    window.dispatchEvent(new Event("dorms-side-names"));
+  };
+  const set = (id: WidgetId, name: string) => {
+    let saved: Partial<Record<WidgetId, string>> = {};
+    try { saved = JSON.parse(localStorage.getItem(NAMES_KEY) || "{}") ?? {}; } catch { /* start again */ }
+    const clean = name.replace(/\s+/g, " ").trim().slice(0, 24);
+    if (clean && clean !== DEFAULT_NAMES[id]) saved[id] = clean; else delete saved[id];
+    store(saved);
+  };
+  return [names, set, () => store({})];
+}
 const FOLD_KEY = "dorms.side.folded";
 
 const load = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } };
@@ -29,21 +56,60 @@ export function useWidgetPrefs(): [Record<WidgetId, boolean>, (id: WidgetId, on:
 /** The character the user chose to hang in the picture frame (this device); nobody chosen = whoever they talked to last. */
 const FRAME_KEY = "dorms.side.frame";
 const readFramed = (): string | null => { try { return localStorage.getItem(FRAME_KEY) || null; } catch { return null; } };
-const writeFramed = (id: string | null) => {
-  try { if (id) localStorage.setItem(FRAME_KEY, id); else localStorage.removeItem(FRAME_KEY); } catch { /* storage unavailable */ }
+/** Several frames can hang side by side, with arrows to flip between them; each holds its own character (null = whoever you talked to last). */
+const FRAMES_KEY = "dorms.side.frames";
+export const MAX_FRAMES = 12;
+interface FrameSet { list: (string | null)[]; at: number }
+const readFrames = (): FrameSet => {
+  try {
+    const v = JSON.parse(localStorage.getItem(FRAMES_KEY) || "null");
+    if (v && Array.isArray(v.list) && v.list.length) {
+      const list = v.list.slice(0, MAX_FRAMES).map((x: unknown) => (typeof x === "string" && x ? x : null));
+      return { list, at: Math.min(Math.max(0, Number(v.at) || 0), list.length - 1) };
+    }
+  } catch { /* the one frame from before */ }
+  return { list: [readFramed()], at: 0 };
+};
+const writeFrames = (fs: FrameSet) => {
+  try { localStorage.setItem(FRAMES_KEY, JSON.stringify(fs)); if (fs.list.length === 1) { if (fs.list[0]) localStorage.setItem(FRAME_KEY, fs.list[0]); else localStorage.removeItem(FRAME_KEY); } } catch { /* storage unavailable */ }
   window.dispatchEvent(new Event("dorms-side-frame"));
+};
+/** Who hangs in the frame being shown. */
+const writeFramed = (id: string | null) => { const f = readFrames(); const list = [...f.list]; list[f.at] = id; writeFrames({ list, at: f.at }); };
+/** Flip to the next or previous frame; past the last (or before the first) a new, empty frame is made. Returns true when it made one. */
+const flipFrame = (dir: -1 | 1): boolean => {
+  const f = readFrames(); const j = f.at + dir;
+  if (j >= 0 && j < f.list.length) { writeFrames({ list: f.list, at: j }); return false; }
+  if (f.list.length >= MAX_FRAMES) return false;
+  if (dir < 0) writeFrames({ list: [null, ...f.list], at: 0 }); else writeFrames({ list: [...f.list, null], at: f.list.length });
+  return true;
+};
+const removeFrame = () => {
+  const f = readFrames(); if (f.list.length < 2) return;
+  const list = f.list.filter((_, i) => i !== f.at);
+  writeFrames({ list, at: Math.min(f.at, list.length - 1) });
 };
 
 const stillOf = (c: Character): string | null => (c.media?.kind === "image" || c.media?.kind === "gif" ? mediaUrl(c) : null);
 
 /** A small section of the side bar that can be folded away. */
-function Section({ id, title, count, action, children }: { id: string; title: string; count?: number; action?: React.ReactNode; children: React.ReactNode }) {
+function Section({ id, title, count, action, children }: { id: WidgetId; title: string; count?: number; action?: React.ReactNode; children: React.ReactNode }) {
   const [folded, setFolded] = useState(() => !!load<Record<string, boolean>>(FOLD_KEY, {})[id]);
+  const [names, setName] = useWidgetNames();
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState("");
+  const shown = names[id] ?? title;
+  const startRename = () => { setDraft(shown); setRenaming(true); };
+  const finish = (save: boolean) => { if (save) setName(id, draft); setRenaming(false); };
   const toggle = () => { const n = !folded; setFolded(n); try { localStorage.setItem(FOLD_KEY, JSON.stringify({ ...load<Record<string, boolean>>(FOLD_KEY, {}), [id]: n })); } catch { /* storage unavailable */ } };
   return (
     <section className="sw" data-testid={`side-${id}`}>
       <div className="sw-head">
-        <button className="sw-title" aria-expanded={!folded} onClick={toggle}><span className="caret" aria-hidden>{folded ? "▸" : "▾"}</span>{title}{count != null && <span className="m-count">{count}</span>}</button>
+        {renaming
+          ? <input className="sw-rename" autoFocus value={draft} maxLength={24} aria-label={`Name for ${DEFAULT_NAMES[id].toLowerCase()}`} data-testid={`side-${id}-name`} placeholder={DEFAULT_NAMES[id]}
+              onChange={(e) => setDraft(e.target.value)} onBlur={() => finish(true)} onKeyDown={(e) => { if (e.key === "Enter") finish(true); else if (e.key === "Escape") { e.stopPropagation(); finish(false); } }} />
+          : <button className="sw-title" aria-expanded={!folded} onClick={toggle} onDoubleClick={startRename} title="Double-click to rename"><span className="caret" aria-hidden>{folded ? "▸" : "▾"}</span>{shown}{count != null && <span className="m-count">{count}</span>}</button>}
+        {!renaming && <button className="iconbtn sw-edit" aria-label={`Rename ${shown}`} title="Rename this section" data-testid={`side-${id}-rename`} onClick={startRename}>✎</button>}
         {action}
       </div>
       {!folded && <div className="sw-body">{children}</div>}
@@ -60,8 +126,9 @@ export default function SideWidgets() {
   const [picker, setPicker] = useState(false);
   const [more, setMore] = useState(false);
   const [framePicker, setFramePicker] = useState(false);
-  const [framedId, setFramedId] = useState<string | null>(readFramed);
-  useEffect(() => { const f = () => setFramedId(readFramed()); window.addEventListener("dorms-side-frame", f); return () => window.removeEventListener("dorms-side-frame", f); }, []);
+  const [frames, setFrames] = useState<FrameSet>(readFrames);
+  const framedId = frames.list[frames.at] ?? null;
+  useEffect(() => { const f = () => setFrames(readFrames()); window.addEventListener("dorms-side-frame", f); return () => window.removeEventListener("dorms-side-frame", f); }, []);
   const [, bump] = useState(0);
   const byId = useMemo(() => new Map(characters.map((c) => [c.id, c])), [characters]);
   const recent = useMemo(() => [...chats].sort((a, b) => b.updated_at - a.updated_at), [chats]);
@@ -133,14 +200,19 @@ export default function SideWidgets() {
       {prefs.frame && (
         <Section id="frame" title="Picture frame" action={<button className="iconbtn" aria-label="Choose who hangs in the picture frame" title="Choose who hangs in the frame" onClick={() => setFramePicker(true)}>✎</button>}>
           {frameChar ? (
+            <div className="sw-wallrow" data-frames={frames.list.length} data-frame-at={frames.at + 1}>
+            <button className="sw-arrow left" data-testid="frame-left" aria-label={frames.at === 0 ? "Open another frame on the left" : "Previous frame"} title={frames.at === 0 ? "Another frame" : "Previous frame"} onClick={() => { if (flipFrame(-1)) setFramePicker(true); }}>◀</button>
             <button className="sw-wall" data-testid="side-frame-link" data-frame={displayName(frameChar)} data-framed={chosen ? "chosen" : "auto"} onClick={() => (frameChat ? go({ page: "chat", chatId: frameChat.id }) : void openWith(frameChar!.id))} title={`Open your chat with ${displayName(frameChar)}`}>
               <span className="sw-frame"><span className="sw-pic"><Art kind={frameArt.kind} url={frameArt.url} name={displayName(frameChar)} frame={frameArt.url === mediaUrl(frameChar) ? frameChar.frame : null} /></span></span>
               <span className="sw-plaque">{displayName(frameChar)}</span>
+              {frames.list.length > 1 && <span className="sw-count" data-testid="frame-count">{frames.at + 1} of {frames.list.length}</span>}
             </button>
+            <button className="sw-arrow right" data-testid="frame-right" aria-label={frames.at === frames.list.length - 1 ? "Open another frame on the right" : "Next frame"} title={frames.at === frames.list.length - 1 ? "Another frame" : "Next frame"} onClick={() => { if (flipFrame(1)) setFramePicker(true); }}>▶</button>
+            </div>
           ) : <div className="hint">Choose who hangs here with the pencil, or start a chat and the character you talked to last will hang here. Click it to go back.</div>}
         </Section>
       )}
-      {framePicker && <FramePicker characters={characters} current={chosen?.id ?? null} onClose={() => setFramePicker(false)} />}
+      {framePicker && <FramePicker characters={characters} current={chosen?.id ?? null} frameNo={frames.at + 1} frameCount={frames.list.length} onClose={() => setFramePicker(false)} />}
       {picker && <FavoritesPicker characters={characters} onClose={() => setPicker(false)} onChanged={refresh} />}
     </div>
   );
@@ -176,12 +248,12 @@ function FavoritesPicker({ characters, onClose, onChanged }: { characters: Chara
 }
 
 /** Choose who hangs in the picture frame: one character, kept until changed, or whoever was talked to last. */
-function FramePicker({ characters, current, onClose }: { characters: Character[]; current: string | null; onClose: () => void }) {
+function FramePicker({ characters, current, frameNo, frameCount, onClose }: { characters: Character[]; current: string | null; frameNo: number; frameCount: number; onClose: () => void }) {
   const [q, setQ] = useState("");
   const list = characters.filter((c) => !q.trim() || displayName(c).toLowerCase().includes(q.trim().toLowerCase())).sort((a, b) => displayName(a).localeCompare(displayName(b)));
   const pick = (id: string | null) => { writeFramed(id); onClose(); };
   return (
-    <Modal title="Who hangs in the frame?" onClose={onClose}>
+    <Modal title={frameCount > 1 ? `Who hangs in frame ${frameNo} of ${frameCount}?` : "Who hangs in the frame?"} onClose={onClose}>
       <p className="hint" style={{ marginTop: 0 }}>Your choice stays there until you change it. Click the frame any time to open your chat with them.</p>
       <input type="search" placeholder="Search characters…" aria-label="Search characters" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="who-list" style={{ maxHeight: 360, overflow: "auto", marginTop: 8 }}>
@@ -196,7 +268,7 @@ function FramePicker({ characters, current, onClose }: { characters: Character[]
         ))}
         {list.length === 0 && <div className="hint">Nobody matches.</div>}
       </div>
-      <div className="row" style={{ marginTop: 10 }}><button className="btn" onClick={onClose}>Cancel</button></div>
+      <div className="row" style={{ marginTop: 10, gap: 8 }}><button className="btn" onClick={onClose}>Cancel</button>{frameCount > 1 && <button className="btn danger" data-testid="frame-remove" onClick={() => { removeFrame(); onClose(); }}>Take this frame down</button>}</div>
     </Modal>
   );
 }

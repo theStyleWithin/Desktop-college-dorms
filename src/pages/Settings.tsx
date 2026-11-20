@@ -1,11 +1,12 @@
 import { useTextScale, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
-import { WIDGETS, useWidgetPrefs } from "../components/SideWidgets";
+import { DEFAULT_NAMES, WIDGETS, useWidgetNames, useWidgetPrefs } from "../components/SideWidgets";
 import { useEffect, useState } from "react";
 import { DEFAULT_DECO, api, newProfile, profileAvatar, onModelProgress, saveExportFile, type ApiProfile, type EngineStatus, type ExportInfo, type Hardware, type ModelFile, type ModelProgress, type Settings } from "../api";
 import { CreateProfileModal, PASSCODE_NOTE, ProfileAvatar } from "../components/ProfileForms";
 import { PersonasTab, ProfilePicture } from "../components/Personas";
 import { ControllerTab } from "../components/ControllerTab";
 import DecoTab, { ProfileCard } from "../components/DecoTab";
+import { HiddenAccountsList } from "../components/HiddenAccounts";
 import EmojiTab from "../components/EmojiTab";
 import { Modal, useToast } from "../components/ui";
 import { errText, fmtBytes } from "../lib/util";
@@ -347,13 +348,19 @@ function Look({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void
 /** Which extras show under Prompts in the side bar. Kept on this device. */
 function SideExtras() {
   const [prefs, set] = useWidgetPrefs();
+  const [names, setName, resetNames] = useWidgetNames();
   return (
     <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
       {WIDGETS.map((w) => (
-        <label key={w.id} className="row" style={{ gap: 8, cursor: "pointer" }}>
-          <input type="checkbox" style={{ width: "auto", minHeight: 0 }} checked={prefs[w.id]} data-widget={w.id} onChange={(e) => set(w.id, e.target.checked)} /> {w.label}
-        </label>
+        <div key={w.id} className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <label className="row" style={{ gap: 8, cursor: "pointer", minWidth: 190 }}>
+            <input type="checkbox" style={{ width: "auto", minHeight: 0 }} checked={prefs[w.id]} data-widget={w.id} onChange={(e) => set(w.id, e.target.checked)} /> {w.label}
+          </label>
+          <input type="text" key={names[w.id]} defaultValue={names[w.id] === DEFAULT_NAMES[w.id] ? "" : names[w.id]} maxLength={24} placeholder={`Called "${DEFAULT_NAMES[w.id]}"`} aria-label={`Name for ${w.label}`} data-testid={`name-${w.id}`} style={{ maxWidth: 230 }}
+            onBlur={(e) => { if (e.target.value.trim() !== (names[w.id] === DEFAULT_NAMES[w.id] ? "" : names[w.id])) setName(w.id, e.target.value); }} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+        </div>
       ))}
+      <div className="row"><button className="btn sm" onClick={resetNames}>Use the usual names</button><span className="hint">You can also double-click a section's name in the side bar, or press its ✎, to rename it. Kept on this device.</span></div>
       <div className="hint">Recent chats, the characters you've marked as favorites (as many as you like), the ones you talk to most, and a picture frame that shows the character you talked to last (click it to go back to that chat).</div>
     </div>
   );
@@ -628,8 +635,10 @@ function ProfileTab({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) =
         ) : (
           <label className="f"><span>Your name:</span><input type="text" value={s.user_name} onChange={(e) => patch({ user_name: e.target.value })} /></label>
         )}
-        <label className="f"><span>About you:</span><span><textarea value={s.user_description} placeholder="Optional. Who you are, for characters to know." onChange={(e) => patch({ user_description: e.target.value })} /><div className="hint">Saved with the Save settings button.</div></span></label>
+        <div className="hint" style={{ margin: "4px 0 0" }}>To describe who you are for the characters (looks, background, how you like to play), make a persona in the Personas tab. Personas are optional.</div>
       </div>
+
+      <HiddenAccountsList hidden={session.hidden_profiles ?? []} onSession={setSession} />
 
       {p && (
         <div className="card">

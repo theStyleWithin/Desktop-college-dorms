@@ -652,6 +652,8 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
             enabled INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL DEFAULT '{}', PRIMARY KEY(chat_id, mech_id));",
     )?;
     crate::novel::init(&conn)?;
+    crate::shelf::init(&conn)?;
+    ensure_column(&conn, "profiles", "hidden", "INTEGER NOT NULL DEFAULT 0")?;
     ensure_column(&conn, "folders", "parent", "TEXT")?;
     ensure_column(&conn, "folders", "cover_char", "TEXT")?;
     ensure_column(&conn, "dorms", "room_id", "INTEGER")?;
@@ -1555,6 +1557,26 @@ pub fn get_settings(c: &Connection, owner: &Owner) -> Settings {
         .unwrap_or_default()
 }
 
+/// There is one kind of persona. What used to be a separate "default persona" (the plain name and "About you" text in the settings) becomes a
+/// real persona the first time it is found, so nothing anyone wrote is lost and there are never two of the same person.
+pub fn migrate_default_persona(c: &Connection, owner: &Owner) {
+    let mut s = get_settings(c, owner);
+    let about = s.user_description.trim().to_string();
+    if about.is_empty() {
+        return;
+    }
+    let name: String = Some(s.user_name.trim()).filter(|n| !n.is_empty()).unwrap_or("Me").chars().take(60).collect();
+    let p = Persona { id: crate::commands::uid(), name, description: about.chars().take(20_000).collect(), style: String::new(), avatar: None, frame: None, created_at: now() };
+    if save_persona(c, &p, owner).is_err() {
+        return;
+    }
+    if s.active_persona.is_empty() {
+        s.active_persona = p.id;
+    }
+    s.user_description.clear();
+    let _ = save_settings(c, &s, owner);
+}
+
 pub fn save_settings(c: &Connection, s: &Settings, owner: &Owner) -> R<()> {
     c.execute(
         "INSERT INTO settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=?2",
@@ -1599,6 +1621,8 @@ pub struct Profile {
     pub passcode_hash: Option<String>,
     pub created_at: i64,
     pub last_login: i64,
+    /// Left out of the list of accounts on the start screen (shown again from Settings).
+    pub hidden: bool,
 }
 
 fn row_profile(r: &rusqlite::Row) -> R<Profile> {
@@ -1609,10 +1633,16 @@ fn row_profile(r: &rusqlite::Row) -> R<Profile> {
         passcode_hash: r.get(3)?,
         created_at: r.get(4)?,
         last_login: r.get(5)?,
+        hidden: r.get::<_, i64>(6)? != 0,
     })
 }
 
-const PROFILE_COLS: &str = "id,handle,display_name,passcode_hash,created_at,last_login";
+const PROFILE_COLS: &str = "id,handle,display_name,passcode_hash,created_at,last_login,hidden";
+
+pub fn set_profile_hidden(c: &Connection, id: &str, hidden: bool) -> R<()> {
+    c.execute("UPDATE profiles SET hidden=?2 WHERE id=?1", params![id, hidden as i64])?;
+    Ok(())
+}
 
 pub fn list_profiles(c: &Connection) -> R<Vec<Profile>> {
     let mut s = c.prepare(&format!("SELECT {PROFILE_COLS} FROM profiles ORDER BY last_login DESC, handle COLLATE NOCASE"))?;
@@ -1664,6 +1694,8 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM char_deco WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM emoji_items WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM playbooks WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM shelf_folders WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM shelf_items WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM mechanics WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM notes WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM folders WHERE profile_id IS ?1", [owner])?;
@@ -1682,7 +1714,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "emoji_items", "worlds", "playbooks"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "emoji_items", "worlds", "playbooks", "shelf_folders", "shelf_items"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
@@ -2012,7 +2044,7 @@ mod tests {
     fn wiping_a_profile_removes_only_its_rows() {
         let c = fresh();
         for id in ["a", "b"] {
-            insert_profile(&c, &Profile { id: id.into(), handle: id.into(), display_name: id.into(), passcode_hash: None, created_at: 0, last_login: 0 }).unwrap();
+            insert_profile(&c, &Profile { id: id.into(), handle: id.into(), display_name: id.into(), passcode_hash: None, created_at: 0, last_login: 0, hidden: false }).unwrap();
             let o = me(id);
             save_character(&c, &ch(&format!("c-{id}"), "X"), &o).unwrap();
             let chat = create_chat(&c, None, "chat", "dm", &[], &o).unwrap();
@@ -2036,7 +2068,7 @@ mod tests {
         let mut gs = Settings::default();
         gs.user_name = "GuestName".into();
         save_settings(&c, &gs, &None).unwrap();
-        insert_profile(&c, &Profile { id: "p".into(), handle: "p".into(), display_name: "P".into(), passcode_hash: None, created_at: 0, last_login: 0 }).unwrap();
+        insert_profile(&c, &Profile { id: "p".into(), handle: "p".into(), display_name: "P".into(), passcode_hash: None, created_at: 0, last_login: 0, hidden: false }).unwrap();
         claim_guest(&c, "p").unwrap();
         assert_eq!(list_characters(&c, &me("p")).unwrap().len(), 1);
         assert_eq!(list_chats(&c, &me("p")).unwrap().len(), 1);
@@ -2048,9 +2080,9 @@ mod tests {
     #[test]
     fn profile_names_are_unique_ignoring_case() {
         let c = fresh();
-        insert_profile(&c, &Profile { id: "1".into(), handle: "Alex".into(), display_name: "A".into(), passcode_hash: None, created_at: 0, last_login: 0 }).unwrap();
+        insert_profile(&c, &Profile { id: "1".into(), handle: "Alex".into(), display_name: "A".into(), passcode_hash: None, created_at: 0, last_login: 0, hidden: false }).unwrap();
         assert!(handle_taken(&c, "alex").unwrap() && handle_taken(&c, "ALEX").unwrap() && !handle_taken(&c, "Alexa").unwrap());
-        assert!(insert_profile(&c, &Profile { id: "2".into(), handle: "aLeX".into(), display_name: "B".into(), passcode_hash: None, created_at: 0, last_login: 0 }).is_err());
+        assert!(insert_profile(&c, &Profile { id: "2".into(), handle: "aLeX".into(), display_name: "B".into(), passcode_hash: None, created_at: 0, last_login: 0, hidden: false }).is_err());
     }
 
     /// The upgrade path: a database made by v0.1.0 (no profile_id columns, no profiles table) must open
@@ -2205,6 +2237,32 @@ mod tests {
         set_room_gallery(&c, r.id, &pics, &a).unwrap();
         let g = get_room(&c, r.id, &a).unwrap().unwrap().gallery;
         assert_eq!((g.len(), g[0].caption.as_str()), (1, "a cracked blue teapot"));
+    }
+
+    #[test]
+    fn the_old_default_persona_becomes_a_real_one_once() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        migrate_default_persona(&c, &a);
+        assert!(list_personas(&c, &a).unwrap().is_empty(), "nothing written, nothing made");
+        let mut s = get_settings(&c, &a);
+        s.user_name = "Sam".into();
+        s.user_description = "  Tall and shy.  ".into();
+        save_settings(&c, &s, &a).unwrap();
+        migrate_default_persona(&c, &a);
+        migrate_default_persona(&c, &a);
+        let l = list_personas(&c, &a).unwrap();
+        assert_eq!((l.len(), l[0].name.as_str(), l[0].description.as_str()), (1, "Sam", "Tall and shy."), "made once, with what was written");
+        let after = get_settings(&c, &a);
+        assert!(after.user_description.is_empty() && after.active_persona == l[0].id, "it is the one in use, and the old text is not kept twice");
+        assert!(list_personas(&c, &b).unwrap().is_empty(), "another profile is untouched");
+        // one already chosen stays chosen
+        let mut s = get_settings(&c, &b);
+        s.user_description = "Quiet.".into();
+        s.active_persona = "someone".into();
+        save_settings(&c, &s, &b).unwrap();
+        migrate_default_persona(&c, &b);
+        assert_eq!(get_settings(&c, &b).active_persona, "someone");
     }
 
     #[test]

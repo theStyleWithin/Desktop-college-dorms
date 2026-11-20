@@ -90,7 +90,7 @@ function PersonaForm({ persona, onClose, onSaved }: { persona: Persona | null; o
 
 /** Settings → Personas: the people you can be in a chat. The active one is described to the AI before each reply. */
 export function PersonasTab() {
-  const { personas, settings, me, refresh, go } = useStore();
+  const { personas, settings, refresh } = useStore();
   const toast = useToast();
   const [editing, setEditing] = useState<Persona | "new" | null>(null);
   const activate = async (id: string | null) => { try { await api.setActivePersona(id); await refresh(); } catch (e) { toast(errText(e), "err"); } };
@@ -98,27 +98,16 @@ export function PersonasTab() {
     if (!window.confirm(`Delete the persona "${p.name}"?`)) return;
     try { await api.deletePersona(p.id); await refresh(); } catch (e) { toast(errText(e), "err"); }
   };
-  const plainActive = !personas.some((p) => p.id === settings.active_persona);
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Personas</h3>
         <p className="sub" style={{ margin: "4px 0 0" }}>
-          A persona is who you are in a roleplay: a name, a picture, who you are, and how you like to play. Make as many as you like and switch any time, also from inside a chat.
-          The <b>active</b> persona is sent to the AI before it replies, so it knows who you are and what to remember.
+          Personas are optional. A persona is who you are in a roleplay: a name, a picture, who you are, and how you like to play. Make as many as you like and switch any time, also from inside a chat.
+          The <b>active</b> persona is sent to the AI before it replies, so it knows who you are and what to remember. With none, characters simply know you by your name (<b>{settings.user_name || "You"}</b>).
         </p>
       </div>
       <div className="persona-grid">
-        <div className={`persona-card ${plainActive ? "on" : ""}`} data-persona="default">
-          <div className="row" style={{ gap: 10 }}>
-            <ProfileAvatar name={settings.user_name || "You"} size={48} src={me.persona ? null : me.avatar} frame={me.persona ? null : me.frame} />
-            <div className="grow"><b>{settings.user_name || "You"}</b><div className="hint">Default: your name and “about you” from the Chat tab</div></div>
-          </div>
-          <div className="row" style={{ marginTop: 10 }}>
-            {plainActive ? <span className="chip on">Active</span> : <button className="btn sm" onClick={() => void activate(null)}>Use this</button>}
-            <button className="btn ghost sm" onClick={() => go({ page: "settings", tab: "chat" })}>Edit in Chat settings</button>
-          </div>
-        </div>
         {personas.map((p) => {
           const on = settings.active_persona === p.id;
           return (
@@ -136,7 +125,11 @@ export function PersonasTab() {
           );
         })}
       </div>
-      <div><button className="btn primary" onClick={() => setEditing("new")}>＋ New persona</button></div>
+      {personas.length === 0 && <div className="hint" data-testid="no-personas">You haven't made a persona, and you don't have to. Make one when you want to play someone in particular.</div>}
+      <div className="row" style={{ gap: 8 }}>
+        <button className="btn primary" onClick={() => setEditing("new")}>＋ New persona</button>
+        {personas.length > 0 && settings.active_persona && <button className="btn" onClick={() => void activate(null)}>Play as myself ({settings.user_name || "You"}) instead</button>}
+      </div>
       {editing && <PersonaForm persona={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={refresh} />}
     </div>
   );
