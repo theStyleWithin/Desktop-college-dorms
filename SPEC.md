@@ -273,6 +273,18 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
 - Controllers are read through the standard Gamepad layout (buttons by position). Bindings are per device in local storage; labels come from the pad's vendor (Xbox, PlayStation,
   Nintendo, Steam).
 
+## Planned: world attachments (quality of life for worlds)
+
+Not built yet. A world already carries lorebooks that apply to every chat in its rooms. The plan is to let a world carry more, so a place can come with its own set-up:
+
+- **Persona.** A persona can be assigned to a world. While a chat is in a room of that world, the AI reads the world's persona instead of the active one; the active persona is never changed or deleted and returns when the chat leaves the world (walking through an exit into a room of another world changes it, as the world's lorebooks already do). The chat's "Playing as" box says "World persona: X (from Y)" and has a switch to ignore the world's extras for that one chat. Messages already written keep the name and picture they had. If the persona is deleted, the world falls back to the active persona. Backups carry the assignment.
+- **Playbook.** A world can have a default playbook. Only one playbook runs in a chat, so the order is: what was chosen for the chat, then the character's own playbook, then the world's. The world's is only a fallback and never replaces a character's.
+- **Lorebooks** (already there): they merge with the character's own, each book once; if they compete for space the character's own entries come first.
+- **Prompts.** Both of these, with a switch on each attached prompt: (1) a world's prompt shelf, where its prompts show first in the Prompts menu while in that world, sent only when the person chooses; (2) standing instructions, always told to the characters, placed after the character card's own system prompt, which wins if they disagree.
+- **The rule: a world adds things and never replaces a character's own.** The persona is the one exception, because it is the person's own choice about who they are.
+- The Rooms page's world panel gets the pickers (persona, playbook, prompts) next to the lorebooks, and the chat shows one line, for example "From this world: playbook X, 2 lorebooks, persona Kai".
+- Intended as a small patch release (0.13.2), tested with the app's own tests and a fake model (a real roleplay was not tested).
+
 ## Status
 
 v0.3.0 adds a real 3D viewer for VRM / VRoid models (room, idle life, physics, hands, wardrobe) and voice input. v0.2.0 added local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.
