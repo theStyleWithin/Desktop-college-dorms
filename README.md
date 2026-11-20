@@ -12,7 +12,19 @@ Cloud APIs are optional and use your own key.
 
 Rendered from the real app with original demo characters. (Cards, chats and avatars here are made up for the screenshots.)
 
-**What's new**
+**New in 0.13**
+
+| | |
+|---|---|
+| ![Profile decorations](docs/screenshots/desktop-decorations.png)<br>**Profile decorations**: nameplates, wreaths, moving backgrounds and a name tag for you, for your characters (or let the model dress them) and for rooms | ![Playbook panel](docs/screenshots/desktop-playbook-panel.png)<br>**Playbooks**: a story's values and rules. The characters are told the values (trust, mood, hunger...), and rules change them as you talk |
+| ![Playbooks](docs/screenshots/desktop-playbooks.png)<br>**Playbooks page**: your playbooks and ready-made starters, with folders to keep them tidy | ![Playbook editor](docs/screenshots/desktop-playbook-editor.png)<br>**Playbook editor**: values, rules (checks, chances, even a question for the model), lorebooks and starting scenarios |
+| ![Write a novel](docs/screenshots/desktop-novel.png)<br>**Write a novel**: beside Regenerate and Continue. Pick the plot, tone and length; read at your own pace while it keeps writing, planned to fit a free model's daily limit | ![World overview](docs/screenshots/desktop-world-overview.png)<br>**Worlds**: folders of connected rooms, with background lore to read before you dive in, and lorebooks that apply to every chat there |
+| ![Folders](docs/screenshots/desktop-folders.png)<br>**Folders** for lorebooks and playbooks: nest them, drag things in, rename any time | ![Profile menu](docs/screenshots/desktop-profile-menu.png)<br>**Right-click your profile**: quick settings, switch accounts, hide an account (shown again from Settings) |
+| ![Quick settings](docs/screenshots/desktop-quick-settings.png)<br>**Quick settings**: theme, text size, animation and who you are playing as | ![Side bar](docs/screenshots/desktop-side-bar.png)<br>**Side bar**: rename Recent, Favorites and Most used, and flip between several picture frames with the arrows |
+
+Also new: **emoji and stickers** (everywhere or per room, and the characters use them), **room galleries**, moving **GIF backdrops** kept light, **Left / Right / Backspace** to go back and forward, and personas are now optional.
+
+**Before that**
 
 | | |
 |---|---|
