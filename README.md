@@ -178,6 +178,16 @@ Also new: **emoji and stickers** (everywhere or per room, and the characters use
   Keys go in your OS keychain, or a private file if none exists. See *Settings → Privacy*.
 - **Hostile cards are contained**: an imported card's own system prompt is demoted to lower-priority notes until you trust it, and the web view can't read your database or keys. See [SECURITY.md](SECURITY.md).
 
+## Coming soon
+
+Ideas that are planned but **not built yet**. These are plans, not promises, and have no dates; the details are in [SPEC.md](SPEC.md).
+
+- **Move your profile to your phone over home Wi-Fi.** No USB cable and no file copying: scan a QR code on your phone to pair with your computer, and your profile (or just one character, lorebook or playbook) travels directly between the two over your home network. It stays on your network, is optional, and asks before adding anything.
+- **Worlds that come with their own set-up.** Give a world its own persona, a default playbook and prompts, so a place can arrive ready to play. A world adds to a character's own lorebooks, playbook and prompts and never replaces them (the persona is the one thing a world takes over, and only while you are in that world).
+- **Tidier Settings.** Fewer tabs: Profile and Decorations become **Profiles**, and Chat and Appearance become **Customization**.
+
+Have an idea of your own? Open an issue.
+
 ## Install
 
 Grab a file from the [Releases](https://github.com/theStyleWithin/Desktop-college-dorms/releases) page.
