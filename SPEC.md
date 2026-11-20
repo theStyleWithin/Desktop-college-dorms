@@ -285,6 +285,15 @@ Not built yet. A world already carries lorebooks that apply to every chat in its
 - The Rooms page's world panel gets the pickers (persona, playbook, prompts) next to the lorebooks, and the chat shows one line, for example "From this world: playbook X, 2 lorebooks, persona Kai".
 - Intended as a small patch release (0.13.2), tested with the app's own tests and a fake model (a real roleplay was not tested).
 
+## Planned: fewer Settings tabs
+
+Not built yet. The Settings page has eleven tabs; the plan is to fold four of them into two:
+
+- **Profiles** = today's **Profile** and **Decorations** tabs, as sections of one tab: You (name, picture, passcode), Decorations, Hidden accounts, then backup and delete. The Decorations section is folded away by default (its picker is large), with the "Wearing: …" line showing while it is closed. Anything that opens the old Decorations tab opens Profiles with that section open, so no link or shortcut breaks. Nothing stored changes: decorations already save straight to the settings and the Profile tab's saves are its own.
+- **Customization** = today's **Chat** and **Appearance** tabs, as sections of one tab. A catch to handle: Appearance changes apply at once, but the Chat fields (context size, max reply length, creativity, top-p, the system prompt, card prompts, the novel daily limit) only save with the **Save settings** button. In one tab that mix is easy to get wrong, so the plan is for each Chat setting to save as it is changed, so nothing in Customization needs the Save button.
+- Other tabs stay as they are (Emoji & stickers, Personas, Models, Voice, Controller, Privacy, About). An alternative that was discussed and not chosen: Customization holding only Appearance and the chat-display settings, with the reply settings moved into Models.
+- Changes to make when it is built: the tab list, the section order, redirecting old tab names, the tests that click the tabs by name, and the README mentions of Settings → Decorations and Settings → Appearance.
+
 ## Status
 
 v0.3.0 adds a real 3D viewer for VRM / VRoid models (room, idle life, physics, hands, wardrobe) and voice input. v0.2.0 added local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.
