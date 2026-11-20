@@ -273,6 +273,10 @@ export interface NovelPlan { plot: string; tone: string; pov: string; chapters: 
 export interface NovelStatus { running: boolean; plan: NovelPlan | null; used_today: number; limit: number; reserve: number }
 export type NovelEvent = { chat_id: number; state: "writing" | "chapter" | "waiting" | "finished" | "stopped" | "budget" | "limit" | "error"; chapter: number; of: number; detail: string };
 export const onNovel = (cb: (e: NovelEvent) => void): Promise<UnlistenFn> => listen<NovelEvent>("dorms://novel", (ev) => cb(ev.payload));
+/** Folders for lorebooks and playbooks. */
+export type ShelfKind = "lorebooks" | "playbooks";
+export interface ShelfFolder { id: string; kind: ShelfKind; name: string; parent: string | null; created_at: number }
+export interface Shelf { folders: ShelfFolder[]; items: Record<string, string> }
 export const blankPlaybook = (): Playbook => ({ id: "", name: "", description: "", instructions: "", variables: [], rules: [], lorebooks: [], lore: [], scenarios: [], created_at: 0, updated_at: 0 });
 export interface CharStatus { character_id: string; text: string; source: "ai" | "user"; updated_at: number }
 export interface SavedPrompt { id: string; title: string; body: string; tag: string; created_at: number; updated_at: number }
@@ -406,6 +410,12 @@ export const api = {
   updateWorld: (id: number, name: string, description: string, lore: string, lorebooks: string[]) => invoke<World>("update_world", { id, name, description, lore, lorebooks }),
   deleteWorld: (id: number) => invoke<void>("delete_world", { id }),
   moveRoomsToWorld: (ids: number[], worldId: number | null) => invoke<void>("move_rooms_to_world", { ids, worldId }),
+  getShelf: (kind: ShelfKind) => invoke<Shelf>("get_shelf", { kind }),
+  createShelfFolder: (kind: ShelfKind, name: string, parent: string | null) => invoke<ShelfFolder>("create_shelf_folder", { kind, name, parent }),
+  renameShelfFolder: (id: string, name: string) => invoke<ShelfFolder>("rename_shelf_folder", { id, name }),
+  moveShelfFolder: (id: string, parent: string | null) => invoke<ShelfFolder>("move_shelf_folder", { id, parent }),
+  deleteShelfFolder: (id: string) => invoke<void>("delete_shelf_folder", { id }),
+  moveToShelfFolder: (kind: ShelfKind, itemId: string, folder: string | null) => invoke<void>("move_to_shelf_folder", { kind, itemId, folder }),
   listPlaybooks: () => invoke<Playbook[]>("list_playbooks"),
   savePlaybook: (playbook: Playbook) => invoke<Playbook>("save_playbook", { playbook }),
   deletePlaybook: (id: string) => invoke<void>("delete_playbook", { id }),

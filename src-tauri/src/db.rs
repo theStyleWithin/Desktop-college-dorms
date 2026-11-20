@@ -652,6 +652,7 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
             enabled INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL DEFAULT '{}', PRIMARY KEY(chat_id, mech_id));",
     )?;
     crate::novel::init(&conn)?;
+    crate::shelf::init(&conn)?;
     ensure_column(&conn, "profiles", "hidden", "INTEGER NOT NULL DEFAULT 0")?;
     ensure_column(&conn, "folders", "parent", "TEXT")?;
     ensure_column(&conn, "folders", "cover_char", "TEXT")?;
@@ -1693,6 +1694,8 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM char_deco WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM emoji_items WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM playbooks WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM shelf_folders WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM shelf_items WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM mechanics WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM notes WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM folders WHERE profile_id IS ?1", [owner])?;
@@ -1711,7 +1714,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "emoji_items", "worlds", "playbooks"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "emoji_items", "worlds", "playbooks", "shelf_folders", "shelf_items"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
@@ -2041,7 +2044,7 @@ mod tests {
     fn wiping_a_profile_removes_only_its_rows() {
         let c = fresh();
         for id in ["a", "b"] {
-            insert_profile(&c, &Profile { id: id.into(), handle: id.into(), display_name: id.into(), passcode_hash: None, created_at: 0, last_login: 0 }).unwrap();
+            insert_profile(&c, &Profile { id: id.into(), handle: id.into(), display_name: id.into(), passcode_hash: None, created_at: 0, last_login: 0, hidden: false }).unwrap();
             let o = me(id);
             save_character(&c, &ch(&format!("c-{id}"), "X"), &o).unwrap();
             let chat = create_chat(&c, None, "chat", "dm", &[], &o).unwrap();
@@ -2065,7 +2068,7 @@ mod tests {
         let mut gs = Settings::default();
         gs.user_name = "GuestName".into();
         save_settings(&c, &gs, &None).unwrap();
-        insert_profile(&c, &Profile { id: "p".into(), handle: "p".into(), display_name: "P".into(), passcode_hash: None, created_at: 0, last_login: 0 }).unwrap();
+        insert_profile(&c, &Profile { id: "p".into(), handle: "p".into(), display_name: "P".into(), passcode_hash: None, created_at: 0, last_login: 0, hidden: false }).unwrap();
         claim_guest(&c, "p").unwrap();
         assert_eq!(list_characters(&c, &me("p")).unwrap().len(), 1);
         assert_eq!(list_chats(&c, &me("p")).unwrap().len(), 1);
@@ -2077,9 +2080,9 @@ mod tests {
     #[test]
     fn profile_names_are_unique_ignoring_case() {
         let c = fresh();
-        insert_profile(&c, &Profile { id: "1".into(), handle: "Alex".into(), display_name: "A".into(), passcode_hash: None, created_at: 0, last_login: 0 }).unwrap();
+        insert_profile(&c, &Profile { id: "1".into(), handle: "Alex".into(), display_name: "A".into(), passcode_hash: None, created_at: 0, last_login: 0, hidden: false }).unwrap();
         assert!(handle_taken(&c, "alex").unwrap() && handle_taken(&c, "ALEX").unwrap() && !handle_taken(&c, "Alexa").unwrap());
-        assert!(insert_profile(&c, &Profile { id: "2".into(), handle: "aLeX".into(), display_name: "B".into(), passcode_hash: None, created_at: 0, last_login: 0 }).is_err());
+        assert!(insert_profile(&c, &Profile { id: "2".into(), handle: "aLeX".into(), display_name: "B".into(), passcode_hash: None, created_at: 0, last_login: 0, hidden: false }).is_err());
     }
 
     /// The upgrade path: a database made by v0.1.0 (no profile_id columns, no profiles table) must open

@@ -763,3 +763,17 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .sw-rename { flex: 1; min-width: 0; padding: 3px 8px; font: inherit; font-size: .85rem; border-radius: 8px; }
 .sw-edit { opacity: 0; transition: opacity .12s; }
 .sw-head:hover .sw-edit, .sw-edit:focus-visible { opacity: .8; }
+
+/* folders for lorebooks and playbooks */
+.shelf { display: grid; gap: 8px; align-content: start; }
+.shelf-folder { border: 1px solid var(--line); border-radius: 12px; padding: 6px 8px 8px; background: #ffffff06; display: grid; gap: 6px; }
+.shelf-folder .shelf-folder { margin-left: 6px; }
+.shelf-head { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.shelf-title { flex: 1; min-width: 0; text-align: left; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; cursor: pointer; padding: 4px 2px; }
+.shelf-rename { flex: 1; min-width: 0; padding: 3px 8px; font: inherit; border-radius: 8px; }
+.shelf-body { display: grid; gap: 6px; }
+.shelf-list { display: grid; gap: 6px; }
+.shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.shelf-item { display: grid; gap: 4px; cursor: grab; }
+.shelf-move { width: auto; max-width: 140px; font-size: .78rem; padding: 2px 4px; opacity: .75; }
+.shelf-loose { margin: 4px 2px 0; }

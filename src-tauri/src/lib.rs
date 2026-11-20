@@ -5,6 +5,7 @@ mod extras;
 mod llama;
 mod llm;
 mod novel;
+mod shelf;
 mod tray;
 mod deco;
 mod emoji;
@@ -139,6 +140,12 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            shelf::get_shelf,
+            shelf::create_shelf_folder,
+            shelf::rename_shelf_folder,
+            shelf::move_shelf_folder,
+            shelf::delete_shelf_folder,
+            shelf::move_to_shelf_folder,
             novel::novel_status,
             novel::novel_start,
             novel::novel_stop,

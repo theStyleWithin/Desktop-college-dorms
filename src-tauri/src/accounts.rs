@@ -534,6 +534,11 @@ struct Data {
     /// Custom emoji and stickers (pictures travel in the archive's media folder).
     #[serde(default)]
     emoji: Vec<db::EmojiItem>,
+    /// Folders for lorebooks and playbooks, and what is in them.
+    #[serde(default)]
+    shelf_folders: Vec<crate::shelf::ShelfFolder>,
+    #[serde(default)]
+    shelf_items: Vec<crate::shelf::ShelfItemRow>,
     /// Playbooks, and where each chat's story stands.
     #[serde(default)]
     playbooks: Vec<crate::playbook::Playbook>,
@@ -878,13 +883,14 @@ fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     // API keys, passcodes and per-device model choices are deliberately not part of the file.
     let mut exported_settings = settings;
     exported_settings.local_model = String::new();
+    let (shelf_folders, shelf_items) = crate::shelf::export(&st.db.lock().unwrap(), o);
     let (playbooks, chat_playbooks) = {
         let db = st.db.lock().unwrap();
         let pbs = crate::playbook::list(&db, o).unwrap_or_default();
         let rows: Vec<ChatPlaybookExport> = chats.iter().map(|c| ChatPlaybookExport { chat_id: c.id, row: crate::playbook::chat_row(&db, c.id) }).filter(|x| x.row != crate::playbook::ChatRow::default()).collect();
         (pbs, rows)
     };
-    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, emoji, worlds, playbooks, chat_playbooks, profile_avatar };
+    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, emoji, worlds, playbooks, chat_playbooks, shelf_folders, shelf_items, profile_avatar };
     zip.start_file("manifest.json", deflated).map_err(e)?;
     zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(e)?).map_err(e)?;
     zip.start_file("data.json", deflated).map_err(e)?;
@@ -1203,6 +1209,12 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
                     playbook_map.insert(p.id.clone(), np.id);
                 }
             }
+        }
+
+        {
+            let mut map = book_map.clone();
+            map.extend(playbook_map.iter().map(|(k, v)| (k.clone(), v.clone())));
+            crate::shelf::import(&db, &o, &parsed.data.shelf_folders, &parsed.data.shelf_items, &map);
         }
 
         let mut char_map: HashMap<String, String> = HashMap::new();
