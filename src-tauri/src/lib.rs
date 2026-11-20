@@ -298,6 +298,8 @@ pub fn run() {
             commands::list_remote_models,
             accounts::session_state,
             accounts::sign_in,
+            accounts::hide_profile,
+            accounts::unhide_profile,
             accounts::sign_out,
             accounts::create_profile,
             accounts::claim_guest_profile,

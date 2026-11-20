@@ -12,6 +12,33 @@ export const WIDGETS: { id: WidgetId; label: string }[] = [
   { id: "recent", label: "Recent chats" }, { id: "favorites", label: "Favorite characters" }, { id: "usage", label: "Most used characters" }, { id: "frame", label: "Picture frame" },
 ];
 const PREFS_KEY = "dorms.side.widgets";
+const NAMES_KEY = "dorms.side.names";
+/** What each section is called until you name it yourself. */
+export const DEFAULT_NAMES: Record<WidgetId, string> = { recent: "Recent chats", favorites: "Favorites", usage: "Most used", frame: "Picture frame" };
+/** The names you gave the side bar's sections (kept on this device); an empty name means the default. */
+export function useWidgetNames(): [Record<WidgetId, string>, (id: WidgetId, name: string) => void, () => void] {
+  const read = (): Record<WidgetId, string> => {
+    let saved: Partial<Record<WidgetId, string>> = {};
+    try { saved = JSON.parse(localStorage.getItem(NAMES_KEY) || "{}") ?? {}; } catch { /* the default names */ }
+    const out = { ...DEFAULT_NAMES };
+    (Object.keys(DEFAULT_NAMES) as WidgetId[]).forEach((k) => { const v = typeof saved[k] === "string" ? saved[k]!.trim().slice(0, 24) : ""; if (v) out[k] = v; });
+    return out;
+  };
+  const [names, setNames] = useState(read);
+  useEffect(() => { const f = () => setNames(read()); window.addEventListener("dorms-side-names", f); return () => window.removeEventListener("dorms-side-names", f); }, []);
+  const store = (obj: Partial<Record<WidgetId, string>>) => {
+    try { if (Object.keys(obj).length) localStorage.setItem(NAMES_KEY, JSON.stringify(obj)); else localStorage.removeItem(NAMES_KEY); } catch { /* storage unavailable: it still applies until the app is closed */ }
+    window.dispatchEvent(new Event("dorms-side-names"));
+  };
+  const set = (id: WidgetId, name: string) => {
+    let saved: Partial<Record<WidgetId, string>> = {};
+    try { saved = JSON.parse(localStorage.getItem(NAMES_KEY) || "{}") ?? {}; } catch { /* start again */ }
+    const clean = name.replace(/\s+/g, " ").trim().slice(0, 24);
+    if (clean && clean !== DEFAULT_NAMES[id]) saved[id] = clean; else delete saved[id];
+    store(saved);
+  };
+  return [names, set, () => store({})];
+}
 const FOLD_KEY = "dorms.side.folded";
 
 const load = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } };
@@ -37,13 +64,23 @@ const writeFramed = (id: string | null) => {
 const stillOf = (c: Character): string | null => (c.media?.kind === "image" || c.media?.kind === "gif" ? mediaUrl(c) : null);
 
 /** A small section of the side bar that can be folded away. */
-function Section({ id, title, count, action, children }: { id: string; title: string; count?: number; action?: React.ReactNode; children: React.ReactNode }) {
+function Section({ id, title, count, action, children }: { id: WidgetId; title: string; count?: number; action?: React.ReactNode; children: React.ReactNode }) {
   const [folded, setFolded] = useState(() => !!load<Record<string, boolean>>(FOLD_KEY, {})[id]);
+  const [names, setName] = useWidgetNames();
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState("");
+  const shown = names[id] ?? title;
+  const startRename = () => { setDraft(shown); setRenaming(true); };
+  const finish = (save: boolean) => { if (save) setName(id, draft); setRenaming(false); };
   const toggle = () => { const n = !folded; setFolded(n); try { localStorage.setItem(FOLD_KEY, JSON.stringify({ ...load<Record<string, boolean>>(FOLD_KEY, {}), [id]: n })); } catch { /* storage unavailable */ } };
   return (
     <section className="sw" data-testid={`side-${id}`}>
       <div className="sw-head">
-        <button className="sw-title" aria-expanded={!folded} onClick={toggle}><span className="caret" aria-hidden>{folded ? "▸" : "▾"}</span>{title}{count != null && <span className="m-count">{count}</span>}</button>
+        {renaming
+          ? <input className="sw-rename" autoFocus value={draft} maxLength={24} aria-label={`Name for ${DEFAULT_NAMES[id].toLowerCase()}`} data-testid={`side-${id}-name`} placeholder={DEFAULT_NAMES[id]}
+              onChange={(e) => setDraft(e.target.value)} onBlur={() => finish(true)} onKeyDown={(e) => { if (e.key === "Enter") finish(true); else if (e.key === "Escape") { e.stopPropagation(); finish(false); } }} />
+          : <button className="sw-title" aria-expanded={!folded} onClick={toggle} onDoubleClick={startRename} title="Double-click to rename"><span className="caret" aria-hidden>{folded ? "▸" : "▾"}</span>{shown}{count != null && <span className="m-count">{count}</span>}</button>}
+        {!renaming && <button className="iconbtn sw-edit" aria-label={`Rename ${shown}`} title="Rename this section" data-testid={`side-${id}-rename`} onClick={startRename}>✎</button>}
         {action}
       </div>
       {!folded && <div className="sw-body">{children}</div>}

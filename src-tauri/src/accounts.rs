@@ -77,6 +77,8 @@ pub struct SessionOut {
     pub guest: bool,
     pub profile: Option<ProfileOut>,
     pub profiles: Vec<ProfileOut>,
+    /// Accounts hidden from the start screen (listed in Settings, where they can be shown again).
+    pub hidden_profiles: Vec<ProfileOut>,
     pub ask_on_launch: bool,
     /// Chats, characters and dorms already living in the guest space (so the picker can say so).
     pub guest_items: i64,
@@ -181,7 +183,7 @@ fn session_out(st: &AppState) -> R<SessionOut> {
     };
     let db = st.db.lock().unwrap();
     let profiles = db::list_profiles(&db).map_err(e)?;
-    let outs: Vec<ProfileOut> = profiles
+    let all: Vec<(bool, ProfileOut)> = profiles
         .iter()
         .map(|p| {
             let mut o = ProfileOut::from(p);
@@ -189,16 +191,19 @@ fn session_out(st: &AppState) -> R<SessionOut> {
                 o.avatar = Some(st.data_dir.join(file).to_string_lossy().to_string());
                 o.avatar_frame = frame;
             }
-            o
+            (p.hidden, o)
         })
         .collect();
-    let current = profile.as_ref().and_then(|id| outs.iter().find(|p| &p.id == id)).cloned();
+    let outs: Vec<ProfileOut> = all.iter().filter(|(h, _)| !*h).map(|(_, o)| o.clone()).collect();
+    let hidden_profiles: Vec<ProfileOut> = all.iter().filter(|(h, _)| *h).map(|(_, o)| o.clone()).collect();
+    let current = profile.as_ref().and_then(|id| all.iter().find(|(_, p)| &p.id == id)).map(|(_, p)| p.clone());
     let guest_items = ["characters", "dorms", "chats"].iter().map(|t| db::count_rows(&db, t, &None)).sum();
     Ok(SessionOut {
         signed_in: chosen,
         guest: chosen && profile.is_none(),
         profile: current,
         profiles: outs,
+        hidden_profiles,
         ask_on_launch: db::get_device(&db).ask_on_launch,
         guest_items,
     })
@@ -215,7 +220,8 @@ pub fn session_state(state: State<'_, Shared>) -> R<SessionOut> {
     if !chosen && !no_auto {
         let auto: Option<Option<String>> = {
             let db = state.db.lock().unwrap();
-            let profiles = db::list_profiles(&db).map_err(e)?;
+            // a hidden account is never signed into by itself
+            let profiles: Vec<db::Profile> = db::list_profiles(&db).map_err(e)?.into_iter().filter(|p| !p.hidden).collect();
             let dev = db::get_device(&db);
             if profiles.is_empty() {
                 Some(None)
@@ -236,33 +242,71 @@ pub fn session_state(state: State<'_, Shared>) -> R<SessionOut> {
     session_out(&state)
 }
 
+/// Checks the passcode of an account that has one (with the same lock-out after too many wrong tries as signing in).
+async fn check_passcode(st: &Shared, prof: &db::Profile, passcode: Option<String>) -> R<()> {
+    let Some(hash) = prof.passcode_hash.clone() else { return Ok(()) };
+    let id = &prof.id;
+    if let Some(secs) = lock_remaining(st, id) {
+        return Err(format!("Too many wrong passcodes. Try again in {secs} seconds."));
+    }
+    let given = passcode.unwrap_or_default();
+    let ok = tauri::async_runtime::spawn_blocking(move || verify_pass(&hash, &given)).await.map_err(e)?;
+    if !ok {
+        {
+            let mut f = st.login_fails.lock().unwrap();
+            let entry = f.entry(id.clone()).or_insert((0, Instant::now()));
+            entry.0 += 1;
+            if entry.0 >= 5 {
+                entry.1 = Instant::now() + Duration::from_secs(30);
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        return Err("Wrong passcode.".into());
+    }
+    st.login_fails.lock().unwrap().remove(id);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn sign_in(state: State<'_, Shared>, profile_id: Option<String>, passcode: Option<String>) -> R<SessionOut> {
     let st: Shared = state.inner().clone();
     if let Some(id) = &profile_id {
         let prof = db::get_profile(&st.db.lock().unwrap(), id).map_err(e)?.ok_or("That profile no longer exists.")?;
-        if let Some(hash) = prof.passcode_hash.clone() {
-            if let Some(secs) = lock_remaining(&st, id) {
-                return Err(format!("Too many wrong passcodes. Try again in {secs} seconds."));
-            }
-            let given = passcode.unwrap_or_default();
-            let ok = tauri::async_runtime::spawn_blocking(move || verify_pass(&hash, &given)).await.map_err(e)?;
-            if !ok {
-                {
-                    let mut f = st.login_fails.lock().unwrap();
-                    let entry = f.entry(id.clone()).or_insert((0, Instant::now()));
-                    entry.0 += 1;
-                    if entry.0 >= 5 {
-                        entry.1 = Instant::now() + Duration::from_secs(30);
-                    }
-                }
-                tokio::time::sleep(Duration::from_millis(500)).await;
-                return Err("Wrong passcode.".into());
-            }
-            st.login_fails.lock().unwrap().remove(id);
-        }
+        check_passcode(&st, &prof, passcode).await?;
     }
     choose(&st, profile_id);
+    session_out(&st)
+}
+
+/// Hides the account that is open from the list on the start screen, and closes it. The guest space can't be hidden. This keeps an account out
+/// of sight; it is not a lock (a passcode is), and nothing is deleted.
+#[tauri::command]
+pub fn hide_profile(state: State<'_, Shared>) -> R<SessionOut> {
+    let id = {
+        let s = state.session.lock().unwrap();
+        match (&s.profile, s.chosen) {
+            (Some(p), true) => p.clone(),
+            _ => return Err("Only a profile can be hidden, not the guest space.".into()),
+        }
+    };
+    db::set_profile_hidden(&state.db.lock().unwrap(), &id, true).map_err(e)?;
+    end_session(&state);
+    {
+        let mut s = state.session.lock().unwrap();
+        s.chosen = false;
+        s.profile = None;
+        s.no_auto = true;
+    }
+    session_out(&state)
+}
+
+/// Puts a hidden account back on the start screen. An account with a passcode needs its passcode to be shown again.
+#[tauri::command]
+pub async fn unhide_profile(state: State<'_, Shared>, profile_id: String, passcode: Option<String>) -> R<SessionOut> {
+    let st: Shared = state.inner().clone();
+    let prof = db::get_profile(&st.db.lock().unwrap(), &profile_id).map_err(e)?.ok_or("That profile no longer exists.")?;
+    check_passcode(&st, &prof, passcode).await?;
+    db::set_profile_hidden(&st.db.lock().unwrap(), &profile_id, false).map_err(e)?;
     session_out(&st)
 }
 
@@ -303,7 +347,7 @@ pub async fn create_profile(
             return Err("That profile name is already used on this device.".into());
         }
         let now = db::now();
-        db::insert_profile(&db, &db::Profile { id: id.clone(), handle, display_name: display.clone(), passcode_hash: hash, created_at: now, last_login: now }).map_err(e)?;
+        db::insert_profile(&db, &db::Profile { id: id.clone(), handle, display_name: display.clone(), passcode_hash: hash, created_at: now, last_login: now, hidden: false }).map_err(e)?;
         let mut settings = Settings::default();
         settings.user_name = display;
         db::save_settings(&db, &settings, &Some(id.clone())).map_err(e)?;
@@ -342,7 +386,7 @@ pub async fn claim_guest_profile(
         let gs = db::get_settings(&db, &None);
         let display = display_name.map(|d| d.trim().to_string()).filter(|d| !d.is_empty()).unwrap_or_else(|| handle.clone());
         let now = db::now();
-        db::insert_profile(&db, &db::Profile { id: id.clone(), handle, display_name: display.clone(), passcode_hash: hash, created_at: now, last_login: now }).map_err(e)?;
+        db::insert_profile(&db, &db::Profile { id: id.clone(), handle, display_name: display.clone(), passcode_hash: hash, created_at: now, last_login: now, hidden: false }).map_err(e)?;
         db::claim_guest(&db, &id).map_err(e)?;
         let mut moved = gs.clone();
         moved.user_name = display;
@@ -1067,7 +1111,7 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
     db.execute_batch("BEGIN").map_err(e)?;
     let result: R<()> = (|| {
         let now = db::now();
-        db::insert_profile(&db, &db::Profile { id: pid.clone(), handle, display_name: display.clone(), passcode_hash: hash, created_at: now, last_login: now }).map_err(e)?;
+        db::insert_profile(&db, &db::Profile { id: pid.clone(), handle, display_name: display.clone(), passcode_hash: hash, created_at: now, last_login: now, hidden: false }).map_err(e)?;
 
         // background music files from the backup (audio only, a safe name, written under a fresh name)
         let restore_music = |music: &str, stem: String, written: &mut Vec<std::path::PathBuf>| -> R<Option<String>> {

@@ -16,7 +16,8 @@ import Lorebooks from "./pages/Lorebooks";
 import Playbooks from "./pages/Playbooks";
 import Decor from "./pages/Decor";
 import PromptsMenu from "./components/PromptsMenu";
-import { ProfileMenu, QuickSettings, useProfileHidden } from "./components/ProfileMenu";
+import { ProfileMenu, QuickSettings } from "./components/ProfileMenu";
+import { HiddenNotice } from "./components/HiddenAccounts";
 import SideWidgets from "./components/SideWidgets";
 import MembersRail from "./components/MembersRail";
 import PanelResizer from "./components/PanelResizer";
@@ -63,7 +64,7 @@ function loadNavOrder(): Route["page"][] {
   return known;
 }
 
-function Shell({ session, setSession }: { session: SessionState; setSession: (s: SessionState) => void }) {
+function Shell({ session, setSession, onHidden }: { session: SessionState; setSession: (s: SessionState) => void; onHidden: (name: string, others: number) => void }) {
   const toast = useToast();
   const [route, setRoute] = useState<Route>({ page: "home" });
   // every walk to a chat (from the side bar, say) starts the chat page fresh, even when a chat is already open
@@ -134,9 +135,19 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
   useEffect(() => { setDecoMotion(settings.deco?.animate !== false); }, [settings.deco?.animate]);
   useEffect(() => pauseDecoWhenAway(), []);
   // the menu on the profile at the bottom of the side bar
-  const [profileHidden, setProfileHidden] = useProfileHidden();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [quick, setQuick] = useState(false);
+  const hideAccount = async () => {
+    const name = session.profile?.display_name || session.profile?.handle || "This account";
+    if (!window.confirm(`Hide “${name}”?\n\nIt disappears from the account list on the start screen, and you are taken back to it. Nothing is deleted, and you can show it again in Settings → Profile → Hidden accounts. Hiding keeps an account out of sight; a passcode is what locks it.`)) return;
+    try {
+      const running = await api.novelsRunning().catch(() => [] as number[]);
+      await Promise.all(running.map((id) => api.novelStop(id)));
+      const s = await api.hideProfile();
+      onHidden(name, s.profiles.length);
+      setSession(s);
+    } catch (e) { window.alert(errText(e)); }
+  };
   const switchAccounts = async () => {
     try {
       const running = await api.novelsRunning().catch(() => [] as number[]);
@@ -243,7 +254,6 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
           {(() => {
             // the user's own decorations: nameplate behind the row, wreath around the picture, name tag beside the name
             const dz = settings.deco ?? DEFAULT_DECO, pl = plateProps(dz.plate, dz.animate);
-            if (profileHidden) return null;
             return (
               <button className={`nav me-row ${pl.className}`} onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }} {...(pl["data-plate"] ? { "data-plate": pl["data-plate"], "data-anim": pl["data-anim"] } : {})} data-testid="me-row" style={{ gap: 8 }} onClick={() => go({ page: "settings", tab: "profile" })} title="Profile settings">
                 <Wreathed wreath={dz.wreath} size="sm"><ProfileAvatar name={session.profile?.handle ?? "Guest"} size={26} src={profileAvatar(session.profile)} frame={session.profile?.avatar_frame} /></Wreathed>
@@ -253,7 +263,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
             );
           })()}
           <small>v{info?.version ?? "…"}{info?.portable ? " · portable" : ""}</small>
-          {menu && <ProfileMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} onQuick={() => setQuick(true)} onSwitch={() => void switchAccounts()} onHide={() => setProfileHidden(true)} />}
+          {menu && <ProfileMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} onQuick={() => setQuick(true)} onSwitch={() => void switchAccounts()} onHide={() => void hideAccount()} canHide={!!session.profile} />}
           {quick && <QuickSettings onClose={() => setQuick(false)} />}
         </nav>
         <main className={route.page === "chat" ? "main" : "main"} style={route.page === "chat" ? { overflow: "hidden" } : undefined}>
@@ -284,13 +294,15 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
 export default function App() {
   const [session, setSession] = useState<SessionState | null>(null);
   const [failed, setFailed] = useState("");
+  const [hid, setHid] = useState<{ name: string; others: number } | null>(null);
   useEffect(() => { api.session().then(setSession).catch((e) => setFailed(String(e))); }, []);
   return (
     <ToastProvider>
       {failed ? <div className="page">Couldn't start: {failed}</div>
         : !session ? <div className="page sub">Loading…</div>
         : !session.signed_in ? <Welcome session={session} onSession={setSession} />
-        : <Shell key={session.profile?.id ?? "guest"} session={session} setSession={setSession} />}
+        : <Shell key={session.profile?.id ?? "guest"} session={session} setSession={setSession} onHidden={(name, others) => setHid({ name, others })} />}
+      {hid && session && !session.signed_in && <HiddenNotice name={hid.name} others={hid.others} onSession={setSession} onClose={() => setHid(null)} />}
     </ToastProvider>
   );
 }

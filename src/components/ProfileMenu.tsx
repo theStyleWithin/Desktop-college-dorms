@@ -6,22 +6,8 @@ import { errText } from "../lib/util";
 import { useStore } from "../store";
 import { Modal, useToast } from "./ui";
 
-const HIDE_KEY = "dorms.profile.hidden";
-
-/** Whether the profile row at the bottom of the side bar is hidden (kept on this device). */
-export function useProfileHidden(): [boolean, (v: boolean) => void] {
-  const read = () => { try { return localStorage.getItem(HIDE_KEY) === "1"; } catch { return false; } };
-  const [hidden, setHidden] = useState(read);
-  useEffect(() => { const f = () => setHidden(read()); window.addEventListener("dorms-profile-hidden", f); return () => window.removeEventListener("dorms-profile-hidden", f); }, []);
-  const set = (v: boolean) => {
-    try { if (v) localStorage.setItem(HIDE_KEY, "1"); else localStorage.removeItem(HIDE_KEY); } catch { /* storage unavailable: it still applies until the app is closed */ }
-    setHidden(v); window.dispatchEvent(new Event("dorms-profile-hidden"));
-  };
-  return [hidden, set];
-}
-
 /** The small menu that opens when you right-click your profile at the bottom of the side bar. */
-export function ProfileMenu({ x, y, onClose, onQuick, onSwitch, onHide }: { x: number; y: number; onClose: () => void; onQuick: () => void; onSwitch: () => void; onHide: () => void }) {
+export function ProfileMenu({ x, y, canHide, onClose, onQuick, onSwitch, onHide }: { x: number; y: number; /** only an account can be hidden, not the guest space */ canHide: boolean; onClose: () => void; onQuick: () => void; onSwitch: () => void; onHide: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
   useEffect(() => {
@@ -50,7 +36,7 @@ export function ProfileMenu({ x, y, onClose, onQuick, onSwitch, onHide }: { x: n
     <div ref={ref} className="ctx-menu" role="menu" aria-label="Profile options" data-testid="profile-menu" style={{ left: pos.x, top: pos.y }} onContextMenu={(e) => e.preventDefault()}>
       <button role="menuitem" data-testid="pm-quick" onClick={pick(onQuick)}>⚡ Quick settings</button>
       <button role="menuitem" data-testid="pm-switch" onClick={pick(onSwitch)}>🔁 Switch accounts</button>
-      <button role="menuitem" data-testid="pm-hide" onClick={pick(onHide)}>🙈 Hide profile</button>
+      {canHide && <button role="menuitem" data-testid="pm-hide" onClick={pick(onHide)}>🙈 Hide profile</button>}
     </div>,
     document.body,
   );
@@ -61,7 +47,6 @@ export function QuickSettings({ onClose }: { onClose: () => void }) {
   const { settings, setSettings, personas, refresh, go } = useStore();
   const toast = useToast();
   const [scale, setScale] = useTextScale();
-  const [hidden, setHidden] = useProfileHidden();
   const save = async (patch: Partial<typeof settings>) => { try { await setSettings({ ...settings, ...patch }); } catch (e) { toast(errText(e), "err"); } };
   return (
     <Modal title="Quick settings" onClose={onClose}>
@@ -87,10 +72,6 @@ export function QuickSettings({ onClose }: { onClose: () => void }) {
               {personas.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select></label>
         )}
-        <label className="check" style={{ display: "flex", gap: 8 }}>
-          <input type="checkbox" checked={!hidden} onChange={(e) => setHidden(!e.target.checked)} />
-          <span>Show my profile at the bottom of the side bar</span>
-        </label>
         <div className="row"><button className="btn" onClick={() => { onClose(); go({ page: "settings" }); }}>All settings…</button><button className="btn primary" onClick={onClose}>Done</button></div>
       </div>
     </Modal>

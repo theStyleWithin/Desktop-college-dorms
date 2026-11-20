@@ -227,6 +227,8 @@ export interface SessionState {
   guest: boolean;
   profile: ProfileInfo | null;
   profiles: ProfileInfo[];
+  /** Accounts hidden from the start screen (shown again from Settings). */
+  hidden_profiles: ProfileInfo[];
   ask_on_launch: boolean;
   /** Characters, dorms and chats already in the guest space. */
   guest_items: number;
@@ -526,6 +528,8 @@ export const api = {
   session: () => invoke<SessionState>("session_state"),
   signIn: (profileId: string | null, passcode?: string) => invoke<SessionState>("sign_in", { profileId, passcode: passcode ?? null }),
   signOut: () => invoke<SessionState>("sign_out"),
+  hideProfile: () => invoke<SessionState>("hide_profile"),
+  unhideProfile: (profileId: string, passcode?: string) => invoke<SessionState>("unhide_profile", { profileId, passcode: passcode ?? null }),
   createProfile: (handle: string, displayName: string, passcode: string) =>
     invoke<SessionState>("create_profile", { handle, displayName: displayName || null, passcode: passcode || null }),
   claimGuest: (handle: string, displayName: string, passcode: string) =>

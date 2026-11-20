@@ -1,12 +1,12 @@
 import { useTextScale, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
-import { WIDGETS, useWidgetPrefs } from "../components/SideWidgets";
+import { DEFAULT_NAMES, WIDGETS, useWidgetNames, useWidgetPrefs } from "../components/SideWidgets";
 import { useEffect, useState } from "react";
 import { DEFAULT_DECO, api, newProfile, profileAvatar, onModelProgress, saveExportFile, type ApiProfile, type EngineStatus, type ExportInfo, type Hardware, type ModelFile, type ModelProgress, type Settings } from "../api";
 import { CreateProfileModal, PASSCODE_NOTE, ProfileAvatar } from "../components/ProfileForms";
 import { PersonasTab, ProfilePicture } from "../components/Personas";
 import { ControllerTab } from "../components/ControllerTab";
 import DecoTab, { ProfileCard } from "../components/DecoTab";
-import { useProfileHidden } from "../components/ProfileMenu";
+import { HiddenAccountsList } from "../components/HiddenAccounts";
 import EmojiTab from "../components/EmojiTab";
 import { Modal, useToast } from "../components/ui";
 import { errText, fmtBytes } from "../lib/util";
@@ -323,16 +323,6 @@ function VoiceTab({ s, patch, ensureSaved }: { s: Settings; patch: (p: Partial<S
   );
 }
 
-function ProfileShown() {
-  const [hidden, setHidden] = useProfileHidden();
-  return (
-    <label className="check" style={{ display: "flex", gap: 8, marginTop: 8 }}>
-      <input type="checkbox" data-testid="show-profile" checked={!hidden} onChange={(e) => setHidden(!e.target.checked)} />
-      <span>Show my profile at the bottom of the side bar<small className="muted" style={{ display: "block" }}>Right-click it for quick settings, to switch accounts or to hide it. The choice is kept on this device.</small></span>
-    </label>
-  );
-}
-
 function Look({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void }) {
   return (
     <div className="card">
@@ -342,8 +332,6 @@ function Look({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void
           <button key={k} className={`chip ${s.theme === k ? "on" : ""}`} style={{ padding: "6px 14px", fontSize: ".9rem" }} onClick={() => { patch({ theme: k }); document.documentElement.dataset.theme = k; }}>{l}</button>
         ))}
       </div>
-      <h3 style={{ marginTop: 22 }}>Your profile in the side bar</h3>
-      <ProfileShown />
       <h3 style={{ marginTop: 22 }}>Side bar order</h3>
       <div className="row" style={{ marginTop: 10 }}>
         <button className="btn sm" onClick={() => { try { localStorage.removeItem("dorms.nav.order"); } catch { /* storage unavailable */ } window.dispatchEvent(new Event("dorms-nav-order")); }}>Reset the side bar order</button>
@@ -360,13 +348,19 @@ function Look({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void
 /** Which extras show under Prompts in the side bar. Kept on this device. */
 function SideExtras() {
   const [prefs, set] = useWidgetPrefs();
+  const [names, setName, resetNames] = useWidgetNames();
   return (
     <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
       {WIDGETS.map((w) => (
-        <label key={w.id} className="row" style={{ gap: 8, cursor: "pointer" }}>
-          <input type="checkbox" style={{ width: "auto", minHeight: 0 }} checked={prefs[w.id]} data-widget={w.id} onChange={(e) => set(w.id, e.target.checked)} /> {w.label}
-        </label>
+        <div key={w.id} className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <label className="row" style={{ gap: 8, cursor: "pointer", minWidth: 190 }}>
+            <input type="checkbox" style={{ width: "auto", minHeight: 0 }} checked={prefs[w.id]} data-widget={w.id} onChange={(e) => set(w.id, e.target.checked)} /> {w.label}
+          </label>
+          <input type="text" key={names[w.id]} defaultValue={names[w.id] === DEFAULT_NAMES[w.id] ? "" : names[w.id]} maxLength={24} placeholder={`Called "${DEFAULT_NAMES[w.id]}"`} aria-label={`Name for ${w.label}`} data-testid={`name-${w.id}`} style={{ maxWidth: 230 }}
+            onBlur={(e) => { if (e.target.value.trim() !== (names[w.id] === DEFAULT_NAMES[w.id] ? "" : names[w.id])) setName(w.id, e.target.value); }} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+        </div>
       ))}
+      <div className="row"><button className="btn sm" onClick={resetNames}>Use the usual names</button><span className="hint">You can also double-click a section's name in the side bar, or press its ✎, to rename it. Kept on this device.</span></div>
       <div className="hint">Recent chats, the characters you've marked as favorites (as many as you like), the ones you talk to most, and a picture frame that shows the character you talked to last (click it to go back to that chat).</div>
     </div>
   );
@@ -643,6 +637,8 @@ function ProfileTab({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) =
         )}
         <div className="hint" style={{ margin: "4px 0 0" }}>To describe who you are for the characters (looks, background, how you like to play), make a persona in the Personas tab. Personas are optional.</div>
       </div>
+
+      <HiddenAccountsList hidden={session.hidden_profiles ?? []} onSession={setSession} />
 
       {p && (
         <div className="card">

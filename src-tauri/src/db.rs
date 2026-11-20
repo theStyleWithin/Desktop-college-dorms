@@ -652,6 +652,7 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
             enabled INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL DEFAULT '{}', PRIMARY KEY(chat_id, mech_id));",
     )?;
     crate::novel::init(&conn)?;
+    ensure_column(&conn, "profiles", "hidden", "INTEGER NOT NULL DEFAULT 0")?;
     ensure_column(&conn, "folders", "parent", "TEXT")?;
     ensure_column(&conn, "folders", "cover_char", "TEXT")?;
     ensure_column(&conn, "dorms", "room_id", "INTEGER")?;
@@ -1619,6 +1620,8 @@ pub struct Profile {
     pub passcode_hash: Option<String>,
     pub created_at: i64,
     pub last_login: i64,
+    /// Left out of the list of accounts on the start screen (shown again from Settings).
+    pub hidden: bool,
 }
 
 fn row_profile(r: &rusqlite::Row) -> R<Profile> {
@@ -1629,10 +1632,16 @@ fn row_profile(r: &rusqlite::Row) -> R<Profile> {
         passcode_hash: r.get(3)?,
         created_at: r.get(4)?,
         last_login: r.get(5)?,
+        hidden: r.get::<_, i64>(6)? != 0,
     })
 }
 
-const PROFILE_COLS: &str = "id,handle,display_name,passcode_hash,created_at,last_login";
+const PROFILE_COLS: &str = "id,handle,display_name,passcode_hash,created_at,last_login,hidden";
+
+pub fn set_profile_hidden(c: &Connection, id: &str, hidden: bool) -> R<()> {
+    c.execute("UPDATE profiles SET hidden=?2 WHERE id=?1", params![id, hidden as i64])?;
+    Ok(())
+}
 
 pub fn list_profiles(c: &Connection) -> R<Vec<Profile>> {
     let mut s = c.prepare(&format!("SELECT {PROFILE_COLS} FROM profiles ORDER BY last_login DESC, handle COLLATE NOCASE"))?;

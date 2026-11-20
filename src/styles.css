@@ -758,3 +758,8 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .ctx-menu { position: fixed; z-index: 1000; min-width: 190px; padding: 6px; display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2, var(--panel)); box-shadow: 0 10px 30px #0008; }
 .ctx-menu button { text-align: left; padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
 .ctx-menu button:hover, .ctx-menu button:focus-visible { background: var(--hover, #ffffff1a); outline: none; }
+
+/* renaming the side bar's sections */
+.sw-rename { flex: 1; min-width: 0; padding: 3px 8px; font: inherit; font-size: .85rem; border-radius: 8px; }
+.sw-edit { opacity: 0; transition: opacity .12s; }
+.sw-head:hover .sw-edit, .sw-edit:focus-visible { opacity: .8; }
