@@ -51,7 +51,7 @@ pub fn optimize_gif(bytes: &[u8], lim: &GifLimits) -> Result<Optimized, String> 
     let shrink = (tw, th) != (w, h);
     let mut kept: Vec<(RgbaImage, u32)> = vec![];
     let mut still: Option<RgbaImage> = None;
-    let (mut total, mut acc, mut slow_ok) = (0usize, 0u32, true);
+    let (mut total, mut slow_ok) = (0usize, true);
     for fr in dec.into_frames() {
         let fr = fr.map_err(|e| format!("A frame of that GIF is damaged: {e}"))?;
         total += 1;
@@ -61,22 +61,19 @@ pub fn optimize_gif(bytes: &[u8], lim: &GifLimits) -> Result<Optimized, String> 
         let (n, d) = fr.delay().numer_denom_ms();
         let ms = (n as f64 / d.max(1) as f64).round().max(10.0) as u32;
         slow_ok &= ms >= lim.min_delay_ms;
-        acc += ms;
-        let first = kept.is_empty() && still.is_none();
-        if first || acc >= lim.min_delay_ms {
-            let buf = fr.into_buffer();
-            let small = if shrink { imageops::resize(&buf, tw, th, imageops::FilterType::Triangle) } else { buf };
-            if first {
-                still = Some(small.clone());
-            }
-            kept.push((small, acc));
-            acc = 0;
+        // a picture that is still on screen for less than the minimum takes the time of the frames after it instead
+        if let Some(last) = kept.last_mut().filter(|l| l.1 < lim.min_delay_ms) {
+            last.1 += ms;
+            continue;
         }
+        let buf = fr.into_buffer();
+        let small = if shrink { imageops::resize(&buf, tw, th, imageops::FilterType::Triangle) } else { buf };
+        if still.is_none() {
+            still = Some(small.clone());
+        }
+        kept.push((small, ms));
     }
     let still = still.ok_or("That GIF has no pictures in it.")?;
-    if let (Some(last), true) = (kept.last_mut(), acc > 0) {
-        last.1 += acc;
-    }
     let from = (w, h, total);
     // too many frames: keep every k-th one and give it the time of the ones dropped
     if kept.len() > lim.max_frames {
@@ -137,6 +134,7 @@ mod tests {
         assert_eq!(back[0].buffer().dimensions(), (100, 50));
         let ms: u32 = back.iter().map(|f| { let (n, d) = f.delay().numer_denom_ms(); n / d.max(1) }).sum();
         assert!((300..=520).contains(&ms), "total time {ms} ms is about the original 400 ms");
+        assert!(back[..back.len() - 1].iter().all(|f| { let (n, d) = f.delay().numer_denom_ms(); n / d.max(1) >= 100 }), "every picture but the last stays on screen at least 100 ms, the first too");
         let still = image::load_from_memory(&o.still_png).unwrap();
         assert_eq!((still.width(), still.height()), (100, 50));
     }
