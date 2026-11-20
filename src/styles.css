@@ -777,3 +777,10 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .shelf-item { display: grid; gap: 4px; cursor: grab; }
 .shelf-move { width: auto; max-width: 140px; font-size: .78rem; padding: 2px 4px; opacity: .75; }
 .shelf-loose { margin: 4px 2px 0; }
+
+/* several frames, with arrows in the gaps either side */
+.sw-wallrow { position: relative; display: block; }
+.sw-arrow { position: absolute; top: 38%; z-index: 2; width: 24px; height: 34px; padding: 0; border: 0; border-radius: 8px; background: #ffffff14; color: var(--text); font-size: 15px; line-height: 1; cursor: pointer; opacity: .55; transition: opacity .12s, background .12s; }
+.sw-arrow:hover, .sw-arrow:focus-visible { opacity: 1; background: #ffffff2e; }
+.sw-arrow.left { left: 2px; } .sw-arrow.right { right: 2px; }
+.sw-count { font-size: .7rem; opacity: .7; }

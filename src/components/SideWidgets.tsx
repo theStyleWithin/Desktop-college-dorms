@@ -56,9 +56,38 @@ export function useWidgetPrefs(): [Record<WidgetId, boolean>, (id: WidgetId, on:
 /** The character the user chose to hang in the picture frame (this device); nobody chosen = whoever they talked to last. */
 const FRAME_KEY = "dorms.side.frame";
 const readFramed = (): string | null => { try { return localStorage.getItem(FRAME_KEY) || null; } catch { return null; } };
-const writeFramed = (id: string | null) => {
-  try { if (id) localStorage.setItem(FRAME_KEY, id); else localStorage.removeItem(FRAME_KEY); } catch { /* storage unavailable */ }
+/** Several frames can hang side by side, with arrows to flip between them; each holds its own character (null = whoever you talked to last). */
+const FRAMES_KEY = "dorms.side.frames";
+export const MAX_FRAMES = 12;
+interface FrameSet { list: (string | null)[]; at: number }
+const readFrames = (): FrameSet => {
+  try {
+    const v = JSON.parse(localStorage.getItem(FRAMES_KEY) || "null");
+    if (v && Array.isArray(v.list) && v.list.length) {
+      const list = v.list.slice(0, MAX_FRAMES).map((x: unknown) => (typeof x === "string" && x ? x : null));
+      return { list, at: Math.min(Math.max(0, Number(v.at) || 0), list.length - 1) };
+    }
+  } catch { /* the one frame from before */ }
+  return { list: [readFramed()], at: 0 };
+};
+const writeFrames = (fs: FrameSet) => {
+  try { localStorage.setItem(FRAMES_KEY, JSON.stringify(fs)); if (fs.list.length === 1) { if (fs.list[0]) localStorage.setItem(FRAME_KEY, fs.list[0]); else localStorage.removeItem(FRAME_KEY); } } catch { /* storage unavailable */ }
   window.dispatchEvent(new Event("dorms-side-frame"));
+};
+/** Who hangs in the frame being shown. */
+const writeFramed = (id: string | null) => { const f = readFrames(); const list = [...f.list]; list[f.at] = id; writeFrames({ list, at: f.at }); };
+/** Flip to the next or previous frame; past the last (or before the first) a new, empty frame is made. Returns true when it made one. */
+const flipFrame = (dir: -1 | 1): boolean => {
+  const f = readFrames(); const j = f.at + dir;
+  if (j >= 0 && j < f.list.length) { writeFrames({ list: f.list, at: j }); return false; }
+  if (f.list.length >= MAX_FRAMES) return false;
+  if (dir < 0) writeFrames({ list: [null, ...f.list], at: 0 }); else writeFrames({ list: [...f.list, null], at: f.list.length });
+  return true;
+};
+const removeFrame = () => {
+  const f = readFrames(); if (f.list.length < 2) return;
+  const list = f.list.filter((_, i) => i !== f.at);
+  writeFrames({ list, at: Math.min(f.at, list.length - 1) });
 };
 
 const stillOf = (c: Character): string | null => (c.media?.kind === "image" || c.media?.kind === "gif" ? mediaUrl(c) : null);
@@ -97,8 +126,9 @@ export default function SideWidgets() {
   const [picker, setPicker] = useState(false);
   const [more, setMore] = useState(false);
   const [framePicker, setFramePicker] = useState(false);
-  const [framedId, setFramedId] = useState<string | null>(readFramed);
-  useEffect(() => { const f = () => setFramedId(readFramed()); window.addEventListener("dorms-side-frame", f); return () => window.removeEventListener("dorms-side-frame", f); }, []);
+  const [frames, setFrames] = useState<FrameSet>(readFrames);
+  const framedId = frames.list[frames.at] ?? null;
+  useEffect(() => { const f = () => setFrames(readFrames()); window.addEventListener("dorms-side-frame", f); return () => window.removeEventListener("dorms-side-frame", f); }, []);
   const [, bump] = useState(0);
   const byId = useMemo(() => new Map(characters.map((c) => [c.id, c])), [characters]);
   const recent = useMemo(() => [...chats].sort((a, b) => b.updated_at - a.updated_at), [chats]);
@@ -170,14 +200,19 @@ export default function SideWidgets() {
       {prefs.frame && (
         <Section id="frame" title="Picture frame" action={<button className="iconbtn" aria-label="Choose who hangs in the picture frame" title="Choose who hangs in the frame" onClick={() => setFramePicker(true)}>✎</button>}>
           {frameChar ? (
+            <div className="sw-wallrow" data-frames={frames.list.length} data-frame-at={frames.at + 1}>
+            <button className="sw-arrow left" data-testid="frame-left" aria-label={frames.at === 0 ? "Open another frame on the left" : "Previous frame"} title={frames.at === 0 ? "Another frame" : "Previous frame"} onClick={() => { if (flipFrame(-1)) setFramePicker(true); }}>◀</button>
             <button className="sw-wall" data-testid="side-frame-link" data-frame={displayName(frameChar)} data-framed={chosen ? "chosen" : "auto"} onClick={() => (frameChat ? go({ page: "chat", chatId: frameChat.id }) : void openWith(frameChar!.id))} title={`Open your chat with ${displayName(frameChar)}`}>
               <span className="sw-frame"><span className="sw-pic"><Art kind={frameArt.kind} url={frameArt.url} name={displayName(frameChar)} frame={frameArt.url === mediaUrl(frameChar) ? frameChar.frame : null} /></span></span>
               <span className="sw-plaque">{displayName(frameChar)}</span>
+              {frames.list.length > 1 && <span className="sw-count" data-testid="frame-count">{frames.at + 1} of {frames.list.length}</span>}
             </button>
+            <button className="sw-arrow right" data-testid="frame-right" aria-label={frames.at === frames.list.length - 1 ? "Open another frame on the right" : "Next frame"} title={frames.at === frames.list.length - 1 ? "Another frame" : "Next frame"} onClick={() => { if (flipFrame(1)) setFramePicker(true); }}>▶</button>
+            </div>
           ) : <div className="hint">Choose who hangs here with the pencil, or start a chat and the character you talked to last will hang here. Click it to go back.</div>}
         </Section>
       )}
-      {framePicker && <FramePicker characters={characters} current={chosen?.id ?? null} onClose={() => setFramePicker(false)} />}
+      {framePicker && <FramePicker characters={characters} current={chosen?.id ?? null} frameNo={frames.at + 1} frameCount={frames.list.length} onClose={() => setFramePicker(false)} />}
       {picker && <FavoritesPicker characters={characters} onClose={() => setPicker(false)} onChanged={refresh} />}
     </div>
   );
@@ -213,12 +248,12 @@ function FavoritesPicker({ characters, onClose, onChanged }: { characters: Chara
 }
 
 /** Choose who hangs in the picture frame: one character, kept until changed, or whoever was talked to last. */
-function FramePicker({ characters, current, onClose }: { characters: Character[]; current: string | null; onClose: () => void }) {
+function FramePicker({ characters, current, frameNo, frameCount, onClose }: { characters: Character[]; current: string | null; frameNo: number; frameCount: number; onClose: () => void }) {
   const [q, setQ] = useState("");
   const list = characters.filter((c) => !q.trim() || displayName(c).toLowerCase().includes(q.trim().toLowerCase())).sort((a, b) => displayName(a).localeCompare(displayName(b)));
   const pick = (id: string | null) => { writeFramed(id); onClose(); };
   return (
-    <Modal title="Who hangs in the frame?" onClose={onClose}>
+    <Modal title={frameCount > 1 ? `Who hangs in frame ${frameNo} of ${frameCount}?` : "Who hangs in the frame?"} onClose={onClose}>
       <p className="hint" style={{ marginTop: 0 }}>Your choice stays there until you change it. Click the frame any time to open your chat with them.</p>
       <input type="search" placeholder="Search characters…" aria-label="Search characters" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="who-list" style={{ maxHeight: 360, overflow: "auto", marginTop: 8 }}>
@@ -233,7 +268,7 @@ function FramePicker({ characters, current, onClose }: { characters: Character[]
         ))}
         {list.length === 0 && <div className="hint">Nobody matches.</div>}
       </div>
-      <div className="row" style={{ marginTop: 10 }}><button className="btn" onClick={onClose}>Cancel</button></div>
+      <div className="row" style={{ marginTop: 10, gap: 8 }}><button className="btn" onClick={onClose}>Cancel</button>{frameCount > 1 && <button className="btn danger" data-testid="frame-remove" onClick={() => { removeFrame(); onClose(); }}>Take this frame down</button>}</div>
     </Modal>
   );
 }
