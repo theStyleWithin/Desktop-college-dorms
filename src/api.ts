@@ -107,6 +107,8 @@ export interface Room {
   backdrop: string; created_at: number;
   /** absolute path of an uploaded backdrop (use roomBackdrop() to turn it into something drawable) */
   backdrop_path?: string | null;
+  /** a still picture of a moving (GIF) backdrop */
+  backdrop_still_path?: string | null;
   /** background music: the file's original name, and where it is (use musicUrl()) */
   music?: string; music_name?: string; music_path?: string | null;
   /** Pathways: the room this one is part of, and rooms joined to it (both ways) besides its parent and sub-rooms. */

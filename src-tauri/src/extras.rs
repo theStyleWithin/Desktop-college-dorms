@@ -27,6 +27,8 @@ pub struct RoomOut {
     room: Room,
     /// Absolute path of an uploaded backdrop (for the web view), when there is one.
     backdrop_path: Option<String>,
+    /// A still picture of a moving (GIF) backdrop: used for small spots and while the app is in the background.
+    backdrop_still_path: Option<String>,
     /// Absolute path of the room's background music, when it has some.
     music_path: Option<String>,
     /// Absolute path of the imported 3D scene, when it has one.
@@ -35,12 +37,79 @@ pub struct RoomOut {
     gallery_paths: Vec<crate::commands::GalleryPath>,
 }
 
+/// Where the still picture of a moving backdrop is kept.
+pub(crate) fn still_rel(rel: &str) -> String {
+    match rel.rsplit_once('.') {
+        Some((stem, _)) => format!("{stem}-still.png"),
+        None => format!("{rel}-still.png"),
+    }
+}
+
+fn remove_backdrop_files(dir: &std::path::Path, rel: &str) {
+    let _ = std::fs::remove_file(dir.join(rel));
+    let _ = std::fs::remove_file(dir.join(still_rel(rel)));
+}
+
+/// The still picture of a GIF backdrop (made now from its first frame if it isn't there yet), or `None` for a backdrop that doesn't move.
+fn ensure_still(dir: &std::path::Path, rel: &str) -> Option<String> {
+    if !rel.to_lowercase().ends_with(".gif") {
+        return None;
+    }
+    let still = dir.join(still_rel(rel));
+    if !still.exists() {
+        let bytes = std::fs::read(dir.join(rel)).ok()?;
+        let o = dorms_core::media::optimize_gif(&bytes, &dorms_core::media::BACKDROP).ok()?;
+        std::fs::write(&still, &o.still_png).ok()?;
+    }
+    Some(still.to_string_lossy().to_string())
+}
+
+/// Writes a backdrop into the media folder. A GIF is made lighter first (smaller, ten pictures a second at most) and gets a still picture.
+fn store_backdrop(dir: &std::path::Path, rel: &str, bytes: Vec<u8>) -> R<()> {
+    if rel.to_lowercase().ends_with(".gif") {
+        // a GIF the app can't read is still kept as it is; the browser may know better
+        if let Ok(o) = dorms_core::media::optimize_gif(&bytes, &dorms_core::media::BACKDROP) {
+            std::fs::write(dir.join(still_rel(rel)), &o.still_png).map_err(e)?;
+            std::fs::write(dir.join(rel), o.gif.as_deref().unwrap_or(&bytes)).map_err(e)?;
+            return Ok(());
+        }
+    }
+    std::fs::write(dir.join(rel), bytes).map_err(e)
+}
+
+/// Once, when the app starts: backdrops that are GIFs from before this was done are made lighter, and given their still picture.
+pub fn lighten_old_backdrops(st: &AppState) {
+    let files: Vec<String> = {
+        let db = st.db.lock().unwrap();
+        let mut s = match db.prepare("SELECT backdrop FROM rooms WHERE backdrop LIKE 'file:media/room-%.gif' COLLATE NOCASE") { Ok(s) => s, Err(_) => return };
+        let rows = match s.query_map([], |r| r.get::<_, String>(0)) { Ok(r) => r, Err(_) => return };
+        rows.filter_map(|r| r.ok()).collect()
+    };
+    for f in files {
+        let rel = f.trim_start_matches("file:");
+        if st.data_dir.join(still_rel(rel)).exists() {
+            continue; // done before
+        }
+        let Ok(bytes) = std::fs::read(st.data_dir.join(rel)) else { continue };
+        if let Ok(o) = dorms_core::media::optimize_gif(&bytes, &dorms_core::media::BACKDROP) {
+            if let Some(light) = &o.gif {
+                let tmp = st.data_dir.join(format!("{rel}.tmp"));
+                if std::fs::write(&tmp, light).is_ok() && std::fs::rename(&tmp, st.data_dir.join(rel)).is_err() {
+                    let _ = std::fs::remove_file(&tmp);
+                }
+            }
+            let _ = std::fs::write(st.data_dir.join(still_rel(rel)), &o.still_png);
+        }
+    }
+}
+
 fn room_out(st: &AppState, room: Room) -> RoomOut {
     let backdrop_path = room.backdrop.strip_prefix("file:").map(|f| st.data_dir.join(f).to_string_lossy().to_string());
     let music_path = Some(room.music.as_str()).filter(|m| !m.is_empty()).map(|m| st.data_dir.join(m).to_string_lossy().to_string());
     let model_path = Some(room.model.as_str()).filter(|m| !m.is_empty()).map(|m| st.data_dir.join(m).to_string_lossy().to_string());
     let gallery_paths = room.gallery.iter().map(|p| crate::commands::GalleryPath { id: p.id.clone(), path: st.data_dir.join(&p.file).to_string_lossy().to_string() }).collect();
-    RoomOut { room, backdrop_path, music_path, model_path, gallery_paths }
+    let backdrop_still_path = room.backdrop.strip_prefix("file:").and_then(|f| ensure_still(&st.data_dir, f));
+    RoomOut { room, backdrop_path, backdrop_still_path, music_path, model_path, gallery_paths }
 }
 
 const KINDS: [&str; 13] = [
@@ -119,7 +188,7 @@ pub fn update_room(state: State<'_, Shared>, room: Room) -> R<RoomOut> {
     r.model = old.model.clone(); r.model_name = old.model_name.clone();
     r.model_scale = old.model_scale; r.model_rot = old.model_rot; r.model_y = old.model_y; r.model_share = old.model_share;
     if old.backdrop.starts_with("file:") && r.backdrop != old.backdrop {
-        let _ = std::fs::remove_file(state.data_dir.join(old.backdrop.trim_start_matches("file:")));
+        remove_backdrop_files(&state.data_dir, old.backdrop.trim_start_matches("file:"));
     }
     db::update_room(&db, &r, &o).map_err(e)?;
     Ok(room_out(&state, db::get_room(&db, r.id, &o).map_err(e)?.ok_or("Room not found")?))
@@ -131,7 +200,7 @@ pub fn delete_room(state: State<'_, Shared>, id: i64) -> R<()> {
     let db = state.db.lock().unwrap();
     if let Some(r) = db::get_room(&db, id, &o).map_err(e)? {
         if let Some(f) = r.backdrop.strip_prefix("file:") {
-            let _ = std::fs::remove_file(state.data_dir.join(f));
+            remove_backdrop_files(&state.data_dir, f);
         }
         if !r.music.is_empty() {
             let _ = std::fs::remove_file(state.data_dir.join(&r.music));
@@ -147,7 +216,7 @@ pub fn delete_room(state: State<'_, Shared>, id: i64) -> R<()> {
 }
 
 /// Body: raw image bytes. Headers: `x-room-id`, `x-file-name` (percent-encoded).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_room_backdrop(request: Request<'_>, state: State<'_, Shared>) -> R<RoomOut> {
     let id: i64 = header(&request, "x-room-id").parse().map_err(|_| "Save the room first")?;
     let name = header(&request, "x-file-name");
@@ -163,9 +232,9 @@ pub fn set_room_backdrop(request: Request<'_>, state: State<'_, Shared>) -> R<Ro
     let db = state.db.lock().unwrap();
     let mut r = db::get_room(&db, id, &o).map_err(e)?.ok_or("Save the room first")?;
     let rel = format!("media/room-{}-{}.{ext}", r.id, db::now());
-    std::fs::write(state.data_dir.join(&rel), bytes).map_err(e)?;
+    store_backdrop(&state.data_dir, &rel, bytes.to_vec())?;
     if let Some(old) = r.backdrop.strip_prefix("file:") {
-        let _ = std::fs::remove_file(state.data_dir.join(old));
+        remove_backdrop_files(&state.data_dir, old);
     }
     r.backdrop = format!("file:{rel}");
     db::update_room(&db, &r, &o).map_err(e)?;
@@ -235,7 +304,7 @@ pub fn remove_room_picture(state: State<'_, Shared>, id: i64, item_id: String) -
 }
 
 /// Use a gallery picture as the room's backdrop (a copy; the picture stays in the gallery).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn use_room_picture_as_backdrop(state: State<'_, Shared>, id: i64, item_id: String) -> R<RoomOut> {
     let o = owner(&state)?;
     let db = state.db.lock().unwrap();
@@ -243,9 +312,10 @@ pub fn use_room_picture_as_backdrop(state: State<'_, Shared>, id: i64, item_id: 
     let p = r.gallery.iter().find(|p| p.id == item_id).cloned().ok_or("That picture isn't in the gallery any more.")?;
     let ext = std::path::Path::new(&p.file).extension().and_then(|x| x.to_str()).unwrap_or("png").to_lowercase();
     let rel = format!("media/room-{}-{}.{ext}", r.id, db::now());
-    std::fs::copy(state.data_dir.join(&p.file), state.data_dir.join(&rel)).map_err(e)?;
+    let bytes = std::fs::read(state.data_dir.join(&p.file)).map_err(e)?;
+    store_backdrop(&state.data_dir, &rel, bytes)?;
     if let Some(old) = r.backdrop.strip_prefix("file:") {
-        let _ = std::fs::remove_file(state.data_dir.join(old));
+        remove_backdrop_files(&state.data_dir, old);
     }
     r.backdrop = format!("file:{rel}");
     db::update_room(&db, &r, &o).map_err(e)?;

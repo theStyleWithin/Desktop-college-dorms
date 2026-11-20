@@ -62,7 +62,7 @@ export default function DecoTab() {
       </DecoPicker>
       <label className="check" style={{ display: "flex", gap: 8, margin: "14px 0" }}>
         <input type="checkbox" checked={deco.animate} onChange={(e) => void set({ animate: e.target.checked })} />
-        <span>Animate decorations<small className="muted" style={{ display: "block" }}>Things move a little. Turned off automatically if your device asks for less motion.</small></span>
+        <span>Animate decorations and moving backdrops<small className="muted" style={{ display: "block" }}>Things move a little. Turned off automatically if your device asks for less motion.</small></span>
       </label>
 
       <h3 style={{ marginTop: 26 }}>Your characters</h3>

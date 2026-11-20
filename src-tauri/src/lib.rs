@@ -130,6 +130,11 @@ pub fn run() {
                 novels: Default::default(),
                 hidden: Default::default(),
             }));
+            // backdrops that are GIFs from before they were made lighter: do it once, in the background
+            {
+                let st: Shared = app.state::<Shared>().inner().clone();
+                std::thread::spawn(move || extras::lighten_old_backdrops(&st));
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

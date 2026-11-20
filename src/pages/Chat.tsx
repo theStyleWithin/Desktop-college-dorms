@@ -14,7 +14,7 @@ import MusicField from "../components/MusicField";
 import { PROMPT_DRAG } from "../components/PromptsMenu";
 import { detectMood, pickGalleryItem } from "../lib/mood";
 import { useTextScale, setTextScaleAnchored, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
-import { TagChip, Wreathed, useCharDeco } from "../lib/deco";
+import { TagChip, Wreathed, useAway, useCharDeco } from "../lib/deco";
 import { availableEmoji, renderRich, resolverFor, useEmoji, type Resolve } from "../lib/emoji";
 import EmojiPicker from "../components/EmojiPicker";
 import { hideDirectives, roomBackground, roomScene, kindLabel, nearbyRooms, roomExits, pathName } from "../lib/rooms";
@@ -74,7 +74,9 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
     if (moved) return moved;
     const d = dorms.find((x) => x.id === chat?.dorm_id); return d?.room_id != null ? rooms.find((r) => r.id === d.room_id) ?? null : null;
   }, [chat, dorms, rooms]);
-  const roomBg = roomBackground(room);
+  // a moving (GIF) backdrop moves only here, in the chat in front, and only while the app is in front and animation is on
+  const awayNow = useAway();
+  const roomBg = roomBackground(room, !awayNow && settings.deco?.animate !== false);
   const allEmoji = useEmoji();
   const resolveEmoji = useMemo(() => resolverFor(allEmoji, room?.id), [allEmoji, room?.id]);
   const dormOfChat = dorms.find((x) => x.id === chat?.dorm_id);

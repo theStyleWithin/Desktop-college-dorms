@@ -586,6 +586,22 @@ try:
     check("a backdrop has to be an image", "image" in (inv_err_file("set_room_backdrop", os.path.join(FIX, "loose.json"), {"x-room-id": str(room["id"]), "x-file-name": "loose.json"}) or "").lower())
     kit = invoke_file("set_room_backdrop", os.path.join(FIX, "avatar.gif"), {"x-room-id": str(room["id"]), "x-file-name": "avatar.gif"})
     check("an uploaded backdrop is stored in the app's media folder", kit["backdrop"].startswith("file:media/room-") and os.path.exists(kit["backdrop_path"]), str(kit))
+    # a moving (GIF) backdrop is made light: smaller, ten pictures a second at most, and it keeps a still picture
+    check("a small GIF backdrop gets a still picture of its first frame", kit.get("backdrop_still_path") and os.path.exists(kit["backdrop_still_path"]) and kit["backdrop_still_path"].endswith("-still.png"), str(kit.get("backdrop_still_path")))
+    import struct as _st
+    _frames = []
+    for _f in range(40):
+        _im = Image.new("RGB", (1500, 800), (10 + _f * 5 % 200, 40, 90)); _frames.append(_im.convert("P", palette=Image.ADAPTIVE))
+    _gp = os.path.join(WORK, "big-backdrop.gif"); _frames[0].save(_gp, "GIF", save_all=True, append_images=_frames[1:], duration=20, loop=0)
+    big_room = invoke_file("set_room_backdrop", _gp, {"x-room-id": str(room["id"]), "x-file-name": "big-backdrop.gif"})
+    _hdr = open(big_room["backdrop_path"], "rb").read(10); _w, _h = _st.unpack("<HH", _hdr[6:10])
+    _still = Image.open(big_room["backdrop_still_path"])
+    check("a big GIF backdrop is stored smaller (at most 1024 across), keeping its shape", _w <= 1024 and abs(_w / _h - 1500 / 800) < 0.05 and os.path.getsize(big_room["backdrop_path"]) < os.path.getsize(_gp), f"{_w}x{_h}")
+    _g2 = Image.open(big_room["backdrop_path"]); _n = getattr(_g2, "n_frames", 1)
+    check("and slower with fewer pictures (40 frames of 20 ms became about 8 of 100 ms)", _n <= 10 and _g2.info.get("duration", 0) >= 90, f"{_n} frames, {_g2.info.get('duration')} ms")
+    check("its still picture is a picture of the same size", _still.size == (_w, _h), str(_still.size))
+    check("the old backdrop and its still picture are gone from disk", not any(f for f in os.listdir(os.path.dirname(big_room["backdrop_path"])) if f.startswith("room-%d-" % room["id"]) and os.path.join(os.path.dirname(big_room["backdrop_path"]), f) not in (big_room["backdrop_path"], big_room["backdrop_still_path"]) and f.endswith((".gif", "-still.png"))), str(os.listdir(os.path.dirname(big_room["backdrop_path"])))[:300])
+    kit = big_room
     dorm_r = invoke("create_dorm", {"name": "Loft dorm", "roomId": room["id"]})
     check("a dorm can be set in a room", dorm_r["room_id"] == room["id"] and [x for x in invoke("list_dorms") if x["id"] == dorm_r["id"]][0]["room_id"] == room["id"])
     check("a dorm set in a room that doesn't exist just has none", invoke("create_dorm", {"name": "x", "roomId": 99999})["room_id"] is None)
