@@ -13,13 +13,13 @@ pub struct GifLimits {
     pub max_side: u32,
     /// Width times height.
     pub max_pixels: u32,
-    /// Frames closer together than this are merged (100 ms is 10 pictures a second).
+    /// Frames closer together than this are merged (125 ms is 8 pictures a second).
     pub min_delay_ms: u32,
     pub max_frames: usize,
 }
 
-/// What a backdrop is allowed to be: about 1024 by 576, ten pictures a second, 120 frames at most.
-pub const BACKDROP: GifLimits = GifLimits { max_side: 1024, max_pixels: 600_000, min_delay_ms: 100, max_frames: 120 };
+/// What a backdrop is allowed to be: about 854 by 480, eight pictures a second, 60 frames at most.
+pub const BACKDROP: GifLimits = GifLimits { max_side: 854, max_pixels: 410_000, min_delay_ms: 125, max_frames: 60 };
 
 pub struct Optimized {
     /// The lighter GIF, or `None` when the one given is already light enough.
@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn a_light_gif_is_left_exactly_as_it_is() {
-        let src = make(64, 32, 6, 120);
+        let src = make(64, 32, 6, 200);
         let o = optimize_gif(&src, &BACKDROP).unwrap();
         assert!(o.gif.is_none(), "small, slow and short enough already");
         assert!(!o.still_png.is_empty());
