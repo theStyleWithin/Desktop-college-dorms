@@ -753,3 +753,8 @@ body.resizing * { cursor: col-resize !important; }
 
 /* nothing moves while the window is in the background */
 html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-paused] *::after { animation-play-state: paused !important; }
+
+/* the menu on the profile at the bottom of the side bar */
+.ctx-menu { position: fixed; z-index: 1000; min-width: 190px; padding: 6px; display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2, var(--panel)); box-shadow: 0 10px 30px #0008; }
+.ctx-menu button { text-align: left; padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+.ctx-menu button:hover, .ctx-menu button:focus-visible { background: var(--hover, #ffffff1a); outline: none; }

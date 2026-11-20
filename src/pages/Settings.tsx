@@ -6,6 +6,7 @@ import { CreateProfileModal, PASSCODE_NOTE, ProfileAvatar } from "../components/
 import { PersonasTab, ProfilePicture } from "../components/Personas";
 import { ControllerTab } from "../components/ControllerTab";
 import DecoTab, { ProfileCard } from "../components/DecoTab";
+import { useProfileHidden } from "../components/ProfileMenu";
 import EmojiTab from "../components/EmojiTab";
 import { Modal, useToast } from "../components/ui";
 import { errText, fmtBytes } from "../lib/util";
@@ -322,6 +323,16 @@ function VoiceTab({ s, patch, ensureSaved }: { s: Settings; patch: (p: Partial<S
   );
 }
 
+function ProfileShown() {
+  const [hidden, setHidden] = useProfileHidden();
+  return (
+    <label className="check" style={{ display: "flex", gap: 8, marginTop: 8 }}>
+      <input type="checkbox" data-testid="show-profile" checked={!hidden} onChange={(e) => setHidden(!e.target.checked)} />
+      <span>Show my profile at the bottom of the side bar<small className="muted" style={{ display: "block" }}>Right-click it for quick settings, to switch accounts or to hide it. The choice is kept on this device.</small></span>
+    </label>
+  );
+}
+
 function Look({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void }) {
   return (
     <div className="card">
@@ -331,6 +342,8 @@ function Look({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void
           <button key={k} className={`chip ${s.theme === k ? "on" : ""}`} style={{ padding: "6px 14px", fontSize: ".9rem" }} onClick={() => { patch({ theme: k }); document.documentElement.dataset.theme = k; }}>{l}</button>
         ))}
       </div>
+      <h3 style={{ marginTop: 22 }}>Your profile in the side bar</h3>
+      <ProfileShown />
       <h3 style={{ marginTop: 22 }}>Side bar order</h3>
       <div className="row" style={{ marginTop: 10 }}>
         <button className="btn sm" onClick={() => { try { localStorage.removeItem("dorms.nav.order"); } catch { /* storage unavailable */ } window.dispatchEvent(new Event("dorms-nav-order")); }}>Reset the side bar order</button>
@@ -628,7 +641,7 @@ function ProfileTab({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) =
         ) : (
           <label className="f"><span>Your name:</span><input type="text" value={s.user_name} onChange={(e) => patch({ user_name: e.target.value })} /></label>
         )}
-        <label className="f"><span>About you:</span><span><textarea value={s.user_description} placeholder="Optional. Who you are, for characters to know." onChange={(e) => patch({ user_description: e.target.value })} /><div className="hint">Saved with the Save settings button.</div></span></label>
+        <div className="hint" style={{ margin: "4px 0 0" }}>To describe who you are for the characters (looks, background, how you like to play), make a persona in the Personas tab. Personas are optional.</div>
       </div>
 
       {p && (

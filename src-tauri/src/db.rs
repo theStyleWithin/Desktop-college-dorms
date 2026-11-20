@@ -1555,6 +1555,26 @@ pub fn get_settings(c: &Connection, owner: &Owner) -> Settings {
         .unwrap_or_default()
 }
 
+/// There is one kind of persona. What used to be a separate "default persona" (the plain name and "About you" text in the settings) becomes a
+/// real persona the first time it is found, so nothing anyone wrote is lost and there are never two of the same person.
+pub fn migrate_default_persona(c: &Connection, owner: &Owner) {
+    let mut s = get_settings(c, owner);
+    let about = s.user_description.trim().to_string();
+    if about.is_empty() {
+        return;
+    }
+    let name: String = Some(s.user_name.trim()).filter(|n| !n.is_empty()).unwrap_or("Me").chars().take(60).collect();
+    let p = Persona { id: crate::commands::uid(), name, description: about.chars().take(20_000).collect(), style: String::new(), avatar: None, frame: None, created_at: now() };
+    if save_persona(c, &p, owner).is_err() {
+        return;
+    }
+    if s.active_persona.is_empty() {
+        s.active_persona = p.id;
+    }
+    s.user_description.clear();
+    let _ = save_settings(c, &s, owner);
+}
+
 pub fn save_settings(c: &Connection, s: &Settings, owner: &Owner) -> R<()> {
     c.execute(
         "INSERT INTO settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=?2",
@@ -2205,6 +2225,32 @@ mod tests {
         set_room_gallery(&c, r.id, &pics, &a).unwrap();
         let g = get_room(&c, r.id, &a).unwrap().unwrap().gallery;
         assert_eq!((g.len(), g[0].caption.as_str()), (1, "a cracked blue teapot"));
+    }
+
+    #[test]
+    fn the_old_default_persona_becomes_a_real_one_once() {
+        let c = fresh();
+        let (a, b) = (me("a"), me("b"));
+        migrate_default_persona(&c, &a);
+        assert!(list_personas(&c, &a).unwrap().is_empty(), "nothing written, nothing made");
+        let mut s = get_settings(&c, &a);
+        s.user_name = "Sam".into();
+        s.user_description = "  Tall and shy.  ".into();
+        save_settings(&c, &s, &a).unwrap();
+        migrate_default_persona(&c, &a);
+        migrate_default_persona(&c, &a);
+        let l = list_personas(&c, &a).unwrap();
+        assert_eq!((l.len(), l[0].name.as_str(), l[0].description.as_str()), (1, "Sam", "Tall and shy."), "made once, with what was written");
+        let after = get_settings(&c, &a);
+        assert!(after.user_description.is_empty() && after.active_persona == l[0].id, "it is the one in use, and the old text is not kept twice");
+        assert!(list_personas(&c, &b).unwrap().is_empty(), "another profile is untouched");
+        // one already chosen stays chosen
+        let mut s = get_settings(&c, &b);
+        s.user_description = "Quiet.".into();
+        s.active_persona = "someone".into();
+        save_settings(&c, &s, &b).unwrap();
+        migrate_default_persona(&c, &b);
+        assert_eq!(get_settings(&c, &b).active_persona, "someone");
     }
 
     #[test]

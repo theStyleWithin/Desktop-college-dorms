@@ -1,5 +1,5 @@
 import { applyTextScale } from "./lib/textScale";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type AppInfo, type Character, type Chat, type Dorm, type Folder, type Persona, type Room, type SessionState, type Settings, type World } from "./api";
 import { listen } from "@tauri-apps/api/event";
 import { StoreCtx, type Route, type Store } from "./store";
@@ -16,6 +16,7 @@ import Lorebooks from "./pages/Lorebooks";
 import Playbooks from "./pages/Playbooks";
 import Decor from "./pages/Decor";
 import PromptsMenu from "./components/PromptsMenu";
+import { ProfileMenu, QuickSettings, useProfileHidden } from "./components/ProfileMenu";
 import SideWidgets from "./components/SideWidgets";
 import MembersRail from "./components/MembersRail";
 import PanelResizer from "./components/PanelResizer";
@@ -67,7 +68,37 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
   const [route, setRoute] = useState<Route>({ page: "home" });
   // every walk to a chat (from the side bar, say) starts the chat page fresh, even when a chat is already open
   const [chatNav, setChatNav] = useState(0);
-  const go = useCallback((r: Route) => { if (r.page === "chat") setChatNav((n) => n + 1); setRoute(r); }, []);
+  // the pages you have been to, so Left / Backspace go back and Right goes forward again
+  const hist = useRef<{ stack: Route[]; i: number }>({ stack: [{ page: "home" }], i: 0 });
+  const go = useCallback((r: Route) => {
+    const h = hist.current;
+    h.stack = [...h.stack.slice(0, h.i + 1), r].slice(-60);
+    h.i = h.stack.length - 1;
+    if (r.page === "chat") setChatNav((n) => n + 1);
+    setRoute(r);
+  }, []);
+  const move = useCallback((d: -1 | 1) => {
+    const h = hist.current, j = h.i + d;
+    if (j < 0 || j >= h.stack.length) return false;
+    h.i = j;
+    const r = h.stack[j];
+    if (r.page === "chat") setChatNav((n) => n + 1);
+    setRoute(r);
+    return true;
+  }, []);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Backspace") return;
+      const t = e.target as HTMLElement | null;
+      // never while you are typing or moving a slider, and not while a window or menu is open
+      if (t && (["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.isContentEditable || t.closest("[role=slider],[role=separator],[role=menu],[role=listbox]"))) return;
+      if (document.querySelector(".modal-back, .ctx-menu")) return;
+      if (move(e.key === "ArrowRight" ? 1 : -1)) e.preventDefault();
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [move]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
   const [dorms, setDorms] = useState<Dorm[]>([]);
@@ -102,6 +133,20 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
   const [winW, setWinW] = useState(window.innerWidth);
   useEffect(() => { setDecoMotion(settings.deco?.animate !== false); }, [settings.deco?.animate]);
   useEffect(() => pauseDecoWhenAway(), []);
+  // the menu on the profile at the bottom of the side bar
+  const [profileHidden, setProfileHidden] = useProfileHidden();
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [quick, setQuick] = useState(false);
+  const switchAccounts = async () => {
+    try {
+      const running = await api.novelsRunning().catch(() => [] as number[]);
+      if (running.length) {
+        if (!window.confirm("A novel is still being written. Switching accounts stops it after the last finished chapter; you can pick it up again later with Keep going.\n\nSwitch anyway?")) return;
+        await Promise.all(running.map((id) => api.novelStop(id)));
+      }
+      setSession(await api.signOut());
+    } catch (e) { window.alert(errText(e)); }
+  };
   // closing the window while a novel is being written would stop it: offer to keep writing from the tray
   useEffect(() => {
     const u = listen("dorms://close-while-writing", async () => {
@@ -161,7 +206,7 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
           {navOrder.map((page) => NAV.find((n) => n.page === page)!).map((n) => (
             <button key={n.page} draggable data-nav={n.page}
               className={`nav ${route.page === n.page || (n.page === "library" && route.page === "editor") ? "on" : ""}${navDrag === n.page ? " nav-dragging" : ""}${navDrop?.page === n.page ? (navDrop.after ? " nav-drop-after" : " nav-drop-before") : ""}`}
-              onClick={() => setRoute({ page: n.page } as Route)}
+              onClick={() => go({ page: n.page } as Route)}
               title="Click to open · hold and drag to move it (Alt + ↑ ↓ also moves it)"
               onDragStart={(e) => { e.dataTransfer.setData(NAV_DRAG, n.page); e.dataTransfer.effectAllowed = "move"; setNavDrag(n.page); }}
               onDragEnd={() => { setNavDrag(null); setNavDrop(null); }}
@@ -198,8 +243,9 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
           {(() => {
             // the user's own decorations: nameplate behind the row, wreath around the picture, name tag beside the name
             const dz = settings.deco ?? DEFAULT_DECO, pl = plateProps(dz.plate, dz.animate);
+            if (profileHidden) return null;
             return (
-              <button className={`nav me-row ${pl.className}`} {...(pl["data-plate"] ? { "data-plate": pl["data-plate"], "data-anim": pl["data-anim"] } : {})} data-testid="me-row" style={{ gap: 8 }} onClick={() => setRoute({ page: "settings", tab: "profile" })} title="Profile settings">
+              <button className={`nav me-row ${pl.className}`} onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }} {...(pl["data-plate"] ? { "data-plate": pl["data-plate"], "data-anim": pl["data-anim"] } : {})} data-testid="me-row" style={{ gap: 8 }} onClick={() => go({ page: "settings", tab: "profile" })} title="Profile settings">
                 <Wreathed wreath={dz.wreath} size="sm"><ProfileAvatar name={session.profile?.handle ?? "Guest"} size={26} src={profileAvatar(session.profile)} frame={session.profile?.avatar_frame} /></Wreathed>
                 <span className="m-name" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.profile?.handle ?? "Guest"}</span>
                 <TagChip tag={dz.tag} color={dz.tag_color} glyph={dz.tag_glyph} />
@@ -207,6 +253,8 @@ function Shell({ session, setSession }: { session: SessionState; setSession: (s:
             );
           })()}
           <small>v{info?.version ?? "…"}{info?.portable ? " · portable" : ""}</small>
+          {menu && <ProfileMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} onQuick={() => setQuick(true)} onSwitch={() => void switchAccounts()} onHide={() => setProfileHidden(true)} />}
+          {quick && <QuickSettings onClose={() => setQuick(false)} />}
         </nav>
         <main className={route.page === "chat" ? "main" : "main"} style={route.page === "chat" ? { overflow: "hidden" } : undefined}>
           {!ready ? <div className="page sub">Loading…</div> : (

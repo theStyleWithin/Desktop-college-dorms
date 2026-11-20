@@ -1502,7 +1502,11 @@ fn clean_text(s: &str, max: usize) -> String {
 #[tauri::command]
 pub fn list_personas(state: State<'_, Shared>) -> R<Vec<PersonaOut>> {
     let o = owner(&state)?;
-    let l = db::list_personas(&state.db.lock().unwrap(), &o).map_err(e)?;
+    let l = {
+        let db = state.db.lock().unwrap();
+        db::migrate_default_persona(&db, &o);
+        db::list_personas(&db, &o).map_err(e)?
+    };
     Ok(l.into_iter().map(|p| persona_out(&state, p)).collect())
 }
 
