@@ -1,5 +1,7 @@
 # Desktop College Dorms
 
+[![Your app | AlternativeTo](https://alternativeto.net/static/badges/badge-compact-dark.svg)](https://alternativeto.net/software/your-app/about/?utm_source=badge&utm_medium=referral)
+
 An offline-first desktop and Android app for creating AI characters and chatting with them: one-on-one, in group
 chats, or in Discord-style channels where the characters talk to each other too.
 
