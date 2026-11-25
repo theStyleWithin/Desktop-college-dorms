@@ -335,6 +335,8 @@ try:
     def tokenator():
         reload_ui(); nav("Characters"); time.sleep(0.8)
         d.execute_script("document.querySelector('.ccard h3').click()"); time.sleep(1.5)
+        d.execute_script("document.querySelector('[data-testid=tokenator-open]').scrollIntoView({block:'center'})"); time.sleep(0.5)
+        snap("desktop-tokenator-button", (1440, 1000))
         d.execute_script("document.querySelector('[data-testid=tokenator-open]').click()"); time.sleep(0.8)
         d.execute_script("const t=document.querySelector('[data-testid=tok-notes]');const set=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;set.call(t,'Shy library student who loves tea and secretly writes poems.');t.dispatchEvent(new Event('input',{bubbles:true}))"); time.sleep(0.5)
         snap("desktop-tokenator", (1440, 1100))
