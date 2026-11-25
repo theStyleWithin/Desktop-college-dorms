@@ -6,6 +6,7 @@ import { useToast } from "../components/ui";
 import { emptyBook, readLorebook } from "../lib/lore";
 import { errText, tokens } from "../lib/util";
 import { useStore } from "../store";
+import { useListWidth } from "../lib/listWidth";
 
 /** Lorebooks: keyword-triggered lore, kept in your library and attached to as many characters as you like. */
 export default function Lorebooks() {
@@ -18,6 +19,7 @@ export default function Lorebooks() {
   const [dirty, setDirty] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const shelf = useShelf("lorebooks");
+  const list = useListWidth("dorms.panel.lorebooks", 300, "Resize the lorebooks list");
 
   const open = (b: Lorebook) => { setSel(b.id); setName(b.name); setBook({ ...emptyBook(), ...b.book }); setDirty(false); };
   const load = async (pick?: string) => {
@@ -53,8 +55,9 @@ export default function Lorebooks() {
 
   if (books == null) return <div className="page sub">Loading…</div>;
   return (
-    <div className="notes">
+    <div className="notes" style={list.style}>
       <aside className="notes-list">
+        {list.resizer}
         <div className="row" style={{ marginBottom: 8 }}>
           <button className="btn primary grow" onClick={() => void create()}>＋ New lorebook</button>
           <NewFolderButton api={shelf} />
