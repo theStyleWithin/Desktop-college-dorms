@@ -152,7 +152,7 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
   `set_char_deco` takes known ids only and, given nothing, removes the row. `generate_char_deco` lists every choice to the model with the character's description,
   personality and tags, asks for one JSON object, keeps only known ids (a reply with none is refused and changes nothing) and stores it as `ai`; it runs only if a cloud model is set
   up or the local one is already running. With `ai_pick` on, the characters list picks, one at a time and never in a burst, for characters in view that have no row at all.
-- Shown: the user's nameplate, wreath and tag on the side bar's profile button; the profile card (Settings → Profile and Decorations); a character's nameplate and wreath in
+- Shown: the user's nameplate, wreath and tag on the side bar's profile button; the profile card (Settings → Profiles and its Decorations section); a character's nameplate and wreath in
   the characters list, and their wreath on chat pictures.
 
 ## Pathways
@@ -221,7 +221,7 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
 
 ## Side bar extras (v0.10)
 
-- Under *Prompts* the side bar shows up to four sections, each foldable and switchable in Settings → Appearance (local storage; hidden below 820 px): **Recent chats** (by the chat's `updated_at`, five, ten with "Show more"), **Favorites** (the characters' existing `favorite` flag, all of them, sorted by name; a picker with a checkbox per character toggles it), **Most used** (`character_usage`: the number of messages written by each character across the profile's chats, counted from the stored messages so it covers history; the top five)
+- Under *Prompts* the side bar shows up to four sections, each foldable and switchable in Settings → Customization (local storage; hidden below 820 px): **Recent chats** (by the chat's `updated_at`, five, ten with "Show more"), **Favorites** (the characters' existing `favorite` flag, all of them, sorted by name; a picker with a checkbox per character toggles it), **Most used** (`character_usage`: the number of messages written by each character across the profile's chats, counted from the stored messages so it covers history; the top five)
   and the **picture frame** (a character the user chooses with the pencil, kept in `dorms.side.frame` on the device until changed; with nobody chosen, the first character of the newest chat. It shows the gallery picture chosen for them in their latest chat when there is one, else the main picture; view-only, a click opens that chat, or starts one). Clicking a favorite or a most used character opens the newest chat that includes them (a one-to-one chat first), or starts one.
 
 ## Character gallery and mood pictures (v0.10)
@@ -250,7 +250,7 @@ Not built (yet): spoken replies (text to speech), and bundling a Whisper engine 
 ## Text size (v0.8)
 
 - The size of chat text is a multiplier (0.8 to 2, in steps of 0.05) stored on the device in local storage (it differs between a phone and a desktop, so it is not part of the profile or its backups) and exposed as the CSS variable
-  `--chat-scale`. Message text, the message editor, the composer and the texting-style bubbles scale with it; the rest of the interface does not. One slider is in the chat header, another (with a sample) in Settings → Appearance; they stay in step.
+  `--chat-scale`. Message text, the message editor, the composer and the texting-style bubbles scale with it; the rest of the interface does not. One slider is in the chat header, another (with a sample) in Settings → Customization; they stay in step.
 
 ## Decorations (v0.7)
 
@@ -285,18 +285,18 @@ Not built yet. A world already carries lorebooks that apply to every chat in its
 - The Rooms page's world panel gets the pickers (persona, playbook, prompts) next to the lorebooks, and the chat shows one line, for example "From this world: playbook X, 2 lorebooks, persona Kai".
 - Intended as a small patch release (0.13.2), tested with the app's own tests and a fake model (a real roleplay was not tested).
 
-## Planned: fewer Settings tabs
+## Fewer Settings tabs
 
-Not built yet. The Settings page has eleven tabs; the plan is to fold four of them into two:
+The Settings page has eight tabs (it had eleven): **Profiles**, **Customization**, **Personas**, **Models**, **Voice**, **Controller**, **Privacy** and **About**.
 
-- **Profiles** = today's **Profile** and **Decorations** tabs, as sections of one tab: You (name, picture, passcode), Decorations, Hidden accounts, then backup and delete. The Decorations section is folded away by default (its picker is large), with the "Wearing: …" line showing while it is closed. Anything that opens the old Decorations tab opens Profiles with that section open, so no link or shortcut breaks. Nothing stored changes: decorations already save straight to the settings and the Profile tab's saves are its own.
-- **Customization** = today's **Chat** and **Appearance** tabs, as sections of one tab. A catch to handle: Appearance changes apply at once, but the Chat fields (context size, max reply length, creativity, top-p, the system prompt, card prompts, the novel daily limit) only save with the **Save settings** button. In one tab that mix is easy to get wrong, so the plan is for each Chat setting to save as it is changed, so nothing in Customization needs the Save button.
-- Other tabs stay as they are (Emoji & stickers, Personas, Models, Voice, Controller, Privacy, About). An alternative that was discussed and not chosen: Customization holding only Appearance and the chat-display settings, with the reply settings moved into Models.
-- Changes to make when it is built: the tab list, the section order, redirecting old tab names, the tests that click the tabs by name, and the README mentions of Settings → Decorations and Settings → Appearance.
+- **Profiles** = the old Profile and Decorations tabs. The profile sections come first; **Decorations** is a section folded away by default (its picker is large) and its content is not drawn until it is opened. The profile card shows once.
+- **Customization** = the old Chat and Appearance tabs, plus **Emoji & stickers** (a folded section at the bottom). The Chat and Appearance settings save by themselves about half a second after each change, so nothing in this tab needs the Save button (a "Saved ✓" note appears). A half-typed number below its minimum (a context size under 512, a reply length under 16) is not saved until it is valid. The Save button stays for the other tabs (Models, Voice).
+- **Old tab names still work**: anything that opens the old Profile, Decorations, Chat, Appearance or Emoji tab opens the new tab, with the Decorations or Emoji section unfolded where that applies.
+- Nothing stored changed. Tested with the app's own tests (the folded section, one profile card, a Chat setting saving without the Save button); not checked on a real phone.
 
 ## Planned: moving a profile between devices over home Wi-Fi
 
-Not built yet. Today a profile moves between a computer and a phone as a file (Settings → Profile → backup, then copied across, for example with a USB cable). The plan is an optional way to do it over the home network, with no file copying:
+Not built yet. Today a profile moves between a computer and a phone as a file (Settings → Profiles → backup, then copied across, for example with a USB cable). The plan is an optional way to do it over the home network, with no file copying:
 
 - **Transfer, not cloud.** The data goes straight from one device to the other over the local Wi-Fi network, encrypted, and never leaves the home network. No account, no server of ours. It is optional and off by default: the sending device only listens while its "Send" screen is open.
 - **A QR code is only the pairing.** A QR code holds about 2 KB, so it cannot carry a profile (which can be hundreds of megabytes). The QR carries the sending device's address and a one-time secret that stops working after a few minutes or one use; the phone scans it with its camera and the data then travels over Wi-Fi. A short typed code is the fallback when there is no camera, or when a router or guest network stops devices talking to each other.
@@ -334,19 +334,14 @@ Not built yet. Today the Android app has no built-in engine: the desktop builds 
 - **Cloud and network models stay the default** and keep working as they do now.
 - **Before building:** rendered pictures of the phone's Models tab (the "this phone can run" card, the download and the speed test). CI can only prove it builds; whether it runs, how fast, and whether the phone overheats can only be tested on a real phone, so a real test on one is needed before it is released.
 
-## Planned: Tokenator, a built-in helper for character cards
+## Tokenator, a helper for character cards
 
-Not built yet. Tokenator is a small helper in the character editor that helps write a card and keeps it short, for models that don't cope well with big cards.
+In the character editor, the **✂️ Tokenator** button opens a panel (`TokenatorPanel.tsx`, with `lib/tokenator.ts` for the counting and the Rust command `tokenator_run` in `tokenator.rs`).
 
-- **Fill the card in.** He asks a few questions ("What is she like when she is nervous? How does she talk?") and drafts fields from the answers. A draft goes into a field only when it is accepted.
-- **Trim the card.** He shows the token count of each field and of the whole card, then offers a shorter version of a field next to the original. Each change is accepted on its own, and there is an undo. Nothing is saved without confirmation.
-- **No model needed for the counting side**, which matters for free models with a daily limit: a token count per field and in total, a flag for sentences repeated across fields, and target budgets (for example Tiny, Small and Normal) matched to the chosen model's context size, so someone on a small model knows what to aim for.
-- **He uses the person's own model.** The drafting and trimming run on whatever model is set up, so they use tokens or requests (and count against a daily limit if one is set), and with a cloud model the card text is sent to that provider just as it is when chatting. The editor says so.
-- **It works with every kind of model the app supports**: a built-in local model, a cloud provider, an "Other API" profile or a model on the network (and, once it exists, the built-in model on a phone). A very small model, such as Llama 3.2 1B, will write weaker drafts and trims than a large one, so the editor says which model he is using. With no model set up, the AI parts are switched off with a note, and the counting side (token counts, repeated sentences, budgets) still works.
-- **Counts are estimates.** Models count tokens differently and the app estimates rather than using each model's own counter.
-- **Shorter is not always better**: trimming can lose a detail the writer cared about, hence the side-by-side view and the per-field accept.
-- Later, the same help could be offered for lorebook entries.
-- Before building: show rendered pictures of his panel in the editor (the questions, the budgets and the before-and-after view). The flow can be tested with a fake model; how good his suggestions are can only be judged with a real model on real cards.
+- **Counting needs no model**: tokens per field and in total (an estimate of about 4 characters a token, the same one the editor uses), a bar per field against a budget, and sentences repeated within or across fields. Budgets: Tiny 400, Small 800, Normal 1500, Large 3000 or none; the suggested one is about a fifth of the context window, rounded down to a preset.
+- **Make shorter** asks the person's model to trim one field to its share of the budget (or to about 70% when there is no budget) and shows before and after, with Accept, Try again and Discard. **Help me write** drafts a chosen field from rough notes and the rest of the card, with Accept or Add to end. Nothing is applied until accepted, and the card still has to be saved.
+- **It uses the person's own model** (built-in, cloud, Other API or network), so it uses that model's tokens or requests, and with a cloud model the card text goes to that provider, as in chat. It is not counted against the novel writer's daily allowance. The panel says which model it is using; with none set up, the AI buttons are off with a note and counting still works.
+- **Limits**: counts are estimates; a very small model writes weaker suggestions; shorter can lose a detail, hence the before-and-after view. The backend and the flow are tested with a fake model; how good the suggestions are on real cards and real models was not tested.
 
 ## Status
 
