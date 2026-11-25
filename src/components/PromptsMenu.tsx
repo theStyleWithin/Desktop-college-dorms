@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type SavedPrompt } from "../api";
 import { Modal, useToast } from "./ui";
 import { errText } from "../lib/util";
+import TokenatorHelper from "./TokenatorHelper";
 
 export const PROMPT_DRAG = "application/x-dorms-prompt";
 
@@ -13,7 +14,7 @@ export default function PromptsMenu() {
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<SavedPrompt[] | null>(null);
-  const [edit, setEdit] = useState<SavedPrompt | "new" | null>(null);
+  const [edit, setEdit] = useState<SavedPrompt | "new" | "ask" | null>(null);
   const [q, setQ] = useState("");
   // the drawer: pulled down (taller) or out to the right (wider), the list floats over what is below it until it is pushed back
   const [pull, setPull] = useState<{ h: number; w: number; home: number } | null>(null);
@@ -83,7 +84,10 @@ export default function PromptsMenu() {
         <div className="prompts-slot" ref={slot} style={pull ? { height: pull.home } : undefined}>
           <div className={`prompts-panel${pull ? " pulled" : ""}`} ref={panel} id="prompts-panel" data-testid="prompts-panel" style={pull ? { height: pull.h, width: pull.w } : undefined}>
             <div className="prompts-scroll">
-            <button className="btn sm primary" style={{ width: "100%" }} onClick={() => setEdit("new")}>＋ New prompt</button>
+            <div className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
+              <button className="btn sm primary grow" onClick={() => setEdit("new")}>＋ New prompt</button>
+              <button className="btn sm" data-testid="prompt-ask-tokenator" title="Tokenator writes a prompt from your idea" aria-label="Ask Tokenator to write a prompt" onClick={() => setEdit("ask")}>✂️</button>
+            </div>
             {items && items.length > 4 && <input type="search" placeholder="Search prompts…" aria-label="Search prompts" value={q} onChange={(e) => setQ(e.target.value)} />}
             {items === null && <div className="hint">Loading…</div>}
             {items && items.length === 0 && <div className="hint">No prompts yet. Add one, then drag it into a chat to send it, or click it to put it in your message box.</div>}
@@ -108,12 +112,12 @@ export default function PromptsMenu() {
           </div>
         </div>
       )}
-      {edit && <PromptEditor initial={edit === "new" ? null : edit} onClose={() => setEdit(null)} onSaved={async () => { setEdit(null); await load(); }} />}
+      {edit && <PromptEditor initial={edit === "new" || edit === "ask" ? null : edit} askFirst={edit === "ask"} onClose={() => setEdit(null)} onSaved={async () => { setEdit(null); await load(); }} />}
     </div>
   );
 }
 
-function PromptEditor({ initial, onClose, onSaved }: { initial: SavedPrompt | null; onClose: () => void; onSaved: () => void }) {
+function PromptEditor({ initial, askFirst, onClose, onSaved }: { initial: SavedPrompt | null; askFirst?: boolean; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
   const [title, setTitle] = useState(initial?.title ?? "");
   const [tag, setTag] = useState(initial?.tag ?? "");
@@ -126,7 +130,12 @@ function PromptEditor({ initial, onClose, onSaved }: { initial: SavedPrompt | nu
   return (
     <Modal title={initial ? "Edit prompt" : "New prompt"} onClose={onClose} wide>
       <div style={{ display: "grid", gap: 10 }}>
-        <input type="text" autoFocus placeholder="Title, e.g. Soft redirect" aria-label="Prompt title" maxLength={100} value={title} onChange={(e) => setTitle(e.target.value)} />
+        <TokenatorHelper<{ title: string; tag: string; body: string }> kind="prompt" label="Tokenator: write it for me" startOpen={askFirst}
+          intro="Say what you want the prompt to do, in your own words. Tokenator writes a draft with your own model; nothing changes until you accept it, and you can still edit it."
+          placeholder="e.g. a gentle way to slow the story down when it moves too fast"
+          preview={(r) => (<div className="card" style={{ background: "var(--panel2)" }}><b data-testid="tokenator-make-title">{r.title}</b>{r.tag && <span className="chip" style={{ marginLeft: 8 }}>{r.tag}</span>}<div style={{ whiteSpace: "pre-wrap", marginTop: 6 }} data-testid="tokenator-make-body">{r.body}</div></div>)}
+          onAccept={(r) => { setTitle(r.title); setTag(r.tag); setBody(r.body); }} />
+        <input type="text" autoFocus={!askFirst} placeholder="Title, e.g. Soft redirect" aria-label="Prompt title" maxLength={100} value={title} onChange={(e) => setTitle(e.target.value)} />
         <input type="text" placeholder="Label (optional), e.g. Advanced Prompt" aria-label="Prompt label" maxLength={30} value={tag} onChange={(e) => setTag(e.target.value)} />
         <textarea rows={10} placeholder="The text that is sent to the chat…" aria-label="Prompt text" value={body} onChange={(e) => setBody(e.target.value)} />
         <div className="hint">Drag the prompt into a chat to send this text as your message, or click it to put it in your message box.</div>

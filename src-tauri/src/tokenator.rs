@@ -38,14 +38,14 @@ pub fn system_for(mode: &str, field: &str, target: usize) -> R<String> {
     let words = words_for(target.max(20));
     match mode {
         "trim" => Ok(format!(
-            "You are Tokenator, a careful editor of AI character cards. Rewrite the text you are given, which is {guide}, so that it uses about {target} tokens (about {words} words) or fewer. \\
-             Keep every fact, name, trait and way of speaking that matters. Cut repetition, filler, flowery wording and anything the model does not need. \\
-             Keep the same format: keep {{{{char}}}} and {{{{user}}}} as they are, keep *actions* and \"quotes\", keep <START> lines. Do not add anything new. \\
+            "You are Tokenator, a careful editor of AI character cards. Rewrite the text you are given, which is {guide}, so that it uses about {target} tokens (about {words} words) or fewer. \
+             Keep every fact, name, trait and way of speaking that matters. Cut repetition, filler, flowery wording and anything the model does not need. \
+             Keep the same format: keep {{{{char}}}} and {{{{user}}}} as they are, keep *actions* and \"quotes\", keep <START> lines. Do not add anything new. \
              Reply with only the rewritten text: no introduction, no notes, no code block."
         )),
         "draft" => Ok(format!(
-            "You are Tokenator, who helps people write AI character cards. From the person's notes, write {guide}. Use about {words} words (about {target} tokens) or fewer. \\
-             Use {{{{char}}}} for the character and {{{{user}}}} for the person talking to them. Use only what the notes and the card so far say; invent nothing important. \\
+            "You are Tokenator, who helps people write AI character cards. From the person's notes, write {guide}. Use about {words} words (about {target} tokens) or fewer. \
+             Use {{{{char}}}} for the character and {{{{user}}}} for the person talking to them. Use only what the notes and the card so far say; invent nothing important. \
              Reply with only the text for that field: no introduction, no notes, no code block."
         )),
         _ => Err("Tokenator doesn't know that job.".into()),
@@ -74,6 +74,30 @@ pub fn clip(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
 
+/// The message sent to the model for a card-field job: the text to trim, or the person's notes after what the card says so far.
+pub fn user_for(mode: &str, text: &str, notes: &str, context: &str) -> R<String> {
+    if mode == "trim" {
+        let t = clip(text, MAX_TEXT);
+        if t.trim().is_empty() { return Err("There is nothing there to shorten yet.".into()); }
+        Ok(t)
+    } else {
+        let n = clip(notes, MAX_NOTES);
+        if n.trim().is_empty() { return Err("Tell Tokenator a little about the character first.".into()); }
+        let ctx = clip(context, 3000);
+        Ok(format!("{}Notes from the person:\n{n}", if ctx.trim().is_empty() { String::new() } else { format!("The card so far:\n{ctx}\n\n") }))
+    }
+}
+
+/// One ask to the person's own model (whatever they set up: built-in, cloud, Other API or network).
+async fn ask_model(st: &Shared, o: &crate::db::Owner, system: String, user: String, temperature: f32, max_tokens: usize) -> R<String> {
+    let settings = db::get_settings(&st.db.lock().unwrap(), o);
+    let (ep, _) = resolve_endpoint(st, o, &settings).await?;
+    let msgs = vec![ChatMsg { role: "system".into(), content: system }, ChatMsg { role: "user".into(), content: user }];
+    let params = crate::llm::GenParams { temperature, top_p: 0.95, max_tokens: max_tokens.min(4096) };
+    let out = crate::llm::stream_chat(&st.http, &ep, &msgs, &params, &Notify::new(), |_| {}).await.map_err(e)?;
+    Ok(out)
+}
+
 /// Ask the model to trim (`mode` "trim", with the text) or draft (`mode` "draft", with the person's notes and what the card says so far).
 #[tauri::command]
 pub async fn tokenator_run(state: State<'_, Shared>, mode: String, field: String, text: String, notes: String, context: String, target_tokens: usize) -> R<String> {
@@ -81,24 +105,69 @@ pub async fn tokenator_run(state: State<'_, Shared>, mode: String, field: String
     let o = owner(&st)?;
     let target = target_tokens.clamp(20, 4000);
     let system = system_for(&mode, &field, target)?;
-    let user = if mode == "trim" {
-        let t = clip(&text, MAX_TEXT);
-        if t.trim().is_empty() { return Err("There is nothing there to shorten yet.".into()); }
-        t
-    } else {
-        let n = clip(&notes, MAX_NOTES);
-        if n.trim().is_empty() { return Err("Tell Tokenator a little about the character first.".into()); }
-        let ctx = clip(&context, 3000);
-        format!("{}Notes from the person:\\n{n}", if ctx.trim().is_empty() { String::new() } else { format!("The card so far:\\n{ctx}\\n\\n") })
-    };
-    let settings = db::get_settings(&st.db.lock().unwrap(), &o);
-    let (ep, _) = resolve_endpoint(&st, &o, &settings).await?;
-    let msgs = vec![ChatMsg { role: "system".into(), content: system }, ChatMsg { role: "user".into(), content: user }];
-    let params = crate::llm::GenParams { temperature: if mode == "trim" { 0.3 } else { 0.7 }, top_p: 0.95, max_tokens: (target * 2 + 64).min(4096) };
-    let out = crate::llm::stream_chat(&st.http, &ep, &msgs, &params, &Notify::new(), |_| {}).await.map_err(e)?;
+    let user = user_for(&mode, &text, &notes, &context)?;
+    let out = ask_model(&st, &o, system, user, if mode == "trim" { 0.3 } else { 0.7 }, target * 2 + 64).await?;
     let out = clean_reply(&out);
     if out.is_empty() { return Err("The model sent back nothing. Try again, or pick a different model.".into()); }
     Ok(out)
+}
+
+// ----- other things Tokenator can write -----
+
+pub const MAX_IDEA: usize = 2_000;
+
+/// The instructions for each thing Tokenator can make (besides card fields).
+pub fn make_system(kind: &str) -> R<&'static str> {
+    match kind {
+        "prompt" => Ok("You are Tokenator, who helps people write saved prompts for AI roleplay chats. A saved prompt is a short piece of text the person sends into a chat as their own message or instruction, for example a gentle redirect, a nudge for the scene, a reminder about style or length. \
+             From the person's idea, write one. Make it clear and short, written so it can be sent as it is. Use {{char}} for the character and {{user}} for the person where it helps. \
+             Reply in exactly this form and nothing else:\n\
+             TITLE: a short title of under eight words\n\
+             LABEL: one or two words, or leave this empty\n\
+             TEXT:\n\
+             the prompt itself"),
+        _ => Err("Tokenator can't write that yet.".into()),
+    }
+}
+
+/// Reads the model's answer for a prompt into (title, label, text). Lenient: if the markers are missing, everything that is not a TITLE or LABEL line is the text.
+pub fn parse_prompt(raw: &str) -> R<(String, String, String)> {
+    let t = clean_reply(raw);
+    let (mut title, mut tag, mut body, mut in_body) = (String::new(), String::new(), Vec::<String>::new(), false);
+    for line in t.lines() {
+        if in_body { body.push(line.to_string()); continue; }
+        let l = line.trim_start();
+        let low = l.to_lowercase();
+        let after = |n: usize| l[n..].trim().trim_matches('"').trim().to_string();
+        if low.starts_with("title:") { title = after(6); }
+        else if low.starts_with("label:") { tag = after(6); }
+        else if low.starts_with("text:") { in_body = true; let r = after(5); if !r.is_empty() { body.push(r); } }
+        else if low.starts_with("prompt:") { in_body = true; let r = after(7); if !r.is_empty() { body.push(r); } }
+    }
+    let mut text = body.join("\n").trim().to_string();
+    if text.is_empty() {
+        text = t.lines().filter(|l| { let low = l.trim_start().to_lowercase(); !low.starts_with("title:") && !low.starts_with("label:") }).collect::<Vec<_>>().join("\n").trim().to_string();
+    }
+    if text.is_empty() { return Err("The model didn't write a usable prompt. Try again, or say a little more about what you want.".into()); }
+    if title.is_empty() { title = text.lines().next().unwrap_or("").chars().take(50).collect::<String>().trim().to_string(); }
+    Ok((clip(&title, 100), clip(&tag, 30), text))
+}
+
+/// Write something new from a rough idea: `kind` says what ("prompt" for now). The answer is only shown to the person; nothing is saved until they accept it.
+#[tauri::command]
+pub async fn tokenator_make(state: State<'_, Shared>, kind: String, notes: String, context: String) -> R<serde_json::Value> {
+    let st: Shared = state.inner().clone();
+    let o = owner(&st)?;
+    let system = make_system(&kind)?.to_string();
+    let idea = clip(&notes, MAX_IDEA);
+    if idea.trim().is_empty() { return Err("Tell Tokenator a little about what you want first.".into()); }
+    let ctx = clip(&context, 2000);
+    let user = if ctx.trim().is_empty() { format!("My idea:\n{idea}") } else { format!("{ctx}\n\nMy idea:\n{idea}") };
+    let out = ask_model(&st, &o, system, user, 0.7, 900).await?;
+    match kind.as_str() {
+        "prompt" => { let (title, tag, body) = parse_prompt(&out)?; Ok(serde_json::json!({ "title": title, "tag": tag, "body": body })) }
+        _ => Err("Tokenator can't write that yet.".into()),
+    }
 }
 
 #[cfg(test)]
@@ -112,6 +181,30 @@ mod tests {
         let d = system_for("draft", "mes_example", 200).unwrap();
         assert!(d.contains("<START>") && d.contains("150 words") && d.contains("{{user}}"));
         assert!(system_for("trim", "name", 100).is_err() && system_for("rewrite", "description", 100).is_err(), "only real fields and known jobs");
+    }
+
+    #[test]
+    fn the_prompts_have_no_stray_backslashes_and_real_line_breaks() {
+        for (mode, field) in [("trim", "description"), ("draft", "scenario")] {
+            let sys = system_for(mode, field, 300).unwrap();
+            assert!(!sys.contains('\\'), "{mode}: a stray backslash in the instructions: {sys}");
+        }
+        let u = user_for("draft", "", "shy and kind", "Description: a student").unwrap();
+        assert!(u.contains('\n') && !u.contains("\\n"), "a real line break, not a typed backslash and n: {u:?}");
+        assert!(u.starts_with("The card so far:\nDescription: a student\n\nNotes from the person:\nshy and kind"));
+    }
+
+    #[test]
+    fn a_prompt_answer_is_read_into_its_parts() {
+        let (t, l, b) = parse_prompt("TITLE: Soft redirect\nLABEL: Scene\nTEXT:\n(OOC: let's steer somewhere gentler.)\nThanks!").unwrap();
+        assert_eq!((t.as_str(), l.as_str(), b.as_str()), ("Soft redirect", "Scene", "(OOC: let's steer somewhere gentler.)\nThanks!"));
+        let (t, _, b) = parse_prompt("```\ntitle: \"Slow down\"\nlabel:\ntext: Take it slower, {{char}}.\n```").unwrap();
+        assert_eq!((t.as_str(), b.as_str()), ("Slow down", "Take it slower, {{char}}."));
+        let (t, l, b) = parse_prompt("Keep replies under three paragraphs.\nStay in character.").unwrap();
+        assert_eq!((t.as_str(), l.as_str(), b.as_str()), ("Keep replies under three paragraphs.", "", "Keep replies under three paragraphs.\nStay in character."), "no markers: all of it is the text, the first line names it");
+        assert!(parse_prompt("TITLE: Only a title").is_err(), "a title with no text is not a usable prompt");
+        assert!(parse_prompt("   ").is_err());
+        assert!(make_system("prompt").unwrap().contains("TEXT:") && make_system("ship").is_err());
     }
 
     #[test]
