@@ -6,6 +6,7 @@ mod llama;
 mod llm;
 mod novel;
 mod shelf;
+mod starters;
 mod tokenator;
 mod tray;
 mod deco;

@@ -71,7 +71,7 @@ def connect(opts, timeout=90):
 
 env = dict(os.environ, XDG_DATA_HOME=os.path.join(WORK, "data"), XDG_CONFIG_HOME=os.path.join(WORK, "cfg"),
            XDG_CACHE_HOME=os.path.join(WORK, "cache"), GDK_BACKEND="x11", APPIMAGE_EXTRACT_AND_RUN="1",
-           WEBKIT_DISABLE_COMPOSITING_MODE="1", WEBKIT_DISABLE_DMABUF_RENDERER="1")
+           WEBKIT_DISABLE_COMPOSITING_MODE="1", WEBKIT_DISABLE_DMABUF_RENDERER="1", DORMS_NO_STARTERS="1")
 if not os.environ.get("E2E_BUNDLED_ENGINE"):  # default: point at a dev build of the engine
     env["DORMS_LLAMA_SERVER"] = LLAMA
 os.makedirs(WORK, exist_ok=True)

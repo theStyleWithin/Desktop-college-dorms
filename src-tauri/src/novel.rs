@@ -133,8 +133,9 @@ pub fn init(c: &Connection) -> rusqlite::Result<()> {
     )
 }
 
+/// Days since 1970 (UTC). `db::now()` counts milliseconds, so a day is 86,400,000 of them (dividing by 86,400 made "today" last under 90 seconds).
 fn day() -> i64 {
-    db::now() / 86400
+    db::now() / 86_400_000
 }
 
 fn who(o: &Owner) -> String {
@@ -150,7 +151,8 @@ fn add_usage(c: &Connection, o: &Owner, n: u32) {
         "INSERT INTO novel_usage(profile,day,n) VALUES(?1,?2,?3) ON CONFLICT(profile,day) DO UPDATE SET n=n+excluded.n",
         params![who(o), day(), n as i64],
     );
-    let _ = c.execute("DELETE FROM novel_usage WHERE day < ?1", [day() - 7]);
+    // old rows, and rows kept under the earlier (wrong) day numbers, which were far larger than any real day
+    let _ = c.execute("DELETE FROM novel_usage WHERE day < ?1 OR day > ?2", [day() - 7, day() + 1]);
 }
 
 /// A limit was hit for real: today counts as used up.
@@ -402,6 +404,12 @@ mod tests {
         assert!(b.contains("36 of 40") && b.contains("7 chapters") && b.contains("on purpose") && b.contains("Enjoy your story"));
         assert!(stop_note("finished", 1, 1, 0, 0, "").contains("1 chapter written"));
         assert!(stop_note("limit", 2, 5, 0, 0, "429 slow down").contains("429 slow down"));
+    }
+
+    #[test]
+    fn a_day_is_a_whole_day() {
+        let d = day();
+        assert!((19_000..100_000).contains(&d), "days since 1970 should be about 20,000, got {d}");
     }
 
     #[test]

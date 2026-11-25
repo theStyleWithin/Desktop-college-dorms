@@ -117,7 +117,7 @@ class Fake(BaseHTTPRequestHandler):
 threading.Thread(target=HTTPServer(("127.0.0.1", 18998), Fake).serve_forever, daemon=True).start()
 
 env = dict(os.environ, XDG_DATA_HOME=os.path.join(WORK, "data"), XDG_CONFIG_HOME=os.path.join(WORK, "cfg"), XDG_CACHE_HOME=os.path.join(WORK, "cache"),
-           GDK_BACKEND="x11", WEBKIT_DISABLE_COMPOSITING_MODE="1", WEBKIT_DISABLE_DMABUF_RENDERER="1")
+           GDK_BACKEND="x11", WEBKIT_DISABLE_COMPOSITING_MODE="1", WEBKIT_DISABLE_DMABUF_RENDERER="1", **({} if os.environ.get("STARTERS_SHOT") else {"DORMS_NO_STARTERS": "1"}))
 drv = subprocess.Popen(["tauri-driver"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(2)
 opts = ArgOptions(); opts.set_capability("browserName", "wry"); opts.set_capability("tauri:options", {"application": APP})
 from selenium.webdriver.remote.client_config import ClientConfig
