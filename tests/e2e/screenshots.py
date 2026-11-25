@@ -291,7 +291,7 @@ try:
         inv("save_settings", {"settings": st})
         looks = [("sakura", "", "catphones"), ("aurora", "", "lotus"), ("embers", "", "sprout"), ("tide", "", "koi"), ("starfield", "", "pearlring"), ("neongrid", "", "redlantern")]
         for c, (pl, bg, wr) in zip(chars_all, looks): inv("set_char_deco", {"characterId": c["id"], "plate": pl, "bg": bg, "wreath": wr})
-        reload_ui(); nav("Settings"); tab("Decorations")
+        reload_ui(); nav("Settings"); tab("Profiles"); d.execute_script("document.querySelector('[data-testid=fold-deco] summary').click()"); time.sleep(0.8)
         snap("desktop-decorations", (1440, 1100))
     safe("decorations", decorations)
 
@@ -343,6 +343,13 @@ try:
         d.execute_script("document.querySelector('.modal button[aria-label=Close]').click()"); time.sleep(0.4)
     safe("tokenator", tokenator)
 
+    def settings_tabs():
+        reload_ui(); nav("Settings"); tab("Profiles"); snap("desktop-settings-profiles", (1440, 1000))
+        tab("Customization"); snap("desktop-settings-customization", (1440, 1000))
+        d.execute_script("document.querySelector('[data-testid=fold-emoji] summary').click()"); time.sleep(1.0)
+        snap("desktop-settings-customization-emoji", (1440, 1100), scroll=700)
+    safe("settings tabs", settings_tabs)
+
     def folders():
         bk = lambda n: {"name": n, "description": "", "scan_depth": None, "token_budget": None, "recursive_scanning": None, "extensions": {}, "entries": [{"keys": ["lantern"], "content": "Paper lanterns hang between the rooftops.", "extensions": {}, "enabled": True, "insertion_order": 0, "case_sensitive": None, "name": "Lanterns", "priority": None, "id": 0, "comment": "", "selective": False, "secondary_keys": [], "constant": False, "position": "before_char"}]}
         made = {n: inv("save_lorebook", {"lorebook": {"id": "", "name": n, "book": bk(n), "created_at": 0, "updated_at": 0}}) for n in ["Lantern Quarter", "Corner shop regulars", "House rules", "Tea menu", "Old canal history", "Rooftop secrets"]}
@@ -364,10 +371,10 @@ try:
 
     # profiles: the Profile tab, then the welcome screen you see once a profile exists
     inv("create_profile", {"handle": "Alex", "displayName": "Alex", "passcode": "demo-pass"}); reload_ui()
-    nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Profile').click()"); time.sleep(0.6)
+    nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Profiles').click()"); time.sleep(0.6)
     snap("desktop-profile", DESK)
     d.set_window_size(*PHONE); time.sleep(0.6)
-    d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Profile').click()"); time.sleep(0.6)
+    d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Profiles').click()"); time.sleep(0.6)
     snap("mobile-profile", PHONE)
     inv("sign_out"); reload_ui()
     snap("mobile-welcome", PHONE)

@@ -1,6 +1,6 @@
 import { useTextScale, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
 import { DEFAULT_NAMES, WIDGETS, useWidgetNames, useWidgetPrefs } from "../components/SideWidgets";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DEFAULT_DECO, api, newProfile, profileAvatar, onModelProgress, saveExportFile, type ApiProfile, type EngineStatus, type ExportInfo, type Hardware, type ModelFile, type ModelProgress, type Settings } from "../api";
 import { CreateProfileModal, PASSCODE_NOTE, ProfileAvatar } from "../components/ProfileForms";
 import { PersonasTab, ProfilePicture } from "../components/Personas";
@@ -13,8 +13,22 @@ import { errText, fmtBytes } from "../lib/util";
 import type { SessionState } from "../api";
 import { useStore } from "../store";
 
-type Tab = "profile" | "deco" | "emoji" | "personas" | "models" | "chat" | "voice" | "controller" | "look" | "privacy" | "about";
-const TABS: [Tab, string][] = [["profile", "Profile"], ["deco", "Decorations"], ["emoji", "Emoji & stickers"], ["personas", "Personas"], ["models", "Models"], ["chat", "Chat"], ["voice", "Voice"], ["controller", "Controller"], ["look", "Appearance"], ["privacy", "Privacy"], ["about", "About"]];
+type Tab = "profiles" | "custom" | "personas" | "models" | "voice" | "controller" | "privacy" | "about";
+const TABS: [Tab, string][] = [["profiles", "Profiles"], ["custom", "Customization"], ["personas", "Personas"], ["models", "Models"], ["voice", "Voice"], ["controller", "Controller"], ["privacy", "Privacy"], ["about", "About"]];
+/** Names of tabs that were merged into others: they open the new tab, with the right section unfolded. */
+const OLD_TABS: Record<string, { tab: Tab; open?: "deco" | "emoji" }> = {
+  profile: { tab: "profiles" }, deco: { tab: "profiles", open: "deco" }, chat: { tab: "custom" }, look: { tab: "custom" }, emoji: { tab: "custom", open: "emoji" },
+};
+
+/** A section that is folded away until it is opened (its content is not drawn while closed). */
+function Fold({ title, hint, open, onToggle, testid, children }: { title: string; hint: string; open: boolean; onToggle: (o: boolean) => void; testid: string; children: React.ReactNode }) {
+  return (
+    <details className="card" style={{ marginTop: 24 }} open={open} data-testid={testid} onToggle={(e) => onToggle((e.currentTarget as HTMLDetailsElement).open)}>
+      <summary style={{ cursor: "pointer", fontWeight: 600 }}>{title} <span className="tok" style={{ fontWeight: 400 }}>{hint}</span></summary>
+      {open && <div style={{ marginTop: 12 }}>{children}</div>}
+    </details>
+  );
+}
 
 const ENDPOINTS: [string, string, string][] = [
   ["OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"],
@@ -26,7 +40,10 @@ const ENDPOINTS: [string, string, string][] = [
 export default function SettingsPage({ initialTab }: { initialTab?: string }) {
   const { settings, setSettings, refresh } = useStore();
   const toast = useToast();
-  const [tab, setTab] = useState<Tab>((TABS.find((t) => t[0] === initialTab)?.[0]) ?? "models");
+  const start = TABS.find((t) => t[0] === initialTab) ? { tab: initialTab as Tab } : (OLD_TABS[initialTab ?? ""] ?? { tab: "models" as Tab });
+  const [tab, setTab] = useState<Tab>(start.tab);
+  const [decoOpen, setDecoOpen] = useState(start.open === "deco");
+  const [emojiOpen, setEmojiOpen] = useState(start.open === "emoji");
   const [s, setS] = useState<Settings>(settings);
   // the name can also change from the Profile tab's own Save; keep this draft in step so it can't revert it
   useEffect(() => { setS((x) => (x.user_name === settings.user_name ? x : { ...x, user_name: settings.user_name })); }, [settings.user_name]);
@@ -34,6 +51,22 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
   useEffect(() => { setS((x) => (JSON.stringify(x.deco) === JSON.stringify(settings.deco) ? x : { ...x, deco: settings.deco })); }, [settings.deco]);
   const dirty = JSON.stringify(s) !== JSON.stringify(settings);
   const patch = (p: Partial<Settings>) => setS((x) => ({ ...x, ...p }));
+
+  // Chat and Appearance settings save a moment after each change, so nothing in Customization needs the Save button
+  const pending = useRef<Partial<Settings>>({});
+  const timer = useRef<number | undefined>(undefined);
+  const latest = useRef(settings); latest.current = settings;
+  const [autoSaved, setAutoSaved] = useState(false);
+  const flush = async () => {
+    const p: Record<string, unknown> = { ...pending.current };
+    // a half-typed number (a context size of 4 while typing 4096) is kept for later, never saved
+    const bad = ("context_tokens" in p && Number(p.context_tokens) < 512) || ("max_tokens" in p && Number(p.max_tokens) < 16);
+    if (bad) { const keep: Record<string, unknown> = {}; if (Number(p.context_tokens) < 512) keep.context_tokens = p.context_tokens; if (Number(p.max_tokens) < 16) keep.max_tokens = p.max_tokens; delete p.context_tokens; delete p.max_tokens; pending.current = keep as Partial<Settings>; } else pending.current = {};
+    if (!Object.keys(p).length) return;
+    try { await setSettings({ ...latest.current, ...(p as Partial<Settings>) }); setAutoSaved(true); window.setTimeout(() => setAutoSaved(false), 2000); } catch (e) { toast(errText(e), "err"); }
+  };
+  const patchSave = (p: Partial<Settings>) => { patch(p); pending.current = { ...pending.current, ...p }; window.clearTimeout(timer.current); timer.current = window.setTimeout(flush, 500); };
+  useEffect(() => () => { window.clearTimeout(timer.current); void flush(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async () => {
     try { await setSettings(s); toast("Settings saved", "ok"); } catch (e) { toast(errText(e), "err"); }
@@ -44,6 +77,7 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
       <div className="page-head">
         <div><h1>Settings</h1></div>
         <div className="row">
+          {autoSaved && !dirty && <span className="tok" data-testid="auto-saved">Saved ✓</span>}
           {dirty && <span className="tok">Unsaved changes</span>}
           <button className="btn primary" disabled={!dirty} onClick={save}>Save settings</button>
         </div>
@@ -51,15 +85,21 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
       <div className="tabs" role="tablist">
         {TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}
       </div>
-      {tab === "profile" && <ProfileTab s={s} patch={patch} />}
-      {tab === "deco" && <DecoTab />}
-      {tab === "emoji" && <EmojiTab />}
+      {tab === "profiles" && <>
+        <ProfileTab s={s} patch={patch} />
+        <Fold title="Decorations" hint="banner, wreath, nameplate and tag" open={decoOpen} onToggle={setDecoOpen} testid="fold-deco"><DecoTab noCard /></Fold>
+      </>}
+      {tab === "custom" && <>
+        <h2 className="sect" style={{ borderTop: 0, marginTop: 0 }}>Chat</h2>
+        <ChatTab s={s} patch={patchSave} />
+        <h2 className="sect">Appearance</h2>
+        <Look s={s} patch={patchSave} />
+        <Fold title="Emoji & stickers" hint="your emoji and sticker packs" open={emojiOpen} onToggle={setEmojiOpen} testid="fold-emoji"><EmojiTab /></Fold>
+      </>}
       {tab === "personas" && <PersonasTab />}
       {tab === "models" && <Models s={s} patch={patch} onChanged={refresh} />}
-      {tab === "chat" && <ChatTab s={s} patch={patch} />}
       {tab === "controller" && <ControllerTab />}
       {tab === "voice" && <VoiceTab s={s} patch={patch} ensureSaved={async () => { if (dirty) await setSettings(s); }} />}
-      {tab === "look" && <Look s={s} patch={patch} />}
       {tab === "privacy" && <Privacy s={s} />}
       {tab === "about" && <About />}
     </div>
