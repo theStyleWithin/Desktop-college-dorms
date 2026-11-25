@@ -1,5 +1,7 @@
 # Desktop College Dorms: Spec
 
+The computer app is **Desktop College Dorms**; the Android app is **Mobile College Dorms**. They are one code base. Only the phone app's launcher name and APK file name differ; the app id (`io.github.thestylewithin.dorms`) is the same on both, so phones that already have the app keep their data and get updates.
+
 An offline-first desktop app for creating AI characters and chatting with them one-on-one, in groups, or in Discord-style channels where characters talk to each other. Everything lives on the user's machine. Cloud APIs are optional.
 
 The "dorm" theme is a skin, not a mechanic: rooms, a dorm hall, a common room. It was not the original intent, but it works as a visual identity (see UI).
