@@ -13,6 +13,7 @@ const titleOf = (n: Pick<Note, "title" | "body">) => n.title.trim() || n.body.tr
  */
 export default function Notes() {
   const toast = useToast();
+  const list = useListWidth("dorms.panel.notes", 300, "Resize the notes list");
   const [notes, setNotes] = useState<Note[] | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -64,7 +65,6 @@ export default function Notes() {
   }, [notes, q]);
 
   if (notes == null) return <div className="page sub">Loading…</div>;
-  const list = useListWidth("dorms.panel.notes", 300, "Resize the notes list");
   return (
     <div className="notes" style={list.style}>
       <aside className="notes-list">

@@ -19,6 +19,7 @@ export default function Lorebooks() {
   const [dirty, setDirty] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const shelf = useShelf("lorebooks");
+  const list = useListWidth("dorms.panel.lorebooks", 300, "Resize the lorebooks list");
 
   const open = (b: Lorebook) => { setSel(b.id); setName(b.name); setBook({ ...emptyBook(), ...b.book }); setDirty(false); };
   const load = async (pick?: string) => {
@@ -53,7 +54,6 @@ export default function Lorebooks() {
   const attached = characters.filter((c) => sel && c.lorebooks?.includes(sel));
 
   if (books == null) return <div className="page sub">Loading…</div>;
-  const list = useListWidth("dorms.panel.lorebooks", 300, "Resize the lorebooks list");
   return (
     <div className="notes" style={list.style}>
       <aside className="notes-list">
