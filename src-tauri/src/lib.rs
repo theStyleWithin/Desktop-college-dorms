@@ -6,6 +6,7 @@ mod llama;
 mod llm;
 mod novel;
 mod shelf;
+mod starters;
 mod tray;
 mod deco;
 mod emoji;

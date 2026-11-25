@@ -165,7 +165,9 @@ fn remove_media_file(st: &AppState, m: &Option<Media>) {
 
 #[tauri::command]
 pub fn list_characters(state: State<'_, Shared>) -> R<Vec<CharacterOut>> {
-    let list = db::list_characters(&state.db.lock().unwrap(), &owner(&state)?).map_err(e)?;
+    let o = owner(&state)?;
+    crate::starters::ensure(&state.db.lock().unwrap(), &state.data_dir, &o);
+    let list = db::list_characters(&state.db.lock().unwrap(), &o).map_err(e)?;
     Ok(list.into_iter().map(|c| out(&state, c)).collect())
 }
 
