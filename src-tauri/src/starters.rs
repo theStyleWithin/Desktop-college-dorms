@@ -103,7 +103,8 @@ mod tests {
         for (json, png) in STARTERS {
             let c = card(json);
             assert!(!c.name.is_empty() && !c.description.is_empty() && !c.first_mes.is_empty() && !png.is_empty());
-            assert!(!json.contains("{character}") && !json.contains("{user}"), "placeholders use double braces");
+            let bare = json.replace("{{", "").replace("}}", "");
+            assert!(!bare.contains('{') && !bare.contains('}'), "placeholders use double braces");
         }
     }
 
