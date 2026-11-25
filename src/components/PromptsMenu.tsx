@@ -134,7 +134,7 @@ function PromptEditor({ initial, askFirst, onClose, onSaved }: { initial: SavedP
           intro="Say what you want the prompt to do, in your own words. Tokenator writes a draft with your own model; nothing changes until you accept it, and you can still edit it."
           placeholder="e.g. a gentle way to slow the story down when it moves too fast"
           preview={(r) => (<div className="card" style={{ background: "var(--panel2)" }}><b data-testid="tokenator-make-title">{r.title}</b>{r.tag && <span className="chip" style={{ marginLeft: 8 }}>{r.tag}</span>}<div style={{ whiteSpace: "pre-wrap", marginTop: 6 }} data-testid="tokenator-make-body">{r.body}</div></div>)}
-          onAccept={(r) => { setTitle(r.title); setTag(r.tag); setBody(r.body); }} />
+          onAccept={async (r) => { await api.savePrompt({ id: initial?.id, title: r.title, tag: r.tag, body: r.body }); onSaved(); }} />
         <input type="text" autoFocus={!askFirst} placeholder="Title, e.g. Soft redirect" aria-label="Prompt title" maxLength={100} value={title} onChange={(e) => setTitle(e.target.value)} />
         <input type="text" placeholder="Label (optional), e.g. Advanced Prompt" aria-label="Prompt label" maxLength={30} value={tag} onChange={(e) => setTag(e.target.value)} />
         <textarea rows={10} placeholder="The text that is sent to the chat…" aria-label="Prompt text" value={body} onChange={(e) => setBody(e.target.value)} />

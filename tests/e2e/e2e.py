@@ -1360,6 +1360,22 @@ try:
     mk_ = invoke("tokenator_make", {"kind": "prompt", "notes": "a way to slow the story down", "context": ""})
     check("Tokenator writes a prompt from an idea, as a title, label and text", mk_ == {"title": "Slow it down", "tag": "Pace", "body": "Let's take this scene more slowly, {{char}}."} and "saved prompts" in seen["body"]["messages"][0]["content"] and "a way to slow the story down" in seen["body"]["messages"][1]["content"], str(mk_))
     check("and saves nothing by itself", len(invoke("list_prompts")) == n_prompts_)
+    n_books_ = len(invoke("list_lorebooks"))
+    seen["pieces"] = ["ENTRY: The Old Library\nKEYS: library, books\nTEXT: A crumbling hall of shelves that closes at dusk.\n\n", "ENTRY: Tea seller\nKEYS: tea\nTEXT: Knows everyone's order."]
+    lb_ = invoke("tokenator_make", {"kind": "lorebook", "notes": "a tea district with a library", "context": "Lorebook: Quarter. Entries it already has, which must not be repeated: none."})
+    check("Tokenator writes lorebook entries from an idea (name, keys, text)", [e["name"] for e in lb_["entries"]] == ["The Old Library", "Tea seller"] and lb_["entries"][0]["keys"] == ["library", "books"] and "must not be repeated" in seen["body"]["messages"][1]["content"] and "lorebooks" in seen["body"]["messages"][0]["content"], str(lb_))
+    check("and saves no lorebook by itself", len(invoke("list_lorebooks")) == n_books_)
+    n_pb_, n_rooms_ = len(invoke("list_playbooks")), len(invoke("list_rooms"))
+    seen["pieces"] = ["NAME: Slow burn\nWHAT: Trust that grows with kindness.\nHOW: Be kind.\n", "VALUE: Trust | number | 0-10 | starts 2 | how much they trust you | 0=a wary stranger, 3=a friend\nVALUE: Mood | choice | calm, cheerful, tense | starts calm | how they feel\n", "RULE: Kind words | player says: thank you, please | trust +1; mood = cheerful\nRULE: Rude | player says: idiot | trust -2; mood = tense; ghost +5"]
+    pbk_ = invoke("tokenator_make", {"kind": "playbook", "notes": "a slow friendship", "context": ""})
+    check("Tokenator writes a playbook from an idea: values with ranges and meanings, and rules that change them", pbk_["name"] == "Slow burn" and [v["id"] for v in pbk_["variables"]] == ["trust", "mood"] and len(pbk_["variables"][0]["bands"]) == 2 and [len(r["then"]) for r in pbk_["rules"]] == [2, 2] and "VALUE:" in seen["body"]["messages"][0]["content"], str(pbk_)[:300])
+    seen["pieces"] = ["NAME: Moon Gate Attic\nKIND: Other\nTEXT: A round window high up.\nFairy lights on the beams."]
+    rmk_ = invoke("tokenator_make", {"kind": "room", "notes": "a cosy attic", "context": ""})
+    check("Tokenator describes a room: name, kind and description", rmk_ == {"name": "Moon Gate Attic", "kind": "other", "description": "A round window high up.\nFairy lights on the beams."}, str(rmk_))
+    seen["pieces"] = ["NAME: Harbour\nABOUT: A moonlit harbour town.\nLORE: Fishing boats and lamps.\n\nThe tide is gentle.\nROOM: Harbour Office | office | Maps and ropes.\nROOM: Lighthouse | rooftop | A tall white tower.\nROOM: Fish Market | kitchen | Crates and gulls.\nLINK: Harbour Office -> Lighthouse\nLINK: Harbour Office -> Fish Market\nLINK: Lighthouse -> Nowhere"]
+    wdk_ = invoke("tokenator_make", {"kind": "world", "notes": "a harbour town", "context": "World: Harbour."})
+    check("Tokenator maps out a world: lore, rooms with kinds, and which rooms connect", wdk_["description"] == "A moonlit harbour town." and "tide is gentle" in wdk_["lore"] and [r["name"] for r in wdk_["rooms"]] == ["Harbour Office", "Lighthouse", "Fish Market"] and wdk_["rooms"][0]["kind"] == "office" and wdk_["links"] == [["Harbour Office", "Lighthouse"], ["Harbour Office", "Fish Market"]], str(wdk_)[:300])
+    check("and none of the three saves anything by itself", len(invoke("list_playbooks")) == n_pb_ and len(invoke("list_rooms")) == n_rooms_)
     check("Tokenator refuses an empty idea and a kind it can't write", "little about" in str(inv_err("tokenator_make", {"kind": "prompt", "notes": " ", "context": ""})) and bool(inv_err("tokenator_make", {"kind": "ship", "notes": "x", "context": ""})))
     seen["pieces"] = None
     nav("Characters"); time.sleep(0.8)
@@ -1373,6 +1389,51 @@ try:
     check("Discard drops the suggestion", d.execute_script("return !document.querySelector('[data-testid=tok-result]')"))
     seen["pieces"] = None
     dismiss()
+    lbk_ = invoke("save_lorebook", {"lorebook": {"id": "", "name": "Quarter", "book": {"name": "Quarter", "description": "", "scan_depth": None, "token_budget": None, "recursive_scanning": None, "extensions": {}, "entries": []}, "created_at": 0, "updated_at": 0}})
+    reload_ui(); nav("Lorebooks"); time.sleep(1.0)
+    seen["pieces"] = ["ENTRY: Moon Gate\nKEYS: moon, gate\nTEXT: A round window high in the attic.\n\n", "ENTRY: Canal\nKEYS: canal, water\nTEXT: Lanterns line both banks."]
+    d.execute_script("document.querySelector('.notes-list .note-item').click()"); time.sleep(0.8)
+    n_ent0_ = d.execute_script("return document.querySelectorAll('.notes-main .entry').length")
+    d.execute_script("document.querySelector('.notes-main [data-testid=tokenator-make-lorebook]').click()"); time.sleep(0.5)
+    set_value("[data-testid=tokenator-make-notes]", "a moonlit canal district"); time.sleep(0.3)
+    d.execute_script("document.querySelector('[data-testid=tokenator-make-go]').click()"); time.sleep(2.5)
+    check("the lorebook editor shows the drafted entries first and adds none yet", d.execute_script("return document.querySelectorAll('[data-testid=tokenator-lore-entry]').length")==2 and d.execute_script("return document.querySelectorAll('.notes-main .entry').length")==n_ent0_)
+    d.execute_script("document.querySelector('[data-testid=tokenator-make-accept]').click()"); time.sleep(0.6)
+    time.sleep(0.8)
+    lbs_ = [b for b in invoke("list_lorebooks") if b["id"] == lbk_["id"]]
+    check("accepting adds the entries to the lorebook and saves it, after the entries already there, with their keys", len(lbs_) == 1 and [e["name"] for e in lbs_[0]["book"]["entries"]][-2:] == ["Moon Gate", "Canal"] and lbs_[0]["book"]["entries"][-2]["keys"] == ["moon", "gate"] and len(lbs_[0]["book"]["entries"]) == n_ent0_ + 2, str(lbs_)[:300])
+    invoke("delete_lorebook", {"id": lbk_["id"]})
+    seen["pieces"] = None
+    # the playbook helper (builds on what is there, saves nothing until Save) and the world helper (makes rooms and joins them)
+    seen["pieces"] = ["NAME: Slow burn\nWHAT: Trust that grows with kindness.\nHOW: Be kind.\nVALUE: Trust | number | 0-10 | starts 2 | how much they trust you | 0=a wary stranger, 3=a friend\nRULE: Kind words | player says: thank you | trust +1"]
+    reload_ui(); nav("Playbooks"); time.sleep(0.8)
+    d.execute_script("document.querySelector('[data-testid=pb-new]').click()"); time.sleep(1.0)
+    d.execute_script("document.querySelector('[data-testid=tokenator-make-playbook]').click()"); time.sleep(0.4)
+    set_value("[data-testid=tokenator-make-notes]", "a slow friendship"); time.sleep(0.3)
+    d.execute_script("document.querySelector('[data-testid=tokenator-make-go]').click()"); time.sleep(2.5)
+    check("the playbook helper shows its draft first and adds nothing yet", d.execute_script("return !!document.querySelector('[data-testid=tokenator-playbook-preview]') && document.querySelectorAll('[data-var]').length===0"))
+    d.execute_script("document.querySelector('[data-testid=tokenator-make-accept]').click()"); time.sleep(0.8)
+    time.sleep(0.8)
+    made_pb_ = [x for x in invoke("list_playbooks") if x["name"] == "Slow burn"]
+    check("accepting saves the playbook with its values and rules", len(made_pb_) == 1 and [v["id"] for v in made_pb_[0]["variables"]] == ["trust"] and len(made_pb_[0]["rules"]) == 1 and len(invoke("list_playbooks")) == n_pb_ + 1, str(made_pb_)[:300])
+    for x_ in made_pb_: invoke("delete_playbook", {"id": x_["id"]})
+    w_ = invoke("create_world", {"name": "Harbour test", "description": ""}); w_lore_ = w_["lore"]; rooms_before_ = {r["id"] for r in invoke("list_rooms")}
+    seen["pieces"] = ["NAME: Harbour\nABOUT: A moonlit harbour town.\nLORE: Fishing boats and lamps.\nROOM: Harbour Office | office | Maps and ropes.\nROOM: Lighthouse | rooftop | A tall white tower.\nLINK: Harbour Office -> Lighthouse"]
+    reload_ui(); nav("Rooms"); time.sleep(1.0)
+    d.execute_script("document.querySelector('[data-testid=world-chip-%d]').click()" % w_["id"]); time.sleep(0.8)
+    d.execute_script("document.querySelector('[data-testid=world-panel] [data-testid=tokenator-make-world]').click()"); time.sleep(0.4)
+    set_value("[data-testid=tokenator-make-notes]", "a harbour town"); time.sleep(0.3)
+    d.execute_script("document.querySelector('[data-testid=tokenator-make-go]').click()"); time.sleep(2.5)
+    check("the world helper shows rooms and links first, and makes none yet", d.execute_script("return !!document.querySelector('[data-testid=tokenator-world-preview]')") and {r["id"] for r in invoke("list_rooms")} == rooms_before_)
+    d.execute_script("document.querySelector('[data-testid=tokenator-make-accept]').click()"); time.sleep(2.5)
+    new_ = [r for r in invoke("list_rooms") if r["id"] not in rooms_before_]
+    ho_ = next((r for r in new_ if r["name"] == "Harbour Office"), None); lh_ = next((r for r in new_ if r["name"] == "Lighthouse"), None)
+    check("accepting makes the rooms in that world, with their kinds, and joins them", bool(ho_ and lh_) and ho_["world_id"] == w_["id"] and ho_["kind"] == "office" and lh_["id"] in (ho_.get("links") or []), str(new_)[:300])
+    wnow_ = next(x for x in invoke("list_worlds") if x["id"] == w_["id"])
+    check("and adds to the world's lore, and fills its description because it was empty", wnow_["lore"].startswith(w_lore_) and "Fishing boats" in wnow_["lore"] and wnow_["description"] == "A moonlit harbour town.", str(wnow_)[:200])
+    for r_ in new_: invoke("delete_room", {"id": r_["id"]})
+    invoke("delete_world", {"id": w_["id"]})
+    seen["pieces"] = None
     # statuses: in the character's voice (written by the model) or in the user's own words
     cid = chars_now[0]["id"]
     old_pieces = seen.get("pieces"); seen["pieces"] = ["studying ", "hard"]
@@ -1866,10 +1927,13 @@ try:
         set_value("[data-testid=tokenator-make-notes]", "a gentle way to slow things down"); time.sleep(0.3)
         d.execute_script("document.querySelector('[data-testid=tokenator-make-go]').click()"); time.sleep(2.5)
         check("the draft is shown first, and nothing is filled in or saved yet", d.execute_script("const t=document.querySelector('[data-testid=tokenator-make-title]');return !!t && t.textContent==='Gentle brakes'") and d.execute_script("return document.querySelector(\"input[aria-label='Prompt title']\").value===''") and len(invoke("list_prompts")) == n_pr_)
-        d.execute_script("document.querySelector('[data-testid=tokenator-make-accept]').click()"); time.sleep(0.6)
-        check("accepting fills the title, label and text of the prompt", d.execute_script("return document.querySelector(\"input[aria-label='Prompt title']\").value==='Gentle brakes' && document.querySelector(\"input[aria-label='Prompt label']\").value==='Pace' && document.querySelector(\"textarea[aria-label='Prompt text']\").value.includes('slow down for a moment')"))
-        dismiss(); seen["pieces"] = None
-        check("closing the editor without saving adds no prompt", len(invoke("list_prompts")) == n_pr_)
+        d.execute_script("document.querySelector('[data-testid=tokenator-make-accept]').click()"); time.sleep(1.0)
+        time.sleep(0.8)
+        made_ = [x for x in invoke("list_prompts") if x["title"] == "Gentle brakes"]
+        check("accepting puts the prompt straight into Prompts, saved, with its title, label and text", len(made_) == 1 and made_[0]["tag"] == "Pace" and "slow down for a moment" in made_[0]["body"] and len(invoke("list_prompts")) == n_pr_ + 1, str(made_))
+        check("and closes the editor", d.execute_script("return !document.querySelector(\"input[aria-label='Prompt title']\")"))
+        for x_ in made_: invoke("delete_prompt", {"id": x_["id"]})
+        seen["pieces"] = None
         d.execute_script("document.querySelector('[data-testid=prompts-toggle]').click()"); time.sleep(0.3)
         check("the drop-down closes again", not d.execute_script("return !!document.querySelector('[data-testid=prompts-panel]')"))
         check("a prompt needs a title and some text", "title" in (inv_err("save_prompt", {"prompt": {"id": "", "title": " ", "body": "x", "tag": "", "created_at": 0, "updated_at": 0}}) or "") and "no text" in (inv_err("save_prompt", {"prompt": {"id": "", "title": "T", "body": "  ", "tag": "", "created_at": 0, "updated_at": 0}}) or ""))

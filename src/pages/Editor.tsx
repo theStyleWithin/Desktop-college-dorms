@@ -134,11 +134,12 @@ export default function Editor({ id }: { id: string | null }) {
     try { const c = await api.setFrame(char.id, f); setChar(c); refresh(); toast("Framing saved", "ok"); } catch (e) { toast(errText(e), "err"); }
   };
 
-  const save = async (): Promise<Character | null> => {
+  /** Saves the card. `over` is anything that was just changed and may not have reached the screen yet (what Tokenator wrote and the person accepted). */
+  const save = async (over: Partial<CardData> = {}): Promise<Character | null> => {
     if (!name.trim() && !chatName.trim()) { toast("Give your character a name first.", "err"); return null; }
     setSaving(true);
     try {
-      let saved = await api.saveCharacter({ ...(char ?? {}), card: built, trusted, lorebooks: attached, playbook });
+      let saved = await api.saveCharacter({ ...(char ?? {}), card: { ...built, ...over }, trusted, lorebooks: attached, playbook });
       if (pending) { saved = await api.setMedia(saved.id, pending.file); if (pending.frame) saved = await api.setFrame(saved.id, pending.frame); setPending(null); }
       hydrate(saved);
       await refresh();
@@ -283,12 +284,12 @@ export default function Editor({ id }: { id: string | null }) {
         {!book ? (
           <button type="button" className="btn" onClick={() => setBook({ name: "", description: "", scan_depth: null, token_budget: null, recursive_scanning: null, extensions: {}, entries: [] })}>＋ Add a book to this card</button>
         ) : (
-          <BookEditor book={book} setBook={setBook} onRemove={() => setBook(null)} />
+          <BookEditor book={book} setBook={setBook} onRemove={() => setBook(null)} onAdded={async (b) => { if (!(await save({ character_book: b }))) throw new Error("The card could not be saved, so the entries are still in the draft."); }} />
         )}
       </Field>
       <p className="tok" style={{ textAlign: "center" }}>Total: {total} token(s). Permanent: {permanent} token(s). Your context window is {settings.context_tokens}.</p>
       <div style={{ textAlign: "center" }}><button type="button" className="btn sm" onClick={() => setTokOpen(true)} data-testid="tokenator-open">✂️ Tokenator</button><div className="hint" data-testid="tokenator-hint">A character card advisor: see how many tokens each part of your card uses, trim it down, or get help writing a part.</div></div>
-      {tokOpen && <TokenatorPanel card={card} onApply={(f, t) => set(f as any, t as any)} onClose={() => setTokOpen(false)} />}
+      {tokOpen && <TokenatorPanel card={card} onApply={async (f, t) => { set(f as any, t as any); if (!(await save({ [f]: t } as Partial<CardData>))) throw new Error("The card could not be saved yet, so it was not applied."); }} onClose={() => setTokOpen(false)} />}
 
       <details className="card" style={{ marginTop: 24 }} open>
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>Advanced Definitions</summary>
@@ -328,7 +329,7 @@ export default function Editor({ id }: { id: string | null }) {
           onSave={(fr) => { if (framing.file) { const f = framing.file, u = framing.url; setFraming(null); void applyMedia(f, framing.kind, fr).finally(() => URL.revokeObjectURL(u)); } else void reframe(fr); }} />
       )}
       <div className="sticky-bar">
-        <button className="btn primary" onClick={save} disabled={saving}>{saving ? "Saving…" : char ? "Save changes" : "Create Character"}</button>
+        <button className="btn primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : char ? "Save changes" : "Create Character"}</button>
         {char && <button className="btn danger" onClick={del}>Delete</button>}
         <span className="tok">{dirty ? "Unsaved changes" : ""}</span>
       </div>

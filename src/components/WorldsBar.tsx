@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Lorebook, type Room } from "../api";
+import TokenatorHelper from "./TokenatorHelper";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
 import { useToast } from "./ui";
@@ -12,6 +13,8 @@ export type WorldSel = "all" | "none" | number;
  * world picked its name, what it is like, the lorebooks attached to it (they apply to every chat in any of its rooms) and a way to make
  * another room in it.
  */
+type WorldDraft = { name: string; description: string; lore: string; rooms: { name: string; kind: string; description: string }[]; links: [string, string][] };
+
 export default function WorldsBar({ rooms, sel, onSelect, onStart, onEdit, onMap }: { rooms: Room[]; sel: WorldSel; onSelect: (s: WorldSel) => void; onStart: (r: Room) => void; onEdit: (r: Room) => void; onMap: () => void }) {
   const { worlds, refresh, go } = useStore();
   const toast = useToast();
@@ -33,6 +36,32 @@ export default function WorldsBar({ rooms, sel, onSelect, onStart, onEdit, onMap
     if (!world) return;
     try { await api.updateWorld(world.id, patch.name ?? name, patch.description ?? desc, patch.lore ?? lore, patch.lorebooks ?? world.lorebooks); await refresh(); }
     catch (e) { toast(errText(e), "err"); setName(world.name); }
+  };
+  /** Adds what Tokenator drafted: the world's text is filled in or added to, new rooms are made in this world (a room with the same name is left alone), and the rooms are joined (at most three exits each). */
+  const applyDraft = async (r: WorldDraft) => {
+    if (!world) return;
+    const inWorld = rooms.filter((x) => x.world_id === world.id);
+    const byName = new Map<string, Room>(inWorld.map((x) => [x.name.toLowerCase(), x]));
+    let made = 0;
+    for (const rm of r.rooms) {
+      if (byName.has(rm.name.toLowerCase())) continue;
+      const room = await api.createRoom({ name: rm.name, kind: rm.kind as Room["kind"], description: rm.description, owner_kind: "self", character_id: null, backdrop: "", world_id: world.id });
+      byName.set(rm.name.toLowerCase(), room); made++;
+    }
+    const links = new Map<number, Set<number>>(), changed = new Set<number>();
+    const linksOf = (x: Room) => { if (!links.has(x.id)) links.set(x.id, new Set(x.links ?? [])); return links.get(x.id)!; };
+    for (const [a, b] of r.links) {
+      const ra = byName.get(a.toLowerCase()), rb = byName.get(b.toLowerCase());
+      if (!ra || !rb || ra.id === rb.id) continue;
+      const la = linksOf(ra), lb = linksOf(rb);
+      if (la.has(rb.id) || la.size >= 3 || lb.size >= 3) continue;
+      la.add(rb.id); lb.add(ra.id); changed.add(ra.id); changed.add(rb.id);
+    }
+    for (const id of changed) await api.setRoomLinks(id, [...(links.get(id) ?? [])]);
+    const lore2 = r.lore.trim() ? (lore.trim() ? `${lore.trimEnd()}\n\n${r.lore.trim()}` : r.lore.trim()) : lore;
+    await api.updateWorld(world.id, world.name, desc.trim() ? desc : r.description, lore2, world.lorebooks);
+    await refresh();
+    toast(`Added ${made} room${made === 1 ? "" : "s"} and ${changed.size ? "joined them up" : "no new links"}${r.lore.trim() ? ", and added to the world's lore" : ""}.`, "ok");
   };
   const remove = async () => {
     if (!world) return;
@@ -78,6 +107,20 @@ export default function WorldsBar({ rooms, sel, onSelect, onStart, onEdit, onMap
             )}
             <div className="hint">Attached lorebooks work in every chat in any room of this world, together with the ones on each character.</div>
           </div>
+          <TokenatorHelper<WorldDraft> kind="world" label="Tokenator: help me map out this world"
+            intro="Describe the world in your own words. Tokenator drafts some background, a few rooms, and which rooms connect. Rooms and text are only added (nothing you already have is changed or removed), and only after you accept. You can edit all of it afterwards."
+            placeholder="e.g. a lantern-lit tea district built along an old canal, with a rooftop garden, a library that closes at dusk and a crowded tea house"
+            context={() => [`World: ${world.name}.`, desc ? `About it: ${desc}` : "", rooms.some((x) => x.world_id === world.id) ? `Rooms it already has, which must not be repeated: ${rooms.filter((x) => x.world_id === world.id).map((x) => x.name).join(", ")}.` : ""].filter(Boolean).join(" ")}
+            preview={(r) => (
+              <div className="card" style={{ background: "var(--panel2)", display: "grid", gap: 6 }} data-testid="tokenator-world-preview">
+                {r.description && <div><b>About:</b> {r.description}</div>}
+                {r.lore && <div><b>Lore:</b> <span style={{ whiteSpace: "pre-wrap" }}>{r.lore.length > 400 ? `${r.lore.slice(0, 400)}…` : r.lore}</span></div>}
+                <div className="hint">{r.rooms.length} room{r.rooms.length === 1 ? "" : "s"} will be made in this world</div>
+                {r.rooms.map((x) => <div key={x.name}>• <b>{x.name}</b> <span className="chip">{x.kind.replace("_", " ")}</span> {x.description}</div>)}
+                {r.links.length > 0 && <div className="hint">Joined: {r.links.map(([a, b]) => `${a} ↔ ${b}`).join(", ")}</div>}
+              </div>
+            )}
+            onAccept={applyDraft} />
         </div>
       )}
       {reading && world && <WorldOverview world={world} rooms={rooms} onClose={() => setReading(false)} onStart={onStart} onEdit={onEdit} onMap={onMap} />}

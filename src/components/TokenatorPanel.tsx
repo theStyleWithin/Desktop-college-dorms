@@ -8,7 +8,7 @@ import { useStore } from "../store";
 type Result = { field: string; before: string; after: string; mode: "trim" | "draft" };
 
 /** Counts tokens per card field against a budget, shortens a field or drafts one with the person's own model. Nothing changes until it is accepted. */
-export default function TokenatorPanel({ card, onApply, onClose }: { card: CardData; onApply: (field: string, text: string) => void; onClose: () => void }) {
+export default function TokenatorPanel({ card, onApply, onClose }: { card: CardData; onApply: (field: string, text: string) => void | Promise<void>; onClose: () => void }) {
   const { settings } = useStore();
   const toast = useToast();
   const model = modelName(settings);
@@ -33,11 +33,11 @@ export default function TokenatorPanel({ card, onApply, onClose }: { card: CardD
     } catch (e) { toast(errText(e), "err"); } finally { setBusy(null); }
   };
   const label = (k: string) => FIELDS.find((f) => f.key === k)?.label ?? k;
-  const accept = (add: boolean) => {
+  const accept = async (add: boolean) => {
     if (!res) return;
     const cur = val(res.field);
-    onApply(res.field, add && cur.trim() ? `${cur.trimEnd()}\n\n${res.after}` : res.after);
-    setRes(null); toast("Applied. Save the card to keep it.");
+    try { await onApply(res.field, add && cur.trim() ? `${cur.trimEnd()}\n\n${res.after}` : res.after); setRes(null); toast("Applied and saved."); }
+    catch (e) { toast(errText(e), "err"); }
   };
 
   return (
@@ -84,8 +84,8 @@ export default function TokenatorPanel({ card, onApply, onClose }: { card: CardD
             <div className="hint">{res.mode === "trim" ? "After" : "Draft"}</div>
             <pre style={{ whiteSpace: "pre-wrap", margin: 0 }} data-testid="tok-after">{res.after}</pre>
             <div className="row" style={{ gap: 8, marginTop: 8 }}>
-              <button type="button" className="btn primary sm" onClick={() => accept(false)} data-testid="tok-accept">Accept</button>
-              {res.mode === "draft" && val(res.field).trim() && <button type="button" className="btn sm" onClick={() => accept(true)} data-testid="tok-add">Add to end</button>}
+              <button type="button" className="btn primary sm" onClick={() => void accept(false)} data-testid="tok-accept">Accept</button>
+              {res.mode === "draft" && val(res.field).trim() && <button type="button" className="btn sm" onClick={() => void accept(true)} data-testid="tok-add">Add to end</button>}
               <button type="button" className="btn sm" onClick={() => run(res.mode, res.field)} disabled={busy !== null} data-testid="tok-retry">Try again</button>
               <button type="button" className="btn ghost sm" onClick={() => setRes(null)} data-testid="tok-discard">Discard</button>
             </div>

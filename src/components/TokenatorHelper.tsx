@@ -10,12 +10,12 @@ import { useStore } from "../store";
  * model, and shows what it wrote. Nothing changes until the person presses Accept. `kind` says what to write (the backend knows each one).
  */
 export default function TokenatorHelper<T>({ kind, label, intro, placeholder, preview, onAccept, startOpen, context }: {
-  kind: "prompt";
+  kind: "prompt" | "lorebook" | "playbook" | "room" | "world";
   label: string;
   intro: string;
   placeholder: string;
   preview: (r: T) => ReactNode;
-  onAccept: (r: T) => void;
+  onAccept: (r: T) => void | Promise<void>;
   startOpen?: boolean;
   /** anything the editor already holds that helps (shown to the model after the instructions) */
   context?: () => string;
@@ -31,6 +31,11 @@ export default function TokenatorHelper<T>({ kind, label, intro, placeholder, pr
     setBusy(true); setRes(null);
     try { setRes((await api.tokenatorMake(kind, notes, context?.() ?? "")) as T); } catch (e) { toast(errText(e), "err"); } finally { setBusy(false); }
   };
+  const accept = async () => {
+    if (res === null) return;
+    setBusy(true);
+    try { await onAccept(res); setRes(null); setOpen(false); setNotes(""); } catch (e) { toast(errText(e), "err"); } finally { setBusy(false); }
+  };
   if (!open) return <button type="button" className="btn sm" style={{ justifySelf: "start" }} onClick={() => setOpen(true)} data-testid={`tokenator-make-${kind}`}>✂️ {label}</button>;
   return (
     <div className="card" data-testid={`tokenator-helper-${kind}`} style={{ display: "grid", gap: 8 }}>
@@ -45,7 +50,7 @@ export default function TokenatorHelper<T>({ kind, label, intro, placeholder, pr
         <div data-testid="tokenator-make-result" style={{ display: "grid", gap: 6 }}>
           {preview(res)}
           <div className="row" style={{ gap: 8 }}>
-            <button type="button" className="btn primary sm" data-testid="tokenator-make-accept" onClick={() => { onAccept(res); setRes(null); setOpen(false); setNotes(""); }}>Accept</button>
+            <button type="button" className="btn primary sm" data-testid="tokenator-make-accept" disabled={busy} onClick={() => void accept()}>Accept</button>
             <button type="button" className="btn sm" disabled={busy} onClick={() => void run()}>Try again</button>
             <button type="button" className="btn ghost sm" onClick={() => setRes(null)}>Discard</button>
           </div>
