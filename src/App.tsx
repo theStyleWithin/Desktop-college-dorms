@@ -41,6 +41,7 @@ const MEMBERS_DEF = 264, MEMBERS_MIN = 200, MEMBERS_MAX = 480;
 const NAV_KEY = "dorms.nav.order";
 const NAV_DRAG = "application/x-dorms-nav";
 const NAV: { page: Route["page"]; label: string; icon: string }[] = [
+  { page: "tokenator", label: "Tokenator", icon: "✂️" },
   { page: "home", label: "Home", icon: "🏠" },
   { page: "library", label: "Characters", icon: "🧑‍🎤" },
   { page: "rooms", label: "Rooms", icon: "🛋️" },
@@ -49,18 +50,21 @@ const NAV: { page: Route["page"]; label: string; icon: string }[] = [
   { page: "lorebooks", label: "Lorebooks", icon: "📚" },
   { page: "playbooks", label: "Playbooks", icon: "🎲" },
   { page: "notes", label: "Notes", icon: "📝" },
-  { page: "tokenator", label: "Tokenator", icon: "✂️" },
   { page: "settings", label: "Settings", icon: "⚙️" },
 ];
 
-/** The side bar's order as the user left it (this device): unknown or missing pages are dealt with, so a new page just appears at the end. */
+/** Pages added in a later version that show at the TOP for people who already have an order of their own, so they are noticed. They are ordinary items from then on: drag one and the new place is remembered. */
+const NEW_AT_TOP: Route["page"][] = ["tokenator"];
+
+/** The side bar's order as the user left it (this device): unknown or missing pages are dealt with, so a new page just appears at the end (or at the top, for the ones in `NEW_AT_TOP`). */
 function loadNavOrder(): Route["page"][] {
   const known = NAV.map((n) => n.page);
   try {
     const a = JSON.parse(localStorage.getItem(NAV_KEY) || "[]");
     if (Array.isArray(a)) {
       const kept = a.filter((p, i) => known.includes(p) && a.indexOf(p) === i) as Route["page"][];
-      return [...kept, ...known.filter((p) => !kept.includes(p))];
+      const added = known.filter((p) => !kept.includes(p));
+      return [...added.filter((p) => NEW_AT_TOP.includes(p)), ...kept, ...added.filter((p) => !NEW_AT_TOP.includes(p))];
     }
   } catch { /* storage unavailable or damaged: the normal order */ }
   return known;

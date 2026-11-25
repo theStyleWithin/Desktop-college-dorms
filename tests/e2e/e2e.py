@@ -1738,7 +1738,7 @@ try:
     # the label is the text of the button itself (its icon sits in a span of its own)
     labels = lambda: d.execute_script("return [...document.querySelectorAll('nav.side button.nav[data-nav]')].map(b=>[...b.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join('').trim())")
     order0 = labels()
-    check("the side bar starts in its normal order, with Prompts after them", order0[0] == "Home" and order0[-1] == "Settings" and d.execute_script("return document.querySelector('nav.side .prompts').previousElementSibling.dataset.nav") == "settings")
+    check("the side bar starts in its normal order, with Tokenator at the top and Prompts after them", order0[:2] == ["Tokenator", "Home"] and order0[-1] == "Settings" and d.execute_script("return document.querySelector('nav.side .prompts').previousElementSibling.dataset.nav") == "settings")
     drag_nav = """
       const a = document.querySelector('[data-nav=' + arguments[0] + ']'), b = document.querySelector('[data-nav=' + arguments[1] + ']');
       const r = b.getBoundingClientRect(); const y = arguments[2] ? r.bottom - 2 : r.top + 2; const dt = new DataTransfer();
@@ -1746,8 +1746,8 @@ try:
       b.dispatchEvent(new DragEvent('dragover', {bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 5, clientY: y}));
       b.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 5, clientY: y}));
       a.dispatchEvent(new DragEvent('dragend', {bubbles: true, dataTransfer: dt}));"""
-    d.execute_script(drag_nav, "notes", "home", False); time.sleep(0.5)
-    check("dropping an item on the top half of another puts it before that one", labels()[0] == "Notes" and labels()[1] == "Home", str(labels()))
+    d.execute_script(drag_nav, "notes", "tokenator", False); time.sleep(0.5)
+    check("dropping an item on the top half of another puts it before that one", labels()[0] == "Notes" and labels()[1] == "Tokenator", str(labels()))
     d.execute_script(drag_nav, "home", "settings", True); time.sleep(0.5)
     check("dropping on the bottom half puts it after, and Prompts is still last", labels()[-1] == "Home" and d.execute_script("const ps=document.querySelector('nav.side .prompts');return [...document.querySelectorAll('nav.side button.nav[data-nav]')].every(b=>b.compareDocumentPosition(ps)&Node.DOCUMENT_POSITION_FOLLOWING)"), str(labels()))
     check("Prompts can't be dragged", d.execute_script("return document.querySelector('[data-testid=prompts-toggle]').getAttribute('draggable')") is None)
@@ -1755,10 +1755,16 @@ try:
     check("the order is remembered after a restart", labels()[0] == "Notes" and labels()[-1] == "Home", str(labels()))
     d.execute_script("document.querySelector('[data-nav=notes]').focus()")
     ActionChains(d).key_down(Keys.ALT).send_keys(Keys.ARROW_DOWN).key_up(Keys.ALT).perform(); time.sleep(0.5)
-    check("Alt and the down arrow moves the focused item down one place", labels()[:2] == ["Characters", "Notes"], str(labels()))
+    check("Alt and the down arrow moves the focused item down one place", labels()[:2] == ["Tokenator", "Notes"], str(labels()))
     nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Customization"); time.sleep(0.6)
     click_text("button", "Reset the side bar order"); time.sleep(0.5)
     check("the order can be reset from Settings, Appearance", labels() == order0, str(labels()))
+    d.execute_script("localStorage.setItem('dorms.nav.order', JSON.stringify(['settings','home','lorebooks','notes','rooms','chat','decor','library','playbooks']))"); reload_ui(); time.sleep(0.8)
+    check("for someone who already arranged their side bar, Tokenator appears at the top and their order is kept", labels()[0] == "Tokenator" and labels()[1:] == ["Settings", "Home", "Lorebooks", "Notes", "Rooms", "Dorms", "Decorations", "Characters", "Playbooks"], str(labels()))
+    d.execute_script(drag_nav, "tokenator", "home", True); time.sleep(0.5)
+    reload_ui(); time.sleep(0.8)
+    check("Tokenator can be moved like any other item, and the place is remembered", labels()[:3] == ["Settings", "Home", "Tokenator"], str(labels()))
+    d.execute_script("localStorage.removeItem('dorms.nav.order')"); reload_ui(); time.sleep(0.6)
 
     # -- side bar extras: recent chats, favorites (as many as you like), most used, and a picture frame
     all_chars = invoke("list_characters")
