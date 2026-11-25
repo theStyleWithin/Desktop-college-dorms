@@ -51,7 +51,7 @@ export default function TokenatorPanel({ card, onApply, onClose }: { card: CardD
         <p className="tok" data-testid="tok-total">Total: {total} token(s){cap ? ` of ${cap}${total > cap ? ` — ${total - cap} over` : ""}` : ""}. Your context window is {settings.context_tokens}.</p>
         <div style={{ display: "grid", gap: 8, margin: "8px 0" }}>
           {rows.map((r) => {
-            const share = cap && total ? Math.max(1, Math.round((r.tokens / cap) * 100)) : 0;
+            const share = cap && r.tokens ? Math.max(1, Math.round((r.tokens / cap) * 100)) : 0;
             return (
               <div key={r.key} data-testid={`tok-row-${r.key}`}>
                 <div className="row" style={{ gap: 8 }}>
