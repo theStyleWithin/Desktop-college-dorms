@@ -108,6 +108,13 @@ mod tests {
     }
 
     #[test]
+    fn the_scouter_is_kept_safe_for_work() {
+        let c = card(STARTERS[1].0);
+        assert!(c.system_prompt.contains("SAFE-FOR-WORK") && c.post_history_instructions.contains("safe for work"));
+        assert!(!c.scenario.to_lowercase().contains("obscene"));
+    }
+
+    #[test]
     fn a_new_profile_gets_them_once_and_deleted_ones_stay_deleted() {
         let (c, dir) = fresh();
         let me: Owner = Some("p1".into());
