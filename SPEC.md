@@ -334,6 +334,19 @@ Not built yet. Today the Android app has no built-in engine: the desktop builds 
 - **Cloud and network models stay the default** and keep working as they do now.
 - **Before building:** rendered pictures of the phone's Models tab (the "this phone can run" card, the download and the speed test). CI can only prove it builds; whether it runs, how fast, and whether the phone overheats can only be tested on a real phone, so a real test on one is needed before it is released.
 
+## Planned: Tokenator, a built-in helper for character cards
+
+Not built yet. Tokenator is a small helper in the character editor that helps write a card and keeps it short, for models that don't cope well with big cards.
+
+- **Fill the card in.** He asks a few questions ("What is she like when she is nervous? How does she talk?") and drafts fields from the answers. A draft goes into a field only when it is accepted.
+- **Trim the card.** He shows the token count of each field and of the whole card, then offers a shorter version of a field next to the original. Each change is accepted on its own, and there is an undo. Nothing is saved without confirmation.
+- **No model needed for the counting side**, which matters for free models with a daily limit: a token count per field and in total, a flag for sentences repeated across fields, and target budgets (for example Tiny, Small and Normal) matched to the chosen model's context size, so someone on a small model knows what to aim for.
+- **He uses the person's own model.** The drafting and trimming run on whatever model is set up, so they use tokens or requests (and count against a daily limit if one is set), and with a cloud model the card text is sent to that provider just as it is when chatting. The editor says so.
+- **Counts are estimates.** Models count tokens differently and the app estimates rather than using each model's own counter.
+- **Shorter is not always better**: trimming can lose a detail the writer cared about, hence the side-by-side view and the per-field accept.
+- Later, the same help could be offered for lorebook entries.
+- Before building: show rendered pictures of his panel in the editor (the questions, the budgets and the before-and-after view). The flow can be tested with a fake model; how good his suggestions are can only be judged with a real model on real cards.
+
 ## Status
 
 v0.3.0 adds a real 3D viewer for VRM / VRoid models (room, idle life, physics, hands, wardrobe) and voice input. v0.2.0 added local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.

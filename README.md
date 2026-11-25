@@ -192,6 +192,8 @@ Ideas that are planned but **not built yet**. These are plans, not promises, and
 
 - **A built-in model on recent Android phones.** Download a small model (such as Llama 3.2 3B) and chat fully offline on the phone. The app checks your phone's memory, processor and free space first, and only offers models it can run (a phone that is too weak gets no download button, just an explanation). It will be slower than a cloud model, and has not been built or tested yet.
 
+- **Tokenator, a helper for character cards.** In the character editor he helps you write a card by asking questions, shows how many tokens each field uses, and offers shorter versions you can accept one at a time, handy for models that struggle with big cards. Not built yet.
+
 Have an idea of your own? Open an issue.
 
 ## Install
