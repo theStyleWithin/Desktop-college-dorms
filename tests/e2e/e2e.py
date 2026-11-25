@@ -1399,7 +1399,9 @@ try:
     d.execute_script("document.querySelector('[data-testid=tokenator-make-go]').click()"); time.sleep(2.5)
     check("the lorebook editor shows the drafted entries first and adds none yet", d.execute_script("return document.querySelectorAll('[data-testid=tokenator-lore-entry]').length")==2 and d.execute_script("return document.querySelectorAll('.notes-main .entry').length")==n_ent0_)
     d.execute_script("document.querySelector('[data-testid=tokenator-make-accept]').click()"); time.sleep(0.6)
-    check("accepting adds them after the entries already there, with their keys", d.execute_script("return document.querySelectorAll('.notes-main .entry').length")==n_ent0_+2 and "Moon Gate" in d.execute_script("return [...document.querySelectorAll('.notes-main .entry input[placeholder=\"Entry name\"]')].map(i=>i.value).join('|')"))
+    time.sleep(0.8)
+    lbs_ = [b for b in invoke("list_lorebooks") if b["id"] == lbk_["id"]]
+    check("accepting adds the entries to the lorebook and saves it, after the entries already there, with their keys", len(lbs_) == 1 and [e["name"] for e in lbs_[0]["book"]["entries"]][-2:] == ["Moon Gate", "Canal"] and lbs_[0]["book"]["entries"][-2]["keys"] == ["moon", "gate"] and len(lbs_[0]["book"]["entries"]) == n_ent0_ + 2, str(lbs_)[:300])
     invoke("delete_lorebook", {"id": lbk_["id"]})
     seen["pieces"] = None
     # the playbook helper (builds on what is there, saves nothing until Save) and the world helper (makes rooms and joins them)
@@ -1411,10 +1413,10 @@ try:
     d.execute_script("document.querySelector('[data-testid=tokenator-make-go]').click()"); time.sleep(2.5)
     check("the playbook helper shows its draft first and adds nothing yet", d.execute_script("return !!document.querySelector('[data-testid=tokenator-playbook-preview]') && document.querySelectorAll('[data-var]').length===0"))
     d.execute_script("document.querySelector('[data-testid=tokenator-make-accept]').click()"); time.sleep(0.8)
-    check("accepting adds its values and rules to the playbook being edited, and saves nothing", d.execute_script("return !!document.querySelector('[data-var=trust]') && document.querySelector('input[aria-label=\"Playbook name\"]').value==='Slow burn'") and len(invoke("list_playbooks")) == n_pb_)
-    dismiss_ = d.execute_script("const b=[...document.querySelectorAll('button')].find(x=>x.textContent.includes('Playbooks')&&x.textContent.includes('←'));if(b)b.click();return !!b"); time.sleep(0.5)
-    try: d.switch_to.alert.accept()
-    except Exception: pass
+    time.sleep(0.8)
+    made_pb_ = [x for x in invoke("list_playbooks") if x["name"] == "Slow burn"]
+    check("accepting saves the playbook with its values and rules", len(made_pb_) == 1 and [v["id"] for v in made_pb_[0]["variables"]] == ["trust"] and len(made_pb_[0]["rules"]) == 1 and len(invoke("list_playbooks")) == n_pb_ + 1, str(made_pb_)[:300])
+    for x_ in made_pb_: invoke("delete_playbook", {"id": x_["id"]})
     w_ = invoke("list_worlds")[0]; w_lore_ = w_["lore"]; rooms_before_ = {r["id"] for r in invoke("list_rooms")}
     seen["pieces"] = ["NAME: Harbour\nABOUT: A moonlit harbour town.\nLORE: Fishing boats and lamps.\nROOM: Harbour Office | office | Maps and ropes.\nROOM: Lighthouse | rooftop | A tall white tower.\nLINK: Harbour Office -> Lighthouse"]
     reload_ui(); nav("Rooms"); time.sleep(1.0)
@@ -1924,10 +1926,13 @@ try:
         set_value("[data-testid=tokenator-make-notes]", "a gentle way to slow things down"); time.sleep(0.3)
         d.execute_script("document.querySelector('[data-testid=tokenator-make-go]').click()"); time.sleep(2.5)
         check("the draft is shown first, and nothing is filled in or saved yet", d.execute_script("const t=document.querySelector('[data-testid=tokenator-make-title]');return !!t && t.textContent==='Gentle brakes'") and d.execute_script("return document.querySelector(\"input[aria-label='Prompt title']\").value===''") and len(invoke("list_prompts")) == n_pr_)
-        d.execute_script("document.querySelector('[data-testid=tokenator-make-accept]').click()"); time.sleep(0.6)
-        check("accepting fills the title, label and text of the prompt", d.execute_script("return document.querySelector(\"input[aria-label='Prompt title']\").value==='Gentle brakes' && document.querySelector(\"input[aria-label='Prompt label']\").value==='Pace' && document.querySelector(\"textarea[aria-label='Prompt text']\").value.includes('slow down for a moment')"))
-        dismiss(); seen["pieces"] = None
-        check("closing the editor without saving adds no prompt", len(invoke("list_prompts")) == n_pr_)
+        d.execute_script("document.querySelector('[data-testid=tokenator-make-accept]').click()"); time.sleep(1.0)
+        time.sleep(0.8)
+        made_ = [x for x in invoke("list_prompts") if x["title"] == "Gentle brakes"]
+        check("accepting puts the prompt straight into Prompts, saved, with its title, label and text", len(made_) == 1 and made_[0]["tag"] == "Pace" and "slow down for a moment" in made_[0]["body"] and len(invoke("list_prompts")) == n_pr_ + 1, str(made_))
+        check("and closes the editor", d.execute_script("return !document.querySelector(\"input[aria-label='Prompt title']\")"))
+        for x_ in made_: invoke("delete_prompt", {"id": x_["id"]})
+        seen["pieces"] = None
         d.execute_script("document.querySelector('[data-testid=prompts-toggle]').click()"); time.sleep(0.3)
         check("the drop-down closes again", not d.execute_script("return !!document.querySelector('[data-testid=prompts-panel]')"))
         check("a prompt needs a title and some text", "title" in (inv_err("save_prompt", {"prompt": {"id": "", "title": " ", "body": "x", "tag": "", "created_at": 0, "updated_at": 0}}) or "") and "no text" in (inv_err("save_prompt", {"prompt": {"id": "", "title": "T", "body": "  ", "tag": "", "created_at": 0, "updated_at": 0}}) or ""))

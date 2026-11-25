@@ -6,8 +6,10 @@ import TokenatorHelper from "./TokenatorHelper";
 const tk = (s: string) => `${tokens(s)} token(s)`;
 
 /** Edits a lorebook: its settings and its entries (keywords, content, order). Used for a card's own book and for library lorebooks. */
-export default function BookEditor({ book, setBook, onRemove, removeLabel = "Remove book", showName = true }: {
+export default function BookEditor({ book, setBook, onRemove, removeLabel = "Remove book", showName = true, onAdded }: {
   book: CharacterBook; setBook: (b: CharacterBook) => void; onRemove?: () => void; removeLabel?: string; showName?: boolean;
+  /** Called with the book after Tokenator's entries were accepted and added, so the page can save it. */
+  onAdded?: (b: CharacterBook) => void | Promise<void>;
 }) {
   const setEntry = (i: number, patch: Partial<BookEntry>) =>
     setBook({ ...book, entries: book.entries.map((e, j) => (j === i ? { ...e, ...patch } : e)) });
@@ -51,7 +53,7 @@ export default function BookEditor({ book, setBook, onRemove, removeLabel = "Rem
           placeholder="e.g. a lantern-lit tea district built along an old canal, with a gossiping tea seller and a library that closes at dusk"
           context={() => (book.name || book.entries.length) ? `Lorebook: ${book.name || "(unnamed)"}. Entries it already has, which must not be repeated: ${book.entries.map((e) => e.name || e.comment).filter(Boolean).join(", ") || "none"}.` : ""}
           preview={(r) => (<div style={{ display: "grid", gap: 6 }}>{r.entries.map((e, i) => (<div className="card" key={i} style={{ background: "var(--panel2)" }} data-testid="tokenator-lore-entry"><b>{e.name}</b><div className="row" style={{ gap: 4, margin: "4px 0" }}>{e.keys.map((k) => <span className="chip" key={k}>{k}</span>)}</div><div>{e.content}</div></div>))}<div className="tok">{r.entries.length} entr{r.entries.length === 1 ? "y" : "ies"} will be added after your own.</div></div>)}
-          onAccept={(r) => setBook({ ...book, entries: [...book.entries, ...r.entries.map((e, i) => ({ ...blankEntry(), id: book.entries.length + i, name: e.name, comment: e.name, keys: e.keys, content: e.content }))] })} />
+          onAccept={async (r) => { const nb = { ...book, entries: [...book.entries, ...r.entries.map((e, i) => ({ ...blankEntry(), id: book.entries.length + i, name: e.name, comment: e.name, keys: e.keys, content: e.content }))] }; setBook(nb); await onAdded?.(nb); }} />
       </div>
     </div>
   </div>

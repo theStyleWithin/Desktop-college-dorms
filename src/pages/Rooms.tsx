@@ -144,15 +144,16 @@ function RoomForm({ id, world }: { id: number | null; world: number | null }) {
   const bg = pendingFile && preview ? `center / cover no-repeat url("${preview}")` : roomBackground(r as Room);
   const shelf = [...PRESETS].sort((a, b) => Number(b.shelf.includes(r.kind as RoomKind)) - Number(a.shelf.includes(r.kind as RoomKind)));
 
-  const save = async (): Promise<Room | null> => {
-    if (!r.name.trim()) { toast("Give the room a name.", "err"); return null; }
-    if (r.owner_kind === "character" && !r.character_id) { toast("Pick whose place this is, or choose “My own space”.", "err"); return null; }
+  const save = async (over: Partial<Room> = {}): Promise<Room | null> => {
+    const rr = { ...r, ...over };
+    if (!rr.name.trim()) { toast("Give the room a name.", "err"); return null; }
+    if (rr.owner_kind === "character" && !rr.character_id) { toast("Pick whose place this is, or choose “My own space”.", "err"); return null; }
     setBusy(true);
     try {
       let saved: Room;
-      const body = { name: r.name, kind: r.kind as RoomKind, description: r.description, owner_kind: r.owner_kind, character_id: r.owner_kind === "character" ? r.character_id : null, parent_id: r.parent_id ?? null, deco: r.deco, backdrop: pendingFile ? (existing?.backdrop.startsWith("file:") ? existing.backdrop : "") : r.backdrop };
+      const body = { name: rr.name, kind: rr.kind as RoomKind, description: rr.description, owner_kind: rr.owner_kind, character_id: rr.owner_kind === "character" ? rr.character_id : null, parent_id: rr.parent_id ?? null, deco: rr.deco, backdrop: pendingFile ? (existing?.backdrop.startsWith("file:") ? existing.backdrop : "") : rr.backdrop };
       saved = existing ? await api.updateRoom({ ...existing, ...body }) : await api.createRoom(body);
-      if (JSON.stringify([...(r.links ?? [])].sort()) !== JSON.stringify([...(existing?.links ?? [])].sort())) saved = await api.setRoomLinks(saved.id, r.links ?? []);
+      if (JSON.stringify([...(rr.links ?? [])].sort()) !== JSON.stringify([...(existing?.links ?? [])].sort())) saved = await api.setRoomLinks(saved.id, rr.links ?? []);
       if (pendingFile) saved = await api.setRoomBackdrop(saved.id, pendingFile);
       if (music.file) saved = await api.setRoomMusic(saved.id, music.file);
       else if (music.remove && existing?.music) saved = await api.clearRoomMusic(saved.id);
@@ -233,7 +234,7 @@ function RoomForm({ id, world }: { id: number | null; world: number | null }) {
           placeholder="e.g. a cosy attic with one round window, fairy lights and a beanbag"
           context={() => { const w = worlds.find((x) => x.id === curWorld); return [w ? `This room is in the world "${w.name}"${w.description ? `: ${w.description}` : ""}.` : "", rooms.length ? `Rooms that already exist there, which must not be repeated: ${rooms.map((x) => x.name).join(", ")}.` : ""].filter(Boolean).join(" "); }}
           preview={(x) => (<div className="card" style={{ background: "var(--panel2)" }} data-testid="tokenator-room-preview"><b>{x.name}</b> <span className="chip">{x.kind.replace("_", " ")}</span><div style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{x.description}</div></div>)}
-          onAccept={(x) => set({ name: x.name, kind: x.kind as Room["kind"], description: x.description })} />
+          onAccept={async (x) => { set({ name: x.name, kind: x.kind as Room["kind"], description: x.description }); const room = await save({ name: x.name, kind: x.kind as Room["kind"], description: x.description }); if (!room) throw new Error("The room could not be saved yet (see the message above), so the draft is still here."); await refresh(); go({ page: "rooms" }); }} />
       </div>
       <label className="field"><span>Room name</span>
         <input type="text" placeholder="e.g. My loft" value={r.name} onChange={(e) => set({ name: e.target.value })} maxLength={80} /></label>
