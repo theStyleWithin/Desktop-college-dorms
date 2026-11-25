@@ -31,8 +31,8 @@ export default function Lorebooks() {
   };
   useEffect(() => { void load(); /* eslint-disable-next-line */ }, []);
 
-  const save = async () => {
-    try { const b = await api.saveLorebook({ id: sel ?? undefined, name, book }); toast("Saved", "ok"); await load(b.id); } catch (e) { toast(errText(e), "err"); }
+  const save = async (b: CharacterBook = book) => {
+    try { const saved = await api.saveLorebook({ id: sel ?? undefined, name, book: b }); toast("Saved", "ok"); await load(saved.id); } catch (e) { toast(errText(e), "err"); }
   };
   const create = async () => {
     try { const b = await api.saveLorebook({ name: "New lorebook", book: emptyBook("New lorebook") }); await load(b.id); } catch (e) { toast(errText(e), "err"); }
@@ -87,7 +87,7 @@ export default function Lorebooks() {
               {attached.length > 0 && <> Used by: {attached.map((c) => c.card.name).join(", ")}.</>}
               {" "}{book.entries.reduce((n, e) => n + tokens(e.content), 0)} token(s) of lore in total.
             </div>
-            <BookEditor book={book} setBook={(b) => { setBook(b); setDirty(true); }} showName={false} />
+            <BookEditor book={book} setBook={(b) => { setBook(b); setDirty(true); }} showName={false} onAdded={(b) => save(b)} />
           </>
         ) : (
           <div className="empty-state" style={{ margin: "auto" }}>

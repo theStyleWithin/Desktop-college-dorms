@@ -80,11 +80,12 @@ function Editor({ id, starters, onDone }: { id: string; starters: Playbook[]; on
   const vars = pb.variables;
   const setVar = (i: number, p: Partial<PbVar>) => set({ variables: vars.map((v, j) => (j === i ? { ...v, ...p } : v)) });
   const setRule = (i: number, p: Partial<PbRule>) => set({ rules: pb.rules.map((r, j) => (j === i ? { ...r, ...p } : r)) });
-  const save = async () => {
+  const save = async (p: Playbook = pb): Promise<boolean> => {
     try {
-      const saved = await api.savePlaybook(pb); setPb(saved); setDirty(false); toast("Saved.", "ok");
+      const saved = await api.savePlaybook(p); setPb(saved); setDirty(false); toast("Saved.", "ok");
       if (id === "new") onDone();
-    } catch (e) { toast(errText(e), "err"); }
+      return true;
+    } catch (e) { toast(errText(e), "err"); return false; }
   };
   const del = async () => { if (id === "new" || !window.confirm(`Delete “${pb.name}”? Chats using it keep their story but lose the rules.`)) return; try { await api.deletePlaybook(id); onDone(); } catch (e) { toast(errText(e), "err"); } };
   const back = () => { if (!dirty || window.confirm("Leave without saving your changes?")) onDone(); };
@@ -119,7 +120,9 @@ function Editor({ id, starters, onDone }: { id: string; starters: Playbook[]; on
           const variables = [...vars, ...r.variables.filter((v) => !have.has(v.id))].slice(0, 10);
           const ids = new Set(variables.map((v) => v.id)), used = new Set(pb.rules.map((x) => x.id));
           const rules = r.rules.filter((x) => x.then.every((a) => ids.has(a.var))).map((x) => (used.has(x.id) ? { ...x, id: `${x.id}_${pb.rules.length + 1}` } : x));
-          set({ name: pb.name.trim() ? pb.name : r.name, description: pb.description.trim() ? pb.description : r.description, instructions: pb.instructions.trim() ? pb.instructions : r.instructions, variables, rules: [...pb.rules, ...rules].slice(0, 15) });
+          const next = { ...pb, name: pb.name.trim() ? pb.name : r.name, description: pb.description.trim() ? pb.description : r.description, instructions: pb.instructions.trim() ? pb.instructions : r.instructions, variables, rules: [...pb.rules, ...rules].slice(0, 15) };
+          set(next);
+          return save(next).then((ok) => { if (!ok) throw new Error("The playbook could not be saved, so the draft is still here."); });
         }} />
 
       <Section title="Values" count={`${vars.length} of 10`} hint="What the story keeps track of. Each value has a name the rules use, and a note the characters read so they know what it means.">
