@@ -1389,6 +1389,7 @@ try:
     check("Discard drops the suggestion", d.execute_script("return !document.querySelector('[data-testid=tok-result]')"))
     seen["pieces"] = None
     dismiss()
+    lbk_ = invoke("save_lorebook", {"lorebook": {"id": "", "name": "Quarter", "book": {"name": "Quarter", "description": "", "scan_depth": None, "token_budget": None, "recursive_scanning": None, "extensions": {}, "entries": []}, "created_at": 0, "updated_at": 0}})
     reload_ui(); nav("Lorebooks"); time.sleep(1.0)
     seen["pieces"] = ["ENTRY: Moon Gate\nKEYS: moon, gate\nTEXT: A round window high in the attic.\n\n", "ENTRY: Canal\nKEYS: canal, water\nTEXT: Lanterns line both banks."]
     d.execute_script("document.querySelector('.notes-list .note-item').click()"); time.sleep(0.8)
@@ -1399,6 +1400,7 @@ try:
     check("the lorebook editor shows the drafted entries first and adds none yet", d.execute_script("return document.querySelectorAll('[data-testid=tokenator-lore-entry]').length")==2 and d.execute_script("return document.querySelectorAll('.notes-main .entry').length")==n_ent0_)
     d.execute_script("document.querySelector('[data-testid=tokenator-make-accept]').click()"); time.sleep(0.6)
     check("accepting adds them after the entries already there, with their keys", d.execute_script("return document.querySelectorAll('.notes-main .entry').length")==n_ent0_+2 and "Moon Gate" in d.execute_script("return [...document.querySelectorAll('.notes-main .entry input[placeholder=\"Entry name\"]')].map(i=>i.value).join('|')"))
+    invoke("delete_lorebook", {"id": lbk_["id"]})
     seen["pieces"] = None
     # the playbook helper (builds on what is there, saves nothing until Save) and the world helper (makes rooms and joins them)
     seen["pieces"] = ["NAME: Slow burn\nWHAT: Trust that grows with kindness.\nHOW: Be kind.\nVALUE: Trust | number | 0-10 | starts 2 | how much they trust you | 0=a wary stranger, 3=a friend\nRULE: Kind words | player says: thank you | trust +1"]
