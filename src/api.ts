@@ -304,7 +304,7 @@ export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
   tokenatorRun: (mode: "trim" | "draft", field: string, text: string, notes: string, context: string, targetTokens: number) =>
     invoke<string>("tokenator_run", { mode, field, text, notes, context, targetTokens }),
-  tokenatorMake: (kind: "prompt" | "lorebook", notes: string, context = "") => invoke<any>("tokenator_make", { kind, notes, context }),
+  tokenatorMake: (kind: "prompt" | "lorebook" | "playbook" | "room" | "world", notes: string, context = "") => invoke<any>("tokenator_make", { kind, notes, context }),
   // characters
   listCharacters: () => invoke<Character[]>("list_characters"),
   getCharacter: (id: string) => invoke<Character | null>("get_character", { id }),

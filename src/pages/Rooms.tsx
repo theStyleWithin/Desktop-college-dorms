@@ -1,3 +1,4 @@
+import TokenatorHelper from "../components/TokenatorHelper";
 import { useEffect, useRef, useState } from "react";
 import { api, displayName, type Room, type RoomKind } from "../api";
 import RoomMap from "../components/RoomMap";
@@ -226,6 +227,14 @@ function RoomForm({ id, world }: { id: number | null; world: number | null }) {
       <RoomGallery room={existing} />
 
       <h3 className="step"><b>2</b> Name, description &amp; background</h3>
+      <div style={{ margin: "8px 0 14px" }}>
+        <TokenatorHelper<{ name: string; kind: string; description: string }> kind="room" label="Tokenator: describe this room for me"
+          intro="Say what kind of place you picture, in your own words. Tokenator drafts a name, a kind and a description with your own model, and fills them in once you accept. You can edit them afterwards."
+          placeholder="e.g. a cosy attic with one round window, fairy lights and a beanbag"
+          context={() => { const w = worlds.find((x) => x.id === curWorld); return [w ? `This room is in the world "${w.name}"${w.description ? `: ${w.description}` : ""}.` : "", rooms.length ? `Rooms that already exist there, which must not be repeated: ${rooms.map((x) => x.name).join(", ")}.` : ""].filter(Boolean).join(" "); }}
+          preview={(x) => (<div className="card" style={{ background: "var(--panel2)" }} data-testid="tokenator-room-preview"><b>{x.name}</b> <span className="chip">{x.kind.replace("_", " ")}</span><div style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{x.description}</div></div>)}
+          onAccept={(x) => set({ name: x.name, kind: x.kind as Room["kind"], description: x.description })} />
+      </div>
       <label className="field"><span>Room name</span>
         <input type="text" placeholder="e.g. My loft" value={r.name} onChange={(e) => set({ name: e.target.value })} maxLength={80} /></label>
       <div className="field"><span>What kind of room is it?</span>

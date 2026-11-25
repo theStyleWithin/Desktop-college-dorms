@@ -391,6 +391,27 @@ try:
         snap("desktop-tokenator-lorebook-draft", (1440, 1100))
     safe("tokenator lorebook", tokenator_lorebook)
 
+    def tokenator_more():
+        def ask(sel, notes, reply, shot, size=(1440, 1100)):
+            d.execute_script("document.querySelector(arguments[0]).click()", sel); time.sleep(0.6)
+            d.execute_script("const t=document.querySelector('[data-testid=tokenator-make-notes]');const set=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;set.call(t,arguments[0]);t.dispatchEvent(new Event('input',{bubbles:true}))", notes); time.sleep(0.4)
+            override["text"] = reply
+            d.execute_script("document.querySelector('[data-testid=tokenator-make-go]').click()"); time.sleep(3.0)
+            d.execute_script("document.querySelector('[data-testid^=tokenator-helper-]').scrollIntoView({block:'start'})"); time.sleep(0.4)
+            snap(shot, size)
+        reload_ui(); nav("Playbooks"); time.sleep(0.8)
+        d.execute_script("document.querySelector('[data-testid=pb-new]').click()"); time.sleep(1.0)
+        ask("[data-testid=tokenator-make-playbook]", "a slow friendship: trust grows when I'm kind and drops when I'm rude, and their mood changes with it",
+            "NAME: Slow burn\nWHAT: Trust that grows with kindness and drops with rudeness.\nHOW: Be kind to build trust; rudeness costs it.\nVALUE: Trust | number | 0-10 | starts 2 | how much they trust you | 0=a wary stranger, 3=a cautious acquaintance, 6=a friend, 9=a trusted partner\nVALUE: Mood | choice | calm, cheerful, tense | starts calm | how they feel right now\nRULE: Kind words | player says: thank you, please, sorry | trust +1; mood = cheerful\nRULE: Rude words | player says: shut up, idiot | trust -2; mood = tense", "desktop-tokenator-playbook-draft")
+        reload_ui(); nav("Rooms"); time.sleep(1.0)
+        d.execute_script("const c=document.querySelector('[data-testid^=world-chip-]'); if(c) c.click()"); time.sleep(0.8)
+        ask("[data-testid=world-panel] [data-testid=tokenator-make-world]", "a lantern-lit tea district along an old canal, with a rooftop garden, a library that closes at dusk and a crowded tea house",
+            "NAME: Lantern Quarter\nABOUT: A neon-lit district of tea houses and rooftops that never quite sleeps.\nLORE: Built along an old canal, the Quarter hangs paper lanterns between its rooftops.\n\nThe corner shop is open all night.\nROOM: Tea House | kitchen | Steam, gossip and a crowded counter.\nROOM: Rooftop Garden | rooftop | Lanterns, herbs and a view of the canal.\nROOM: Old Library | office | Dusty shelves that lock at dusk.\nLINK: Tea House -> Rooftop Garden\nLINK: Tea House -> Old Library", "desktop-tokenator-world-draft")
+        d.execute_script("document.querySelector('[data-testid=world-make-room]').click()"); time.sleep(1.2)
+        ask("[data-testid=tokenator-make-room]", "a cosy attic with one round window, fairy lights and a beanbag",
+            "NAME: Moon Gate Attic\nKIND: other\nTEXT: A low attic under the roof beams, with one round window that frames the moon. Fairy lights are strung along the rafters and a worn beanbag sits in the corner.", "desktop-tokenator-room-draft")
+    safe("tokenator more", tokenator_more)
+
     def folders():
         bk = lambda n: {"name": n, "description": "", "scan_depth": None, "token_budget": None, "recursive_scanning": None, "extensions": {}, "entries": [{"keys": ["lantern"], "content": "Paper lanterns hang between the rooftops.", "extensions": {}, "enabled": True, "insertion_order": 0, "case_sensitive": None, "name": "Lanterns", "priority": None, "id": 0, "comment": "", "selective": False, "secondary_keys": [], "constant": False, "position": "before_char"}]}
         made = {n: inv("save_lorebook", {"lorebook": {"id": "", "name": n, "book": bk(n), "created_at": 0, "updated_at": 0}}) for n in ["Lantern Quarter", "Corner shop regulars", "House rules", "Tea menu", "Old canal history", "Rooftop secrets"]}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, blankPlaybook, type Lorebook, type PbBand, type PbRule, type PbVar, type Playbook } from "../api";
 import { ActList, CondList, Section, ValueInput } from "../components/PlaybookParts";
 import ShelfView, { NewFolderButton, useShelf } from "../components/Shelf";
+import TokenatorHelper from "../components/TokenatorHelper";
 import { useToast } from "../components/ui";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
@@ -99,6 +100,27 @@ function Editor({ id, starters, onDone }: { id: string; starters: Playbook[]; on
       </div>
       <label className="field"><span>What it is</span><input type="text" maxLength={600} value={pb.description} onChange={(e) => set({ description: e.target.value })} placeholder="A short description for the list" /></label>
       <label className="field"><span>Instructions (shown to you in the chat)</span><textarea rows={3} maxLength={2000} value={pb.instructions} onChange={(e) => set({ instructions: e.target.value })} placeholder="How to play it: what the values mean, what to try." /></label>
+
+      <TokenatorHelper<Playbook> kind="playbook" label="Tokenator: help me build this playbook"
+        intro="A playbook keeps track of things in your story, like trust or mood, and changes them when certain words are said. The characters are told the current values, so the story can grow. Say what you want to track, in plain words, and Tokenator drafts the values and rules. They are added to what you already have; nothing changes until you accept, and you can edit every part."
+        placeholder="e.g. a slow friendship: trust grows when I'm kind and drops when I'm rude, and their mood changes with it"
+        context={() => vars.length ? `Values this playbook already has, which must not be repeated: ${vars.map((v) => v.id).join(", ")}.` : ""}
+        preview={(r) => (
+          <div className="card" style={{ background: "var(--panel2)", display: "grid", gap: 6 }} data-testid="tokenator-playbook-preview">
+            <b>{r.name}</b>{r.description && <div>{r.description}</div>}
+            <div className="hint">Values</div>
+            {r.variables.map((v) => <div key={v.id}>• <b>{v.label || v.id}</b> <span className="tok">{v.kind === "number" ? `number ${v.min}–${v.max}, starts ${String(v.default)}` : v.kind === "choice" ? `one of ${v.options.join(", ")}, starts ${String(v.default)}` : v.kind}</span></div>)}
+            <div className="hint">Rules</div>
+            {r.rules.map((x) => <div key={x.id}>• <b>{x.name}</b>: when you say {x.when.flatMap((c) => (c.type === "user_says" ? c.words : [])).map((w) => `“${w}”`).join(", ")} → {x.then.map((a) => a.op === "add" ? `${a.var} +${String(a.value)}` : a.op === "subtract" ? `${a.var} −${String(a.value)}` : `${a.var} = ${String(a.value)}`).join(", ")}</div>)}
+          </div>
+        )}
+        onAccept={(r) => {
+          const have = new Set(vars.map((v) => v.id));
+          const variables = [...vars, ...r.variables.filter((v) => !have.has(v.id))].slice(0, 10);
+          const ids = new Set(variables.map((v) => v.id)), used = new Set(pb.rules.map((x) => x.id));
+          const rules = r.rules.filter((x) => x.then.every((a) => ids.has(a.var))).map((x) => (used.has(x.id) ? { ...x, id: `${x.id}_${pb.rules.length + 1}` } : x));
+          set({ name: pb.name.trim() ? pb.name : r.name, description: pb.description.trim() ? pb.description : r.description, instructions: pb.instructions.trim() ? pb.instructions : r.instructions, variables, rules: [...pb.rules, ...rules].slice(0, 15) });
+        }} />
 
       <Section title="Values" count={`${vars.length} of 10`} hint="What the story keeps track of. Each value has a name the rules use, and a note the characters read so they know what it means.">
         {vars.map((v, i) => (
