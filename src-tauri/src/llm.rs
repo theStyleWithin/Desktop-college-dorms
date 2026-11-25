@@ -72,6 +72,34 @@ pub async fn stream_chat(
     msgs: &[ChatMsg],
     p: &GenParams,
     cancel: &Notify,
+    on_token: impl FnMut(&str),
+) -> Result<String, String> {
+    let values: Vec<Value> = msgs.iter().map(|m| json!({ "role": m.role, "content": m.content })).collect();
+    stream_chat_values(http, ep, &values, p, cancel, on_token).await
+}
+
+/// One message in the Anthropic form: a picture part written for OpenAI-style servers (`image_url` with a data URL) becomes an `image` block.
+pub fn anthropic_msg(m: &Value) -> Value {
+    let Some(parts) = m["content"].as_array() else { return m.clone() };
+    let parts: Vec<Value> = parts.iter().map(|part| {
+        if part["type"] == "image_url" {
+            let url = part["image_url"]["url"].as_str().unwrap_or("");
+            if let Some((head, data)) = url.strip_prefix("data:").and_then(|r| r.split_once(";base64,")) {
+                return json!({ "type": "image", "source": { "type": "base64", "media_type": head, "data": data } });
+            }
+        }
+        part.clone()
+    }).collect();
+    json!({ "role": m["role"], "content": parts })
+}
+
+/// The same as `stream_chat`, but the messages are JSON, so a message's `content` can be a list of parts (text and `image_url` pictures).
+pub async fn stream_chat_values(
+    http: &reqwest::Client,
+    ep: &Endpoint,
+    msgs: &[Value],
+    p: &GenParams,
+    cancel: &Notify,
     mut on_token: impl FnMut(&str),
 ) -> Result<String, String> {
     let req = match ep {
@@ -99,8 +127,8 @@ pub async fn stream_chat(
             r
         }
         Endpoint::Anthropic { base, key, model, extras } => {
-            let system = msgs.iter().filter(|m| m.role == "system").map(|m| m.content.as_str()).collect::<Vec<_>>().join("\n\n");
-            let rest: Vec<&ChatMsg> = msgs.iter().filter(|m| m.role != "system").collect();
+            let system = msgs.iter().filter(|m| m["role"] == "system").filter_map(|m| m["content"].as_str()).collect::<Vec<_>>().join("\n\n");
+            let rest: Vec<Value> = msgs.iter().filter(|m| m["role"] != "system").map(anthropic_msg).collect();
             let mut body = json!({
                 "model": model,
                 "system": system,
@@ -267,6 +295,16 @@ pub async fn list_remote_models(http: &reqwest::Client, ep: &Endpoint) -> Result
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_picture_is_sent_to_anthropic_as_an_image_block() {
+        let m = json!({ "role": "user", "content": [ { "type": "text", "text": "what is this?" }, { "type": "image_url", "image_url": { "url": "data:image/jpeg;base64,QUJD" } } ] });
+        let a = anthropic_msg(&m);
+        assert_eq!(a["content"][0], json!({ "type": "text", "text": "what is this?" }));
+        assert_eq!(a["content"][1], json!({ "type": "image", "source": { "type": "base64", "media_type": "image/jpeg", "data": "QUJD" } }));
+        let plain = json!({ "role": "user", "content": "hi" });
+        assert_eq!(anthropic_msg(&plain), plain, "a text message is left alone");
+    }
+
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 

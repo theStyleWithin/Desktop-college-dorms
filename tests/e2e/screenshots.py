@@ -412,6 +412,25 @@ try:
             "NAME: Moon Gate Attic\nKIND: other\nTEXT: A low attic under the roof beams, with one round window that frames the moon. Fairy lights are strung along the rafters and a worn beanbag sits in the corner.", "desktop-tokenator-room-draft")
     safe("tokenator more", tokenator_more)
 
+    def tokenator_chat_shots():
+        from PIL import Image as _I
+        png = os.path.join(WORK, "chat-pic.png"); _I.new("RGB", (80, 50), (200, 60, 60)).save(png)
+        d.execute_script("localStorage.removeItem('dorms.tokenator.chat');localStorage.removeItem('dorms.tokenator.personality')")
+        reload_ui(); nav("Tokenator"); time.sleep(1.0)
+        snap("desktop-tokenator-chat-empty", (1440, 900))
+        def say(txt, reply, secs=3.5):
+            override["text"] = reply
+            d.execute_script("const t=document.querySelector('[data-testid=tchat-input]');const set=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;set.call(t,arguments[0]);t.dispatchEvent(new Event('input',{bubbles:true}))", txt); time.sleep(0.3)
+            d.execute_script("document.querySelector('[data-testid=tchat-send]').click()"); time.sleep(secs)
+        say("How do playbooks work?", "A playbook keeps track of things in your story, like trust or mood, and changes them when certain words are said. The characters are told the current values, so the story can grow. You can make one in the Playbooks section.")
+        i = d.find_element(By.CSS_SELECTOR, "[data-testid=tchat-file]"); d.execute_script("arguments[0].hidden=false;arguments[0].style.display='block';", i); i.send_keys(png); time.sleep(0.6)
+        say("What is in this picture?", "I can't tell what is in it, because I can't see pictures with this model. If you describe it, I'm happy to help.")
+        d.execute_script("const t=document.querySelector('[data-testid=tokenator-chat]');const dt=new DataTransfer();dt.setData('application/x-dorms-prompt',JSON.stringify({title:'Cheerful Energetic Genki Girl',body:'Talk in a bright, bubbly, upbeat way.'}));t.dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true}))"); time.sleep(0.6)
+        say("Say hi!", "Hiii! Ready to help with anything you need! What are we working on today?")
+        snap("desktop-tokenator-chat", (1440, 900))
+        d.execute_script("localStorage.removeItem('dorms.tokenator.chat');localStorage.removeItem('dorms.tokenator.personality')")
+    safe("tokenator chat", tokenator_chat_shots)
+
     def folders():
         bk = lambda n: {"name": n, "description": "", "scan_depth": None, "token_budget": None, "recursive_scanning": None, "extensions": {}, "entries": [{"keys": ["lantern"], "content": "Paper lanterns hang between the rooftops.", "extensions": {}, "enabled": True, "insertion_order": 0, "case_sensitive": None, "name": "Lanterns", "priority": None, "id": 0, "comment": "", "selective": False, "secondary_keys": [], "constant": False, "position": "before_char"}]}
         made = {n: inv("save_lorebook", {"lorebook": {"id": "", "name": n, "book": bk(n), "created_at": 0, "updated_at": 0}}) for n in ["Lantern Quarter", "Corner shop regulars", "House rules", "Tea menu", "Old canal history", "Rooftop secrets"]}

@@ -462,6 +462,104 @@ pub async fn tokenator_make(state: State<'_, Shared>, kind: String, notes: Strin
     }
 }
 
+// ----- the Tokenator chat -----
+
+/// One message of the Tokenator chat, as the front end sends it. `attached` is how many files went with it; `images` are the pictures (data URLs)
+/// the app is sending to the model, which is none at all when the model cannot see them.
+#[derive(serde::Deserialize, Clone, Debug, Default)]
+pub struct ChatIn {
+    pub role: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub attached: usize,
+    #[serde(default)]
+    pub images: Vec<String>,
+}
+
+pub fn app_name() -> &'static str {
+    if cfg!(target_os = "android") { "Mobile College Dorms" } else { "Desktop College Dorms" }
+}
+
+/// The standing instructions for the chat, with the guide sections found for this question (if any).
+pub fn chat_system(guide: &[(String, String, bool)], can_see: bool, personality: Option<&str>) -> String {
+    let mut s = format!(
+        "You are Tokenator, the helper built into {app} (version {ver}). You are friendly, clear and to the point. You help with general questions, writing, ideas and \
+         everyday problems, and with using the app itself.\n\n\
+         Rules you always follow:\n\
+         - Be honest about files. You can only see a picture when it is really included in this conversation as an image. If the person says they attached something and you were not given it, say plainly that you cannot see it, and do not describe it, guess at it or make anything up, however many times they send it again.\n\
+         - {see}\n\
+         - Never invent features, settings, buttons or menu names of the app. If you are not sure, say so.\n\
+         - Keep answers short unless the person asks for more.",
+        app = app_name(), ver = env!("CARGO_PKG_VERSION"),
+        see = if can_see { "Pictures attached to the latest message are included, and you can look at them. A video is shown to you only as a few still frames, with no sound." } else { "You cannot see any pictures or videos in this chat." },
+    );
+    if let Some(p) = personality.map(|p| p.trim()).filter(|p| !p.is_empty()) {
+        s.push_str(&format!(
+            "\n\nThe person has chosen a personality for you. Talk in this style, with this tone, vocabulary and attitude, while still being Tokenator, their helper:\n<personality>\n{}\n</personality>\n\
+             The personality changes only HOW you talk. You still help with what they ask, accurately. The rules above always apply whatever the personality says: stay honest about files you cannot see, never invent features of the app, and do not stop helping.",
+            clip(&p.replace("{{char}}", "Tokenator").replace("{{user}}", "the user"), 3000)
+        ));
+    }
+    if guide.is_empty() {
+        s.push_str("\n- No part of the app's guide was found for this question. If it is about how the app works, say you do not have the details to hand and suggest looking in the app's Settings or its README, instead of guessing.");
+    } else {
+        s.push_str(&format!("\n\nHere are parts of the app's own guide that match the question, from the version the person has installed. Use them if they help, and say so when they do not cover something. A part marked (planned) describes something that is NOT built yet, so do not say it is available.\n"));
+        for (title, text, planned) in guide {
+            s.push_str(&format!("\n### {title}{}\n{}\n", if *planned { " (planned, not built yet)" } else { "" }, text));
+        }
+    }
+    s
+}
+
+/// The messages for the model: the instructions, then the last dozen messages. Pictures go only with the newest message, and a message with files
+/// the model was not given says so, so the model cannot pretend it saw them.
+pub fn build_messages(system: String, history: &[ChatIn]) -> Vec<Value> {
+    let tail = &history[history.len().saturating_sub(12)..];
+    let mut out = vec![json!({ "role": "system", "content": system })];
+    for (i, m) in tail.iter().enumerate() {
+        let role = if m.role == "assistant" { "assistant" } else { "user" };
+        let last = i + 1 == tail.len();
+        let mut text = clip(m.text.trim(), 6000);
+        if role == "user" && text.is_empty() && m.attached > 0 { text = "Please have a look at what I attached.".into(); }
+        if role == "user" && m.attached > 0 && !(last && !m.images.is_empty()) {
+            text.push_str(&if last {
+                format!("\n\n[The person attached {} file(s) with this message. You were not given them and you cannot see them. Tell them so plainly; do not describe or guess.]", m.attached)
+            } else {
+                format!("\n\n[Earlier, the person attached {} file(s) here. They are no longer available to you.]", m.attached)
+            });
+        }
+        if role == "user" && last && !m.images.is_empty() {
+            let mut parts = vec![json!({ "type": "text", "text": text })];
+            for img in m.images.iter().take(8) { parts.push(json!({ "type": "image_url", "image_url": { "url": img } })); }
+            out.push(json!({ "role": role, "content": parts }));
+        } else {
+            out.push(json!({ "role": role, "content": text }));
+        }
+    }
+    out
+}
+
+/// A turn of the Tokenator chat. Returns the reply and the titles of the guide sections that were used (none for questions that are not about the app).
+#[tauri::command]
+pub async fn tokenator_chat(state: State<'_, Shared>, messages: Vec<ChatIn>, personality: Option<String>) -> R<Value> {
+    let st: Shared = state.inner().clone();
+    let o = owner(&st)?;
+    let Some(last) = messages.iter().rev().find(|m| m.role != "assistant") else { return Err("Say something first.".into()) };
+    let found = crate::guide::search(crate::guide::index(), &last.text, 4, 5000);
+    let guide: Vec<(String, String, bool)> = found.iter().map(|x| (format!("{} › {}", x.doc, x.title), clip(&x.text, 1600), x.planned)).collect();
+    let sources: Vec<String> = found.iter().map(|x| x.title.clone()).collect();
+    let can_see = last.images.iter().any(|i| !i.is_empty());
+    let msgs = build_messages(chat_system(&guide, can_see, personality.as_deref()), &messages);
+    let settings = db::get_settings(&st.db.lock().unwrap(), &o);
+    let (ep, _) = resolve_endpoint(&st, &o, &settings).await?;
+    let params = crate::llm::GenParams { temperature: 0.6, top_p: 0.95, max_tokens: 1200 };
+    let out = crate::llm::stream_chat_values(&st.http, &ep, &msgs, &params, &Notify::new(), |_| {}).await.map_err(e)?;
+    let reply = out.trim().to_string();
+    if reply.is_empty() { return Err("The model sent back nothing. Try again, or pick a different model.".into()); }
+    Ok(json!({ "reply": reply, "sources": sources }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -548,6 +646,49 @@ mod tests {
         assert!(w.lore.contains("canal") && w.lore.contains("never sleeps"), "lore keeps its paragraphs: {}", w.lore);
         assert_eq!(w.links.len(), 3, "a link back the other way, one to a room that does not exist, and one to itself are dropped");
         assert!(parse_world("nothing here").is_err());
+    }
+
+    #[test]
+    fn the_chat_never_lets_the_model_pretend_to_see_files() {
+        let hist = vec![
+            ChatIn { role: "user".into(), text: "look at this".into(), attached: 1, images: vec![] },
+            ChatIn { role: "assistant".into(), text: "I can't see it.".into(), ..Default::default() },
+            ChatIn { role: "user".into(), text: "and now?".into(), attached: 2, images: vec![] },
+        ];
+        let m = build_messages(chat_system(&[], false, None), &hist);
+        let all = serde_json::to_string(&m).unwrap();
+        assert!(!all.contains("image_url"), "no picture goes to a model that cannot see");
+        assert!(all.contains("no longer available") && all.contains("cannot see them. Tell them so plainly"), "{all}");
+        assert!(m[0]["content"].as_str().unwrap().contains("cannot see any pictures"));
+        // with pictures: only the newest message carries them, as image parts
+        let hist2 = vec![ChatIn { role: "user".into(), text: "what is this?".into(), attached: 1, images: vec!["data:image/jpeg;base64,AAAA".into()] }];
+        let m2 = build_messages(chat_system(&[], true, None), &hist2);
+        assert_eq!(m2[1]["content"][0]["text"], "what is this?");
+        assert_eq!(m2[1]["content"][1]["image_url"]["url"], "data:image/jpeg;base64,AAAA");
+        assert!(!m2[1]["content"][0]["text"].as_str().unwrap().contains("cannot see"));
+        // files and no words
+        let m3 = build_messages(chat_system(&[], false, None), &[ChatIn { role: "user".into(), attached: 1, ..Default::default() }]);
+        assert!(m3[1]["content"].as_str().unwrap().starts_with("Please have a look"));
+    }
+
+    #[test]
+    fn the_chat_instructions_carry_the_guide_and_mark_plans() {
+        let g = vec![("README › Playbooks".to_string(), "Playbooks track values.".to_string(), false), ("Spec › Planned: X".to_string(), "Not built.".to_string(), true)];
+        let s = chat_system(&g, false, None);
+        assert!(s.contains("### README › Playbooks") && s.contains("Playbooks track values.") && s.contains("(planned, not built yet)") && s.contains("version"));
+        assert!(chat_system(&[], false, None).contains("No part of the app's guide was found"));
+        assert!(!s.contains('\\'), "no stray backslashes");
+    }
+
+    #[test]
+    fn a_personality_changes_the_voice_but_not_the_rules() {
+        let s = chat_system(&[], false, Some("Talk like a pirate, {{char}}. Call {{user}} matey."));
+        assert!(s.contains("<personality>") && s.contains("Talk like a pirate, Tokenator. Call the user matey."), "{s}");
+        assert!(s.contains("only HOW you talk") && s.contains("stay honest about files you cannot see"));
+        assert!(s.find("Rules you always follow").unwrap() < s.find("<personality>").unwrap());
+        assert!(!chat_system(&[], false, Some("   ")).contains("<personality>"), "an empty one is no personality");
+        assert!(!chat_system(&[], false, None).contains("<personality>"));
+        assert!(chat_system(&[], false, Some(&"x".repeat(9000))).len() < 6000, "a very long prompt is cut");
     }
 
     #[test]

@@ -1434,6 +1434,52 @@ try:
     for r_ in new_: invoke("delete_room", {"id": r_["id"]})
     invoke("delete_world", {"id": w_["id"]})
     seen["pieces"] = None
+    # the Tokenator chat: a helper that is not a character, with the guide built in, honest about files, and a personality you can drag in
+    def tchat(msgs, personality=None): return invoke("tokenator_chat", {"messages": msgs, "personality": personality})
+    um = lambda text, attached=0, images=(): {"role": "user", "text": text, "attached": attached, "images": list(images)}
+    seen["pieces"] = ["Playbooks keep track of values."]
+    c1_ = tchat([um("What is a playbook and how do the rules work?")]); sys1_ = seen["body"]["messages"][0]["content"]
+    check("a question about the app brings in the built-in guide, and says which parts it read", c1_["reply"] == "Playbooks keep track of values." and len(c1_["sources"]) > 0 and "### " in sys1_ and "playbook" in sys1_.lower(), str(c1_["sources"]))
+    c2_ = tchat([um("Write me a short poem about the sea")]); sys2_ = seen["body"]["messages"][0]["content"]
+    check("a question that is not about the app brings in no guide at all", c2_["sources"] == [] and "### " not in sys2_ and "No part of the app's guide" in sys2_)
+    tchat([um("what is this?", 1)]); b3_ = seen["body"]
+    check("with a file the model was not given, nothing is sent and the model is told it cannot see it", "image_url" not in json.dumps(b3_) and "cannot see them" in b3_["messages"][-1]["content"] and "cannot see any pictures" in b3_["messages"][0]["content"])
+    tchat([um("what is this?", 1, ["data:image/jpeg;base64,AAAA"])]); b4_ = seen["body"]
+    check("with a picture the model can be sent, it goes in the message as an image", isinstance(b4_["messages"][-1]["content"], list) and b4_["messages"][-1]["content"][1]["image_url"]["url"] == "data:image/jpeg;base64,AAAA" and "you can look at them" in b4_["messages"][0]["content"])
+    tchat([um("hi")], "Talk like a pirate."); sys5_ = seen["body"]["messages"][0]["content"]
+    check("a personality changes how it talks, and the rules still come first", "<personality>" in sys5_ and "Talk like a pirate." in sys5_ and "only HOW you talk" in sys5_ and sys5_.index("Rules you always follow") < sys5_.index("<personality>"))
+    check("an empty chat is refused", "first" in str(inv_err("tokenator_chat", {"messages": [], "personality": None})).lower())
+    d.execute_script("localStorage.removeItem('dorms.tokenator.chat');localStorage.removeItem('dorms.tokenator.personality');localStorage.removeItem('dorms.tokenator.sees.fake-model')")
+    reload_ui(); nav("Tokenator"); time.sleep(1.0)
+    check("the Tokenator section opens a chat from the side bar", d.execute_script("return !!document.querySelector('[data-testid=tokenator-chat]')"))
+    check("it says which model is in use, and offers a switch for pictures when it cannot tell", "fake-model" in d.execute_script("return document.querySelector('[data-testid=tchat-model]').innerText") and d.execute_script("return !!document.querySelector('[data-testid=tchat-sees]')"))
+    send_ = lambda txt, secs=3.0: (set_value("[data-testid=tchat-input]", txt), time.sleep(0.3), d.execute_script("document.querySelector('[data-testid=tchat-send]').click()"), time.sleep(secs))
+    last_ = lambda role: d.execute_script("const m=[...document.querySelectorAll('[data-testid=tchat-msgs] .tmsg[data-role=%s]')];return m.length?m[m.length-1].innerText:''" % role)
+    seen["pieces"] = ["Playbooks keep track of values in a story."]
+    send_("How do playbooks work?")
+    check("a message gets a reply, with a line saying which parts of the guide it read", "keep track of values" in last_("assistant") and "Read from the app guide" in last_("assistant"), last_("assistant"))
+    from PIL import Image as _ImgT
+    png_ = os.path.join(WORK, "chat-pic.png"); _ImgT.new("RGB", (60, 40), (200, 60, 60)).save(png_)
+    def attach_(path):
+        i_ = d.find_element(By.CSS_SELECTOR, "[data-testid=tchat-file]"); d.execute_script("arguments[0].hidden=false;arguments[0].style.display='block';", i_); i_.send_keys(path); time.sleep(0.6)
+    seen["pieces"] = ["I can't tell what the picture shows."]
+    attach_(png_); send_("what is in this picture?")
+    check("a model that may not see pictures is not sent the file, and the app says so in plain words", "image_url" not in json.dumps(seen["body"]) and "can't see attached files" in last_("note") and "cannot see them" in seen["body"]["messages"][-1]["content"], last_("note"))
+    d.execute_script("document.querySelector('[data-testid=tchat-sees]').click()"); time.sleep(0.4)
+    seen["pieces"] = ["A red rectangle."]
+    attach_(png_); send_("and now?", 4.0)
+    check("with the picture switch on, the picture goes to the model", "image_url" in json.dumps(seen["body"]) and "data:image/jpeg;base64," in json.dumps(seen["body"]) and "A red rectangle" in last_("assistant"), json.dumps(seen["body"])[:200])
+    d.execute_script("const t=document.querySelector('[data-testid=tokenator-chat]');const dt=new DataTransfer();dt.setData('application/x-dorms-prompt',JSON.stringify({title:'Pirate',body:'Talk like a pirate, {{char}}.'}));t.dispatchEvent(new DragEvent('dragover',{dataTransfer:dt,bubbles:true,cancelable:true}));t.dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true}))"); time.sleep(0.6)
+    check("dragging a prompt onto the chat gives Tokenator that personality, shown with a way back", "Pirate" in d.execute_script("return document.querySelector('[data-testid=tchat-persona]').innerText") and "still Tokenator" in last_("note"))
+    seen["pieces"] = ["Arr, hello."]
+    send_("hello")
+    check("the personality is sent with the next message", "Talk like a pirate, Tokenator." in seen["body"]["messages"][0]["content"])
+    d.execute_script("document.querySelector('[data-testid=tchat-persona-clear]').click()"); time.sleep(0.4)
+    seen["pieces"] = ["Hello."]
+    send_("hello again")
+    check("and 'back to normal' takes it away", "<personality>" not in seen["body"]["messages"][0]["content"])
+    d.execute_script("localStorage.removeItem('dorms.tokenator.chat');localStorage.removeItem('dorms.tokenator.personality');localStorage.removeItem('dorms.tokenator.sees.fake-model')")
+    seen["pieces"] = None
     # statuses: in the character's voice (written by the model) or in the user's own words
     cid = chars_now[0]["id"]
     old_pieces = seen.get("pieces"); seen["pieces"] = ["studying ", "hard"]
@@ -1695,7 +1741,7 @@ try:
     # the label is the text of the button itself (its icon sits in a span of its own)
     labels = lambda: d.execute_script("return [...document.querySelectorAll('nav.side button.nav[data-nav]')].map(b=>[...b.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join('').trim())")
     order0 = labels()
-    check("the side bar starts in its normal order, with Prompts after them", order0[0] == "Home" and order0[-1] == "Settings" and d.execute_script("return document.querySelector('nav.side .prompts').previousElementSibling.dataset.nav") == "settings")
+    check("the side bar starts in its normal order, with Tokenator at the top and Prompts after them", order0[:2] == ["Tokenator", "Home"] and order0[-1] == "Settings" and d.execute_script("return document.querySelector('nav.side .prompts').previousElementSibling.dataset.nav") == "settings")
     drag_nav = """
       const a = document.querySelector('[data-nav=' + arguments[0] + ']'), b = document.querySelector('[data-nav=' + arguments[1] + ']');
       const r = b.getBoundingClientRect(); const y = arguments[2] ? r.bottom - 2 : r.top + 2; const dt = new DataTransfer();
@@ -1703,8 +1749,8 @@ try:
       b.dispatchEvent(new DragEvent('dragover', {bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 5, clientY: y}));
       b.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 5, clientY: y}));
       a.dispatchEvent(new DragEvent('dragend', {bubbles: true, dataTransfer: dt}));"""
-    d.execute_script(drag_nav, "notes", "home", False); time.sleep(0.5)
-    check("dropping an item on the top half of another puts it before that one", labels()[0] == "Notes" and labels()[1] == "Home", str(labels()))
+    d.execute_script(drag_nav, "notes", "tokenator", False); time.sleep(0.5)
+    check("dropping an item on the top half of another puts it before that one", labels()[0] == "Notes" and labels()[1] == "Tokenator", str(labels()))
     d.execute_script(drag_nav, "home", "settings", True); time.sleep(0.5)
     check("dropping on the bottom half puts it after, and Prompts is still last", labels()[-1] == "Home" and d.execute_script("const ps=document.querySelector('nav.side .prompts');return [...document.querySelectorAll('nav.side button.nav[data-nav]')].every(b=>b.compareDocumentPosition(ps)&Node.DOCUMENT_POSITION_FOLLOWING)"), str(labels()))
     check("Prompts can't be dragged", d.execute_script("return document.querySelector('[data-testid=prompts-toggle]').getAttribute('draggable')") is None)
@@ -1712,10 +1758,16 @@ try:
     check("the order is remembered after a restart", labels()[0] == "Notes" and labels()[-1] == "Home", str(labels()))
     d.execute_script("document.querySelector('[data-nav=notes]').focus()")
     ActionChains(d).key_down(Keys.ALT).send_keys(Keys.ARROW_DOWN).key_up(Keys.ALT).perform(); time.sleep(0.5)
-    check("Alt and the down arrow moves the focused item down one place", labels()[:2] == ["Characters", "Notes"], str(labels()))
+    check("Alt and the down arrow moves the focused item down one place", labels()[:2] == ["Tokenator", "Notes"], str(labels()))
     nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Customization"); time.sleep(0.6)
     click_text("button", "Reset the side bar order"); time.sleep(0.5)
     check("the order can be reset from Settings, Appearance", labels() == order0, str(labels()))
+    d.execute_script("localStorage.setItem('dorms.nav.order', JSON.stringify(['settings','home','lorebooks','notes','rooms','chat','decor','library','playbooks']))"); reload_ui(); time.sleep(0.8)
+    check("for someone who already arranged their side bar, Tokenator appears at the top and their order is kept", labels()[0] == "Tokenator" and labels()[1:] == ["Settings", "Home", "Lorebooks", "Notes", "Rooms", "Dorms", "Decorations", "Characters", "Playbooks"], str(labels()))
+    d.execute_script(drag_nav, "tokenator", "home", True); time.sleep(0.5)
+    reload_ui(); time.sleep(0.8)
+    check("Tokenator can be moved like any other item, and the place is remembered", labels()[:3] == ["Settings", "Home", "Tokenator"], str(labels()))
+    d.execute_script("localStorage.removeItem('dorms.nav.order')"); reload_ui(); time.sleep(0.6)
 
     # -- side bar extras: recent chats, favorites (as many as you like), most used, and a picture frame
     all_chars = invoke("list_characters")

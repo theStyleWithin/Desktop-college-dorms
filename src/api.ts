@@ -305,6 +305,7 @@ export const api = {
   tokenatorRun: (mode: "trim" | "draft", field: string, text: string, notes: string, context: string, targetTokens: number) =>
     invoke<string>("tokenator_run", { mode, field, text, notes, context, targetTokens }),
   tokenatorMake: (kind: "prompt" | "lorebook" | "playbook" | "room" | "world", notes: string, context = "") => invoke<any>("tokenator_make", { kind, notes, context }),
+  tokenatorChat: (messages: { role: string; text: string; attached: number; images: string[] }[], personality: string | null = null) => invoke<{ reply: string; sources: string[] }>("tokenator_chat", { messages, personality }),
   // characters
   listCharacters: () => invoke<Character[]>("list_characters"),
   getCharacter: (id: string) => invoke<Character | null>("get_character", { id }),
