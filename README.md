@@ -190,6 +190,8 @@ Ideas that are planned but **not built yet**. These are plans, not promises, and
 
 - **Drag a character into a chat.** In a new room with nobody in it, drag a character from the characters list onto the panel beside the chat to start talking, and drag in another to make a group chat. There will be an "Add a character" button too, for touch screens.
 
+- **A built-in model on recent Android phones.** Download a small model (such as Llama 3.2 3B) and chat fully offline on the phone. It will need a capable phone, will be slower than a cloud model, and has not been built or tested yet.
+
 Have an idea of your own? Open an issue.
 
 ## Install

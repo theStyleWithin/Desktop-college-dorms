@@ -322,6 +322,17 @@ Not built yet. A new room, in a world or not, can have a chat with nobody in it 
 - **Touch and keyboard.** Dragging is unreliable on touch screens and out of reach for keyboard users, so the panel also gets an "Add a character" button and a long-press or menu option on a character in the list. Dragging a character out of the panel (or a small remove button) takes them out again.
 - Before building: show rendered pictures of the empty panel, the drop highlight and the group-chat question. It can only be tested with the app's own tests and a fake model, and drag-and-drop with a real mouse and a touch screen was not tested.
 
+## Planned: a built-in model on Android phones
+
+Not built yet. Today the Android app has no built-in engine: the desktop builds run a helper program (`llama-server`) and Android does not allow an app to launch one, so the phone uses a cloud or network model. The catalog already lists **Llama 3.2 3B** (`Llama-3.2-3B-Instruct-Q4_K_M.gguf`, about 2 GB), but downloading it on a phone would be pointless without an engine to run it, so the plan is to do both:
+
+- **An engine inside the app.** llama.cpp built for Android (arm64) as a library that runs inside the app process, answering the same requests the desktop's helper does. This is the big part. It needs the Android build tools in CI, the 16 KB page-size rule of newer Android versions, and a way to keep the model loaded without the system killing the app.
+- **Download on the phone** with the existing resumable downloader, into the app's storage. The catalog shows only models the phone can hold: Llama 3.2 1B and 3B on most capable phones, and the bigger ones only on phones with a lot of memory, with a warning.
+- **A check before it starts:** the phone's memory is read, a screen explains the cost (about 2 GB of storage, about 3 GB of memory while it runs, heat and battery), and a short speed test says what to expect. A phone that cannot hold the model is told so instead of crashing.
+- **Aimed at recent flagship phones** (for example the RedMagic 8 Pro and up, which have a lot of memory and a cooling fan). Speed has not been measured: a 3B model on a phone's processor may be a few to a dozen words a second, so replies will be slower than a cloud model.
+- **Cloud and network models stay the default** and keep working as they do now.
+- **Before building:** rendered pictures of the phone's Models tab (the "this phone can run" card, the download and the speed test). CI can only prove it builds; whether it runs, how fast, and whether the phone overheats can only be tested on a real phone, so a real test on one is needed before it is released.
+
 ## Status
 
 v0.3.0 adds a real 3D viewer for VRM / VRoid models (room, idle life, physics, hands, wardrobe) and voice input. v0.2.0 added local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.
