@@ -2,6 +2,7 @@ mod accounts;
 mod commands;
 mod db;
 mod extras;
+mod guide;
 mod llama;
 mod llm;
 mod novel;
@@ -150,6 +151,7 @@ pub fn run() {
             shelf::move_to_shelf_folder,
             tokenator::tokenator_run,
             tokenator::tokenator_make,
+            tokenator::tokenator_chat,
             novel::novel_status,
             novel::novel_start,
             novel::novel_stop,

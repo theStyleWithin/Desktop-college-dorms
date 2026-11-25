@@ -6,6 +6,7 @@ export type Route =
   | { page: "library" }
   | { page: "rooms"; edit?: number | "new"; /** the world a new room is made in, or the world being looked at */ world?: number | null }
   | { page: "notes" }
+  | { page: "tokenator" }
   | { page: "decor" }
   | { page: "lorebooks" }
   | { page: "playbooks"; edit?: string | "new" }

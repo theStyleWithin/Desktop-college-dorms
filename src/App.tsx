@@ -21,6 +21,7 @@ import { HiddenNotice } from "./components/HiddenAccounts";
 import SideWidgets from "./components/SideWidgets";
 import MembersRail from "./components/MembersRail";
 import PanelResizer from "./components/PanelResizer";
+import TokenatorChat from "./pages/TokenatorChat";
 import Editor from "./pages/Editor";
 import ChatPage from "./pages/Chat";
 import SettingsPage from "./pages/Settings";
@@ -48,6 +49,7 @@ const NAV: { page: Route["page"]; label: string; icon: string }[] = [
   { page: "lorebooks", label: "Lorebooks", icon: "📚" },
   { page: "playbooks", label: "Playbooks", icon: "🎲" },
   { page: "notes", label: "Notes", icon: "📝" },
+  { page: "tokenator", label: "Tokenator", icon: "✂️" },
   { page: "settings", label: "Settings", icon: "⚙️" },
 ];
 
@@ -272,6 +274,7 @@ function Shell({ session, setSession, onHidden }: { session: SessionState; setSe
               {route.page === "home" && <Home />}
               {route.page === "library" && <Library />}
               {route.page === "notes" && <Notes />}
+              {route.page === "tokenator" && <TokenatorChat />}
               {route.page === "decor" && <Decor />}
               {route.page === "playbooks" && <Playbooks key={String(route.edit ?? "list")} edit={route.edit} />}
               {route.page === "lorebooks" && <Lorebooks />}
