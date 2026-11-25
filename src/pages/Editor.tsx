@@ -8,6 +8,7 @@ import BookEditor from "../components/BookEditor";
 import { makeWardrobe } from "../components/WardrobePanel";
 import GalleryEditor from "../components/GalleryEditor";
 import CharDecoEditor from "../components/CharDecoEditor";
+import TokenatorPanel from "../components/TokenatorPanel";
 import { TagInput, useToast } from "../components/ui";
 import { errText, tokens } from "../lib/util";
 import { useStore } from "../store";
@@ -53,6 +54,7 @@ export default function Editor({ id }: { id: string | null }) {
   const [framing, setFraming] = useState<{ file?: File; url: string; kind: MediaKind; initial?: Frame | null } | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [tokOpen, setTokOpen] = useState(false);
   const [trusted, setTrusted] = useState(true);
   const [library, setLibrary] = useState<Lorebook[]>([]);
   const [attached, setAttached] = useState<string[]>([]);
@@ -285,6 +287,8 @@ export default function Editor({ id }: { id: string | null }) {
         )}
       </Field>
       <p className="tok" style={{ textAlign: "center" }}>Total: {total} token(s). Permanent: {permanent} token(s). Your context window is {settings.context_tokens}.</p>
+      <div style={{ textAlign: "center" }}><button type="button" className="btn sm" onClick={() => setTokOpen(true)} data-testid="tokenator-open">✂️ Tokenator</button></div>
+      {tokOpen && <TokenatorPanel card={card} onApply={(f, t) => set(f as any, t as any)} onClose={() => setTokOpen(false)} />}
 
       <details className="card" style={{ marginTop: 24 }} open>
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>Advanced Definitions</summary>
