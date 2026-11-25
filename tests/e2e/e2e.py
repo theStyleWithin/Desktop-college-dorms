@@ -1417,7 +1417,7 @@ try:
     made_pb_ = [x for x in invoke("list_playbooks") if x["name"] == "Slow burn"]
     check("accepting saves the playbook with its values and rules", len(made_pb_) == 1 and [v["id"] for v in made_pb_[0]["variables"]] == ["trust"] and len(made_pb_[0]["rules"]) == 1 and len(invoke("list_playbooks")) == n_pb_ + 1, str(made_pb_)[:300])
     for x_ in made_pb_: invoke("delete_playbook", {"id": x_["id"]})
-    w_ = invoke("list_worlds")[0]; w_lore_ = w_["lore"]; rooms_before_ = {r["id"] for r in invoke("list_rooms")}
+    w_ = invoke("create_world", {"name": "Harbour test", "description": ""}); w_lore_ = w_["lore"]; rooms_before_ = {r["id"] for r in invoke("list_rooms")}
     seen["pieces"] = ["NAME: Harbour\nABOUT: A moonlit harbour town.\nLORE: Fishing boats and lamps.\nROOM: Harbour Office | office | Maps and ropes.\nROOM: Lighthouse | rooftop | A tall white tower.\nLINK: Harbour Office -> Lighthouse"]
     reload_ui(); nav("Rooms"); time.sleep(1.0)
     d.execute_script("document.querySelector('[data-testid=world-chip-%d]').click()" % w_["id"]); time.sleep(0.8)
@@ -1429,9 +1429,10 @@ try:
     new_ = [r for r in invoke("list_rooms") if r["id"] not in rooms_before_]
     ho_ = next((r for r in new_ if r["name"] == "Harbour Office"), None); lh_ = next((r for r in new_ if r["name"] == "Lighthouse"), None)
     check("accepting makes the rooms in that world, with their kinds, and joins them", bool(ho_ and lh_) and ho_["world_id"] == w_["id"] and ho_["kind"] == "office" and lh_["id"] in (ho_.get("links") or []), str(new_)[:300])
-    check("and adds to the world's lore without replacing it", invoke("list_worlds")[0]["lore"].startswith(w_lore_) and "Fishing boats" in invoke("list_worlds")[0]["lore"])
+    wnow_ = next(x for x in invoke("list_worlds") if x["id"] == w_["id"])
+    check("and adds to the world's lore, and fills its description because it was empty", wnow_["lore"].startswith(w_lore_) and "Fishing boats" in wnow_["lore"] and wnow_["description"] == "A moonlit harbour town.", str(wnow_)[:200])
     for r_ in new_: invoke("delete_room", {"id": r_["id"]})
-    w2_ = invoke("list_worlds")[0]; invoke("update_world", {"id": w_["id"], "name": w2_["name"], "description": w_["description"], "lore": w_lore_, "lorebooks": w_["lorebooks"]})
+    invoke("delete_world", {"id": w_["id"]})
     seen["pieces"] = None
     # statuses: in the character's voice (written by the model) or in the user's own words
     cid = chars_now[0]["id"]
