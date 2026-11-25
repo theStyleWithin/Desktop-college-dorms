@@ -126,8 +126,52 @@ pub fn make_system(kind: &str) -> R<&'static str> {
              LABEL: one or two words, or leave this empty\n\
              TEXT:\n\
              the prompt itself"),
+        "lorebook" => Ok("You are Tokenator, who helps people write lorebooks for AI roleplay. A lorebook is a set of short entries about a world: places, people, groups, rules, objects. Each entry has trigger keywords; when one of them appears in the chat, the entry's text is added to what the AI knows. \
+             From the person's idea, write between 3 and 8 entries (or the number they ask for, at most 12). Each entry has a short name, 2 to 6 keywords someone would really type, and 1 to 4 sentences of plain facts. Do not repeat entries that already exist. \
+             Reply in exactly this form, with a blank line between entries, and nothing else:\n\
+             ENTRY: the name\n\
+             KEYS: a keyword, another keyword\n\
+             TEXT: the facts"),
         _ => Err("Tokenator can't write that yet.".into()),
     }
+}
+
+/// Reads the model's answer for a lorebook into entries (name, keys, text). Lenient about numbering and bullets; an entry with no text is dropped,
+/// and one with no keys gets its name as the key. At most 12 entries, 8 keys each.
+pub fn parse_lore_entries(raw: &str) -> R<Vec<(String, Vec<String>, String)>> {
+    let t = clean_reply(raw);
+    let mut out: Vec<(String, Vec<String>, String)> = vec![];
+    let mut in_text = false;
+    for line in t.lines() {
+        let l = line.trim().trim_start_matches(|c: char| c.is_ascii_digit() || matches!(c, '.' | ')' | '-' | '*' | '#' | ' ')).trim_start();
+        let low = l.to_lowercase();
+        if low.starts_with("entry:") || (!in_text && low.starts_with("name:")) {
+            let n = low.find(':').unwrap_or(0) + 1;
+            out.push((l[n..].trim().trim_matches('"').trim().to_string(), vec![], String::new()));
+            in_text = false;
+        } else if low.starts_with("keys:") || low.starts_with("keywords:") {
+            if let Some(e) = out.last_mut() {
+                let n = low.find(':').unwrap_or(0) + 1;
+                e.1 = l[n..].split(',').map(|k| k.trim().trim_matches('"').trim().to_string()).filter(|k| !k.is_empty()).take(8).collect();
+            }
+            in_text = false;
+        } else if low.starts_with("text:") || low.starts_with("content:") {
+            if let Some(e) = out.last_mut() {
+                let n = low.find(':').unwrap_or(0) + 1;
+                e.2 = l[n..].trim().to_string();
+                in_text = true;
+            }
+        } else if in_text && !line.trim().is_empty() {
+            if let Some(e) = out.last_mut() { e.2.push(' '); e.2.push_str(line.trim()); }
+        } else if line.trim().is_empty() {
+            in_text = false;
+        }
+    }
+    let mut res: Vec<(String, Vec<String>, String)> = out.into_iter().filter(|e| !e.0.is_empty() && !e.2.trim().is_empty())
+        .map(|(n, mut k, c)| { if k.is_empty() { k.push(n.clone()); } (clip(&n, 80), k, clip(c.trim(), 1500)) }).take(12).collect();
+    res.dedup_by(|a, b| a.0.eq_ignore_ascii_case(&b.0));
+    if res.is_empty() { return Err("The model didn't write usable entries. Try again, or say a little more about the world.".into()); }
+    Ok(res)
 }
 
 /// Reads the model's answer for a prompt into (title, label, text). Lenient: if the markers are missing, everything that is not a TITLE or LABEL line is the text.
@@ -166,6 +210,10 @@ pub async fn tokenator_make(state: State<'_, Shared>, kind: String, notes: Strin
     let out = ask_model(&st, &o, system, user, 0.7, 900).await?;
     match kind.as_str() {
         "prompt" => { let (title, tag, body) = parse_prompt(&out)?; Ok(serde_json::json!({ "title": title, "tag": tag, "body": body })) }
+        "lorebook" => {
+            let entries = parse_lore_entries(&out)?;
+            Ok(serde_json::json!({ "entries": entries.into_iter().map(|(name, keys, content)| serde_json::json!({ "name": name, "keys": keys, "content": content })).collect::<Vec<_>>() }))
+        }
         _ => Err("Tokenator can't write that yet.".into()),
     }
 }
@@ -205,6 +253,20 @@ mod tests {
         assert!(parse_prompt("TITLE: Only a title").is_err(), "a title with no text is not a usable prompt");
         assert!(parse_prompt("   ").is_err());
         assert!(make_system("prompt").unwrap().contains("TEXT:") && make_system("ship").is_err());
+    }
+
+    #[test]
+    fn a_lorebook_answer_is_read_into_entries() {
+        let raw = "ENTRY: The Old Library\nKEYS: library, the old library, books\nTEXT: A crumbling hall of shelves.\nIt closes at dusk.\n\n2. Entry: Tea seller\nkeys: tea, seller\ntext: Knows everyone's order.\n\nENTRY: No text\nKEYS: nothing\n\nENTRY: Moon Gate\nTEXT: A round window high up.";
+        let e = parse_lore_entries(raw).unwrap();
+        assert_eq!(e.len(), 3, "an entry with no text is dropped");
+        assert_eq!((e[0].0.as_str(), e[0].1.len(), e[0].2.as_str()), ("The Old Library", 3, "A crumbling hall of shelves. It closes at dusk."));
+        assert_eq!((e[1].0.as_str(), e[1].1.clone(), e[1].2.as_str()), ("Tea seller", vec!["tea".to_string(), "seller".to_string()], "Knows everyone's order."), "numbering and capitals do not matter");
+        assert_eq!(e[2].1, vec!["Moon Gate".to_string()], "no keys: the name is the key");
+        let many: String = (0..20).map(|i| format!("ENTRY: E{i}\nKEYS: k\nTEXT: t\n\n")).collect();
+        assert_eq!(parse_lore_entries(&many).unwrap().len(), 12, "at most twelve");
+        assert!(parse_lore_entries("I could not do that.").is_err());
+        assert!(make_system("lorebook").unwrap().contains("ENTRY:"));
     }
 
     #[test]

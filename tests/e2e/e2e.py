@@ -1360,6 +1360,11 @@ try:
     mk_ = invoke("tokenator_make", {"kind": "prompt", "notes": "a way to slow the story down", "context": ""})
     check("Tokenator writes a prompt from an idea, as a title, label and text", mk_ == {"title": "Slow it down", "tag": "Pace", "body": "Let's take this scene more slowly, {{char}}."} and "saved prompts" in seen["body"]["messages"][0]["content"] and "a way to slow the story down" in seen["body"]["messages"][1]["content"], str(mk_))
     check("and saves nothing by itself", len(invoke("list_prompts")) == n_prompts_)
+    n_books_ = len(invoke("list_lorebooks"))
+    seen["pieces"] = ["ENTRY: The Old Library\nKEYS: library, books\nTEXT: A crumbling hall of shelves that closes at dusk.\n\n", "ENTRY: Tea seller\nKEYS: tea\nTEXT: Knows everyone's order."]
+    lb_ = invoke("tokenator_make", {"kind": "lorebook", "notes": "a tea district with a library", "context": "Lorebook: Quarter. Entries it already has, which must not be repeated: none."})
+    check("Tokenator writes lorebook entries from an idea (name, keys, text)", [e["name"] for e in lb_["entries"]] == ["The Old Library", "Tea seller"] and lb_["entries"][0]["keys"] == ["library", "books"] and "must not be repeated" in seen["body"]["messages"][1]["content"] and "lorebooks" in seen["body"]["messages"][0]["content"], str(lb_))
+    check("and saves no lorebook by itself", len(invoke("list_lorebooks")) == n_books_)
     check("Tokenator refuses an empty idea and a kind it can't write", "little about" in str(inv_err("tokenator_make", {"kind": "prompt", "notes": " ", "context": ""})) and bool(inv_err("tokenator_make", {"kind": "ship", "notes": "x", "context": ""})))
     seen["pieces"] = None
     nav("Characters"); time.sleep(0.8)
@@ -1373,6 +1378,17 @@ try:
     check("Discard drops the suggestion", d.execute_script("return !document.querySelector('[data-testid=tok-result]')"))
     seen["pieces"] = None
     dismiss()
+    reload_ui(); nav("Lorebooks"); time.sleep(1.0)
+    seen["pieces"] = ["ENTRY: Moon Gate\nKEYS: moon, gate\nTEXT: A round window high in the attic.\n\n", "ENTRY: Canal\nKEYS: canal, water\nTEXT: Lanterns line both banks."]
+    d.execute_script("document.querySelector('.notes-list .note-item').click()"); time.sleep(0.8)
+    n_ent0_ = d.execute_script("return document.querySelectorAll('.notes-main .entry').length")
+    d.execute_script("document.querySelector('.notes-main [data-testid=tokenator-make-lorebook]').click()"); time.sleep(0.5)
+    set_value("[data-testid=tokenator-make-notes]", "a moonlit canal district"); time.sleep(0.3)
+    d.execute_script("document.querySelector('[data-testid=tokenator-make-go]').click()"); time.sleep(2.5)
+    check("the lorebook editor shows the drafted entries first and adds none yet", d.execute_script("return document.querySelectorAll('[data-testid=tokenator-lore-entry]').length")==2 and d.execute_script("return document.querySelectorAll('.notes-main .entry').length")==n_ent0_)
+    d.execute_script("document.querySelector('[data-testid=tokenator-make-accept]').click()"); time.sleep(0.6)
+    check("accepting adds them after the entries already there, with their keys", d.execute_script("return document.querySelectorAll('.notes-main .entry').length")==n_ent0_+2 and "Moon Gate" in d.execute_script("return [...document.querySelectorAll('.notes-main .entry input[placeholder=\"Entry name\"]')].map(i=>i.value).join('|')"))
+    seen["pieces"] = None
     # statuses: in the character's voice (written by the model) or in the user's own words
     cid = chars_now[0]["id"]
     old_pieces = seen.get("pieces"); seen["pieces"] = ["studying ", "hard"]

@@ -10,7 +10,7 @@ import { useStore } from "../store";
  * model, and shows what it wrote. Nothing changes until the person presses Accept. `kind` says what to write (the backend knows each one).
  */
 export default function TokenatorHelper<T>({ kind, label, intro, placeholder, preview, onAccept, startOpen, context }: {
-  kind: "prompt";
+  kind: "prompt" | "lorebook";
   label: string;
   intro: string;
   placeholder: string;

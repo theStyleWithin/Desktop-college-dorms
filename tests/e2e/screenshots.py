@@ -380,6 +380,17 @@ try:
         d.execute_script("document.querySelector('[data-testid=prompts-toggle]').click()"); time.sleep(0.3)
     safe("tokenator prompt", tokenator_prompt)
 
+    def tokenator_lorebook():
+        reload_ui(); nav("Lorebooks"); time.sleep(0.8)
+        d.execute_script("document.querySelector('.notes-list .note-item').click()"); time.sleep(0.8)
+        d.execute_script("document.querySelector('.notes-main [data-testid=tokenator-make-lorebook]').click()"); time.sleep(0.5)
+        d.execute_script("const t=document.querySelector('[data-testid=tokenator-make-notes]');const set=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;set.call(t,'a moonlit canal district with a gossiping tea seller and a library that closes at dusk');t.dispatchEvent(new Event('input',{bubbles:true}))"); time.sleep(0.4)
+        override["text"] = "ENTRY: The Moonlit Canal\nKEYS: canal, moonlight, lanterns\nTEXT: A slow canal lined with paper lanterns that glow after dark. Small boats sell warm snacks along its banks.\n\nENTRY: The Tea Seller\nKEYS: tea seller, tea, gossip\nTEXT: An old seller who remembers everyone's usual order and shares neighbourhood gossip for free.\n\nENTRY: The Old Library\nKEYS: library, old library, closing time\nTEXT: A crumbling hall of shelves that locks its doors at dusk, whatever the weather."
+        d.execute_script("document.querySelector('[data-testid=tokenator-make-go]').click()"); time.sleep(3.0)
+        d.execute_script("document.querySelector('[data-testid=tokenator-helper-lorebook]').scrollIntoView({block:'start'})"); time.sleep(0.4)
+        snap("desktop-tokenator-lorebook-draft", (1440, 1100))
+    safe("tokenator lorebook", tokenator_lorebook)
+
     def folders():
         bk = lambda n: {"name": n, "description": "", "scan_depth": None, "token_budget": None, "recursive_scanning": None, "extensions": {}, "entries": [{"keys": ["lantern"], "content": "Paper lanterns hang between the rooftops.", "extensions": {}, "enabled": True, "insertion_order": 0, "case_sensitive": None, "name": "Lanterns", "priority": None, "id": 0, "comment": "", "selective": False, "secondary_keys": [], "constant": False, "position": "before_char"}]}
         made = {n: inv("save_lorebook", {"lorebook": {"id": "", "name": n, "book": bk(n), "created_at": 0, "updated_at": 0}}) for n in ["Lantern Quarter", "Corner shop regulars", "House rules", "Tea menu", "Old canal history", "Rooftop secrets"]}
