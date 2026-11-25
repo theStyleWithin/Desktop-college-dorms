@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type SavedPrompt } from "../api";
 import { Modal, useToast } from "./ui";
 import { errText } from "../lib/util";
@@ -15,6 +15,45 @@ export default function PromptsMenu() {
   const [items, setItems] = useState<SavedPrompt[] | null>(null);
   const [edit, setEdit] = useState<SavedPrompt | "new" | null>(null);
   const [q, setQ] = useState("");
+  // the drawer: pulled down (taller) or out to the right (wider), the list floats over what is below it until it is pushed back
+  const [pull, setPull] = useState<{ h: number; w: number; home: number } | null>(null);
+  const slot = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (!open) setPull(null); }, [open]);
+  const grab = (e: React.PointerEvent, axis: "y" | "x") => {
+    if (e.button !== 0 || !slot.current || !panel.current) return;
+    e.preventDefault();
+    const box = slot.current.getBoundingClientRect();
+    const base = pull ?? { h: panel.current.offsetHeight, w: box.width, home: panel.current.offsetHeight };
+    const x0 = e.clientX, y0 = e.clientY;
+    const maxH = Math.max(base.home, window.innerHeight - box.top - 12), maxW = Math.max(box.width, window.innerWidth * 0.7 - box.left);
+    let last = base;
+    const move = (ev: PointerEvent) => {
+      last = {
+        home: base.home,
+        h: axis === "y" ? Math.round(Math.min(maxH, Math.max(120, base.h + ev.clientY - y0))) : base.h,
+        w: axis === "x" ? Math.round(Math.min(maxW, Math.max(box.width, base.w + ev.clientX - x0))) : base.w,
+      };
+      setPull(last);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
+      document.body.classList.remove("resizing");
+      if (last.h <= last.home + 4 && last.w <= box.width + 4) setPull(null); // pushed back in: the drawer is closed again
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
+    document.body.classList.add("resizing");
+  };
+  const nudge = (e: React.KeyboardEvent, axis: "y" | "x") => {
+    const k = axis === "y" ? ["ArrowUp", "ArrowDown"] : ["ArrowLeft", "ArrowRight"];
+    if (!k.includes(e.key) || !slot.current || !panel.current) return;
+    e.preventDefault();
+    const box = slot.current.getBoundingClientRect();
+    const base = pull ?? { h: panel.current.offsetHeight, w: box.width, home: panel.current.offsetHeight };
+    const d = e.key === k[1] ? 40 : -40;
+    const n = { ...base, h: axis === "y" ? Math.min(window.innerHeight - box.top - 12, Math.max(120, base.h + d)) : base.h, w: axis === "x" ? Math.min(window.innerWidth * 0.7 - box.left, Math.max(box.width, base.w + d)) : base.w };
+    setPull(n.h <= n.home + 4 && n.w <= box.width + 4 ? null : n);
+  };
 
   const load = useCallback(async () => {
     try { setItems(await api.listPrompts()); } catch (e) { toast(errText(e), "err"); setItems([]); }
@@ -41,24 +80,32 @@ export default function PromptsMenu() {
         <span aria-hidden>📜</span>Prompts<span className="caret" aria-hidden>{open ? "▴" : "▾"}</span>
       </button>
       {open && (
-        <div className="prompts-panel" id="prompts-panel" data-testid="prompts-panel">
-          <button className="btn sm primary" style={{ width: "100%" }} onClick={() => setEdit("new")}>＋ New prompt</button>
-          {items && items.length > 4 && <input type="search" placeholder="Search prompts…" aria-label="Search prompts" value={q} onChange={(e) => setQ(e.target.value)} />}
-          {items === null && <div className="hint">Loading…</div>}
-          {items && items.length === 0 && <div className="hint">No prompts yet. Add one, then drag it into a chat to send it, or click it to put it in your message box.</div>}
-          {shown.map((p) => (
-            <div key={p.id} className="prompt-row" draggable data-prompt={p.title} title={`${p.title}\n\nDrag into the chat to send it. Click to put it in your message box.`}
-              onDragStart={(e) => { e.dataTransfer.setData(PROMPT_DRAG, JSON.stringify({ title: p.title, body: p.body })); e.dataTransfer.effectAllowed = "copy"; }}
-              onClick={() => void use(p)}>
-              <div className="prompt-title">{p.title}</div>
-              {p.tag && <span className="chip">{p.tag}</span>}
-              <div className="prompt-acts">
-                <button className="iconbtn" aria-label={`Copy ${p.title}`} title="Copy" onClick={(e) => { e.stopPropagation(); void copy(p); }}>⧉</button>
-                <button className="iconbtn" aria-label={`Edit ${p.title}`} title="Edit" onClick={(e) => { e.stopPropagation(); setEdit(p); }}>✎</button>
-                <button className="iconbtn" aria-label={`Delete ${p.title}`} title="Delete" onClick={(e) => { e.stopPropagation(); void del(p); }}>🗑</button>
+        <div className="prompts-slot" ref={slot} style={pull ? { height: pull.home } : undefined}>
+          <div className={`prompts-panel${pull ? " pulled" : ""}`} ref={panel} id="prompts-panel" data-testid="prompts-panel" style={pull ? { height: pull.h, width: pull.w } : undefined}>
+            <div className="prompts-scroll">
+            <button className="btn sm primary" style={{ width: "100%" }} onClick={() => setEdit("new")}>＋ New prompt</button>
+            {items && items.length > 4 && <input type="search" placeholder="Search prompts…" aria-label="Search prompts" value={q} onChange={(e) => setQ(e.target.value)} />}
+            {items === null && <div className="hint">Loading…</div>}
+            {items && items.length === 0 && <div className="hint">No prompts yet. Add one, then drag it into a chat to send it, or click it to put it in your message box.</div>}
+            {shown.map((p) => (
+              <div key={p.id} className="prompt-row" draggable data-prompt={p.title} title={`${p.title}\n\nDrag into the chat to send it. Click to put it in your message box.`}
+                onDragStart={(e) => { e.dataTransfer.setData(PROMPT_DRAG, JSON.stringify({ title: p.title, body: p.body })); e.dataTransfer.effectAllowed = "copy"; }}
+                onClick={() => void use(p)}>
+                <div className="prompt-title">{p.title}</div>
+                {p.tag && <span className="chip">{p.tag}</span>}
+                <div className="prompt-acts">
+                  <button className="iconbtn" aria-label={`Copy ${p.title}`} title="Copy" onClick={(e) => { e.stopPropagation(); void copy(p); }}>⧉</button>
+                  <button className="iconbtn" aria-label={`Edit ${p.title}`} title="Edit" onClick={(e) => { e.stopPropagation(); setEdit(p); }}>✎</button>
+                  <button className="iconbtn" aria-label={`Delete ${p.title}`} title="Delete" onClick={(e) => { e.stopPropagation(); void del(p); }}>🗑</button>
+                </div>
               </div>
+            ))}
             </div>
-          ))}
+            <div className="drawer-pull" role="separator" aria-orientation="horizontal" aria-label="Pull the drawer down to see more prompts" title="Pull down for more · double-click to close the drawer" data-testid="drawer-pull" tabIndex={0}
+              onPointerDown={(e) => grab(e, "y")} onDoubleClick={() => setPull(null)} onKeyDown={(e) => nudge(e, "y")}><span /></div>
+            <div className="drawer-edge" role="separator" aria-orientation="vertical" aria-label="Stretch the drawer to the right" title="Drag right to widen · double-click to close the drawer" data-testid="drawer-edge" tabIndex={0}
+              onPointerDown={(e) => grab(e, "x")} onDoubleClick={() => setPull(null)} onKeyDown={(e) => nudge(e, "x")} />
+          </div>
         </div>
       )}
       {edit && <PromptEditor initial={edit === "new" ? null : edit} onClose={() => setEdit(null)} onSaved={async () => { setEdit(null); await load(); }} />}

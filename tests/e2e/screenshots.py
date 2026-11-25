@@ -343,6 +343,23 @@ try:
         d.execute_script("document.querySelector('.modal button[aria-label=Close]').click()"); time.sleep(0.4)
     safe("tokenator", tokenator)
 
+    def lists_and_drawer():
+        for t in ["Anti-Generic Stereotype Lock (for kink/role safety)", "Bratty Tsundere", "Cheerful Energetic Genki Girl", "Soft redirect", "A very long prompt title that needs room to be read in full"]:
+            inv("save_prompt", {"prompt": {"id": "", "title": t, "tag": "", "body": "Example prompt text.", "created_at": 0, "updated_at": 0}})
+        book = {"name": "", "description": "", "scan_depth": None, "token_budget": None, "recursive_scanning": None, "extensions": {}, "entries": []}
+        books = [inv("save_lorebook", {"lorebook": {"id": "", "name": n, "book": dict(book, name=n), "created_at": 0, "updated_at": 0}}) for n in ["NSFW AI prompt (unlock the model)", "Aether Gazer", "Genshin Impact: Teyvat characters and places", "Honkai Star Rail"]]
+        f1 = inv("create_shelf_folder", {"kind": "lorebooks", "name": "AI prompts", "parent": None}); f2 = inv("create_shelf_folder", {"kind": "lorebooks", "name": "canon character lore", "parent": None})
+        for b_, f_ in zip(books, [f1, f2, f2, f2]): inv("move_to_shelf_folder", {"kind": "lorebooks", "itemId": b_["id"], "folder": f_["id"]})
+        reload_ui(); nav("Lorebooks"); time.sleep(0.8)
+        snap("desktop-lorebooks-list", (1440, 900))
+        d.execute_script("const r=document.querySelector('.notes-list .resizer');r.focus();for(let i=0;i<8;i++)r.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))"); time.sleep(0.6)
+        snap("desktop-lorebooks-wide", (1440, 900))
+        d.execute_script("document.querySelector('[data-testid=prompts-toggle]').click()"); time.sleep(0.8)
+        d.execute_script("const g=document.querySelector('[data-testid=drawer-pull]');g.focus();for(let i=0;i<6;i++)g.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));const e=document.querySelector('[data-testid=drawer-edge]');for(let i=0;i<4;i++)e.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))"); time.sleep(0.8)
+        snap("desktop-prompts-drawer", (1440, 900))
+        d.execute_script("document.querySelector('[data-testid=prompts-toggle]').click()"); time.sleep(0.3)
+    safe("lists and drawer", lists_and_drawer)
+
     def settings_tabs():
         reload_ui(); nav("Settings"); tab("Profiles"); snap("desktop-settings-profiles", (1440, 1000))
         tab("Customization"); snap("desktop-settings-customization", (1440, 1000))

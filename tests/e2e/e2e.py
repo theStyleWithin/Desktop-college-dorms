@@ -1234,6 +1234,12 @@ try:
 
     # -- lorebooks: import a SillyTavern world info file, attach it, delete it
     nav("Lorebooks"); time.sleep(0.6)
+    lw0_ = d.execute_script("return document.querySelector('.notes-list').offsetWidth")
+    d.execute_script("const r=document.querySelector('.notes-list .resizer');r.focus();for(let i=0;i<4;i++)r.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))"); time.sleep(0.5)
+    lw1_ = d.execute_script("return document.querySelector('.notes-list').offsetWidth")
+    check("the Lorebooks list can be made wider, and the width is remembered", lw1_ > lw0_ and d.execute_script("return Number(localStorage.getItem('dorms.panel.lorebooks'))") >= lw1_ - 2, f"{lw0_} {lw1_}")
+    d.execute_script("document.querySelector('.notes-list .resizer').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))"); time.sleep(0.4)
+    check("double-clicking the wall puts the list back", d.execute_script("return document.querySelector('.notes-list').offsetWidth") == lw0_)
     inp = d.find_element(By.CSS_SELECTOR, "input[aria-label='Import lorebooks']"); inp.send_keys(os.path.join(FIX, "worldinfo_st.json")); time.sleep(1.5)
     libs = invoke("list_lorebooks")
     check("a world info file imports as a library lorebook", len(libs) == 1 and libs[0]["name"] == "worldinfo_st" and len(libs[0]["book"]["entries"]) == 3, str(libs)[:300])
@@ -1837,6 +1843,15 @@ try:
             time.sleep(0.5)
             if "time skip to the evening" in d.execute_script("return document.querySelector('.msgs').innerText"): break
         check("dropping a prompt on the chat with nothing typed sends it as a message at once", "time skip to the evening" in d.execute_script("return document.querySelector('.msgs').innerText"))
+        h0_ = d.execute_script("return document.querySelector('[data-testid=prompts-panel]').offsetHeight")
+        d.execute_script("const g=document.querySelector('[data-testid=drawer-pull]');g.focus();for(let i=0;i<3;i++)g.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))"); time.sleep(0.5)
+        h1_ = d.execute_script("const p=document.querySelector('[data-testid=prompts-panel]');return [p.offsetHeight, p.classList.contains('pulled'), getComputedStyle(p).position, getComputedStyle(p).zIndex]")
+        check("pulling the drawer down makes the prompt list taller and lets it float over what is below", h1_[0] > h0_ and h1_[1] is True and h1_[2] == "absolute" and int(h1_[3]) >= 40, f"{h0_} {h1_}")
+        w0_ = d.execute_script("return document.querySelector('[data-testid=prompts-panel]').offsetWidth")
+        d.execute_script("const g=document.querySelector('[data-testid=drawer-edge]');g.focus();for(let i=0;i<3;i++)g.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))"); time.sleep(0.5)
+        check("the drawer can be stretched to the right", d.execute_script("return document.querySelector('[data-testid=prompts-panel]').offsetWidth") > w0_)
+        d.execute_script("document.querySelector('[data-testid=drawer-pull]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))"); time.sleep(0.5)
+        check("double-clicking the handle draws the drawer back in", d.execute_script("const p=document.querySelector('[data-testid=prompts-panel]');return !p.classList.contains('pulled') && p.offsetHeight===arguments[0]", h0_))
         d.execute_script("document.querySelector('[data-testid=prompts-toggle]').click()"); time.sleep(0.3)
         check("the drop-down closes again", not d.execute_script("return !!document.querySelector('[data-testid=prompts-panel]')"))
         check("a prompt needs a title and some text", "title" in (inv_err("save_prompt", {"prompt": {"id": "", "title": " ", "body": "x", "tag": "", "created_at": 0, "updated_at": 0}}) or "") and "no text" in (inv_err("save_prompt", {"prompt": {"id": "", "title": "T", "body": "  ", "tag": "", "created_at": 0, "updated_at": 0}}) or ""))
