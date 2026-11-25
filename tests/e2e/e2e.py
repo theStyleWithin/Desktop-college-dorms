@@ -1339,6 +1339,27 @@ try:
     wait(15).until(lambda x: pres() not in ("", "checking"))
     check("a cloud model that can't be reached turns every light red and says why", pres() == "down" and lights() == "off" and "reach" in d.execute_script("return document.querySelector('[data-testid=members-health]').innerText").lower(), f"{pres()} {lights()}")
     set_provider(openai_base_url="http://127.0.0.1:18999/v1")
+    # Tokenator: counts need no model; shortening and drafting use the person's own model and change nothing by themselves
+    tk_name = chars_now[0]["card"]["name"]
+    seen["pieces"] = ["Short and ", "sweet."]
+    tk_out = invoke("tokenator_run", {"mode": "trim", "field": "description", "text": "A very long and winding description that repeats itself a lot. " * 5, "notes": "", "context": "", "targetTokens": 60})
+    check("Tokenator shortens a field with the person's model", tk_out == "Short and sweet." and "about 60 tokens" in seen["body"]["messages"][0]["content"], str(tk_out))
+    seen["pieces"] = ["She likes tea."]
+    tk_d = invoke("tokenator_run", {"mode": "draft", "field": "personality", "text": "", "notes": "shy, likes tea", "context": "", "targetTokens": 100})
+    check("Tokenator drafts a field from notes", tk_d == "She likes tea." and "shy, likes tea" in seen["body"]["messages"][1]["content"], str(tk_d))
+    check("Tokenator refuses an empty field and an unknown field", "nothing" in str(inv_err("tokenator_run", {"mode": "trim", "field": "description", "text": " ", "notes": "", "context": "", "targetTokens": 60})).lower() and bool(inv_err("tokenator_run", {"mode": "trim", "field": "name", "text": "x", "notes": "", "context": "", "targetTokens": 60})))
+    seen["pieces"] = None
+    nav("Characters"); time.sleep(0.8)
+    d.execute_script("[...document.querySelectorAll('.ccard h3')].find(x=>x.textContent===arguments[0]).click()", tk_name); time.sleep(1.5)
+    d.execute_script("document.querySelector('[data-testid=tokenator-open]').click()"); time.sleep(0.8)
+    check("the editor's Tokenator button shows a count for each field and names the model", d.execute_script("return document.querySelectorAll('[data-testid^=tok-row-]').length")==7 and "cloud model" in d.execute_script("return document.querySelector('[data-testid=tok-model]').innerText"))
+    seen["pieces"] = ["Trimmed."]
+    d.execute_script("document.querySelector('[data-testid=tok-trim-description]').click()"); time.sleep(2.0)
+    check("a shortened field is shown before and after, and not applied until accepted", d.execute_script("const a=document.querySelector('[data-testid=tok-after]');return !!a&&a.textContent==='Trimmed.'&&!!document.querySelector('[data-testid=tok-before]')") and by_name(tk_name)["card"]["description"] != "Trimmed.")
+    d.execute_script("document.querySelector('[data-testid=tok-discard]').click()"); time.sleep(0.4)
+    check("Discard drops the suggestion", d.execute_script("return !document.querySelector('[data-testid=tok-result]')"))
+    seen["pieces"] = None
+    dismiss()
     # statuses: in the character's voice (written by the model) or in the user's own words
     cid = chars_now[0]["id"]
     old_pieces = seen.get("pieces"); seen["pieces"] = ["studying ", "hard"]

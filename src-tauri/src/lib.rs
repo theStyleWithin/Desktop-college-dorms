@@ -7,6 +7,7 @@ mod llm;
 mod novel;
 mod shelf;
 mod starters;
+mod tokenator;
 mod tray;
 mod deco;
 mod emoji;
@@ -147,6 +148,7 @@ pub fn run() {
             shelf::move_shelf_folder,
             shelf::delete_shelf_folder,
             shelf::move_to_shelf_folder,
+            tokenator::tokenator_run,
             novel::novel_status,
             novel::novel_start,
             novel::novel_stop,
