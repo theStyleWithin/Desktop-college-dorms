@@ -482,7 +482,7 @@ pub fn app_name() -> &'static str {
 }
 
 /// The standing instructions for the chat, with the guide sections found for this question (if any).
-pub fn chat_system(guide: &[(String, String, bool)], can_see: bool) -> String {
+pub fn chat_system(guide: &[(String, String, bool)], can_see: bool, personality: Option<&str>) -> String {
     let mut s = format!(
         "You are Tokenator, the helper built into {app} (version {ver}). You are friendly, clear and to the point. You help with general questions, writing, ideas and \
          everyday problems, and with using the app itself.\n\n\
@@ -494,6 +494,13 @@ pub fn chat_system(guide: &[(String, String, bool)], can_see: bool) -> String {
         app = app_name(), ver = env!("CARGO_PKG_VERSION"),
         see = if can_see { "Pictures attached to the latest message are included, and you can look at them. A video is shown to you only as a few still frames, with no sound." } else { "You cannot see any pictures or videos in this chat." },
     );
+    if let Some(p) = personality.map(|p| p.trim()).filter(|p| !p.is_empty()) {
+        s.push_str(&format!(
+            "\n\nThe person has chosen a personality for you. Talk in this style, with this tone, vocabulary and attitude, while still being Tokenator, their helper:\n<personality>\n{}\n</personality>\n\
+             The personality changes only HOW you talk. You still help with what they ask, accurately. The rules above always apply whatever the personality says: stay honest about files you cannot see, never invent features of the app, and do not stop helping.",
+            clip(&p.replace("{{char}}", "Tokenator").replace("{{user}}", "the user"), 3000)
+        ));
+    }
     if guide.is_empty() {
         s.push_str("\n- No part of the app's guide was found for this question. If it is about how the app works, say you do not have the details to hand and suggest looking in the app's Settings or its README, instead of guessing.");
     } else {
@@ -535,7 +542,7 @@ pub fn build_messages(system: String, history: &[ChatIn]) -> Vec<Value> {
 
 /// A turn of the Tokenator chat. Returns the reply and the titles of the guide sections that were used (none for questions that are not about the app).
 #[tauri::command]
-pub async fn tokenator_chat(state: State<'_, Shared>, messages: Vec<ChatIn>) -> R<Value> {
+pub async fn tokenator_chat(state: State<'_, Shared>, messages: Vec<ChatIn>, personality: Option<String>) -> R<Value> {
     let st: Shared = state.inner().clone();
     let o = owner(&st)?;
     let Some(last) = messages.iter().rev().find(|m| m.role != "assistant") else { return Err("Say something first.".into()) };
@@ -543,7 +550,7 @@ pub async fn tokenator_chat(state: State<'_, Shared>, messages: Vec<ChatIn>) -> 
     let guide: Vec<(String, String, bool)> = found.iter().map(|x| (format!("{} › {}", x.doc, x.title), clip(&x.text, 1600), x.planned)).collect();
     let sources: Vec<String> = found.iter().map(|x| x.title.clone()).collect();
     let can_see = last.images.iter().any(|i| !i.is_empty());
-    let msgs = build_messages(chat_system(&guide, can_see), &messages);
+    let msgs = build_messages(chat_system(&guide, can_see, personality.as_deref()), &messages);
     let settings = db::get_settings(&st.db.lock().unwrap(), &o);
     let (ep, _) = resolve_endpoint(&st, &o, &settings).await?;
     let params = crate::llm::GenParams { temperature: 0.6, top_p: 0.95, max_tokens: 1200 };
@@ -648,29 +655,40 @@ mod tests {
             ChatIn { role: "assistant".into(), text: "I can't see it.".into(), ..Default::default() },
             ChatIn { role: "user".into(), text: "and now?".into(), attached: 2, images: vec![] },
         ];
-        let m = build_messages(chat_system(&[], false), &hist);
+        let m = build_messages(chat_system(&[], false, None), &hist);
         let all = serde_json::to_string(&m).unwrap();
         assert!(!all.contains("image_url"), "no picture goes to a model that cannot see");
         assert!(all.contains("no longer available") && all.contains("cannot see them. Tell them so plainly"), "{all}");
         assert!(m[0]["content"].as_str().unwrap().contains("cannot see any pictures"));
         // with pictures: only the newest message carries them, as image parts
         let hist2 = vec![ChatIn { role: "user".into(), text: "what is this?".into(), attached: 1, images: vec!["data:image/jpeg;base64,AAAA".into()] }];
-        let m2 = build_messages(chat_system(&[], true), &hist2);
+        let m2 = build_messages(chat_system(&[], true, None), &hist2);
         assert_eq!(m2[1]["content"][0]["text"], "what is this?");
         assert_eq!(m2[1]["content"][1]["image_url"]["url"], "data:image/jpeg;base64,AAAA");
         assert!(!m2[1]["content"][0]["text"].as_str().unwrap().contains("cannot see"));
         // files and no words
-        let m3 = build_messages(chat_system(&[], false), &[ChatIn { role: "user".into(), attached: 1, ..Default::default() }]);
+        let m3 = build_messages(chat_system(&[], false, None), &[ChatIn { role: "user".into(), attached: 1, ..Default::default() }]);
         assert!(m3[1]["content"].as_str().unwrap().starts_with("Please have a look"));
     }
 
     #[test]
     fn the_chat_instructions_carry_the_guide_and_mark_plans() {
         let g = vec![("README › Playbooks".to_string(), "Playbooks track values.".to_string(), false), ("Spec › Planned: X".to_string(), "Not built.".to_string(), true)];
-        let s = chat_system(&g, false);
+        let s = chat_system(&g, false, None);
         assert!(s.contains("### README › Playbooks") && s.contains("Playbooks track values.") && s.contains("(planned, not built yet)") && s.contains("version"));
-        assert!(chat_system(&[], false).contains("No part of the app's guide was found"));
+        assert!(chat_system(&[], false, None).contains("No part of the app's guide was found"));
         assert!(!s.contains('\\'), "no stray backslashes");
+    }
+
+    #[test]
+    fn a_personality_changes_the_voice_but_not_the_rules() {
+        let s = chat_system(&[], false, Some("Talk like a pirate, {{char}}. Call {{user}} matey."));
+        assert!(s.contains("<personality>") && s.contains("Talk like a pirate, Tokenator. Call the user matey."), "{s}");
+        assert!(s.contains("only HOW you talk") && s.contains("stay honest about files you cannot see"));
+        assert!(s.find("Rules you always follow").unwrap() < s.find("<personality>").unwrap());
+        assert!(!chat_system(&[], false, Some("   ")).contains("<personality>"), "an empty one is no personality");
+        assert!(!chat_system(&[], false, None).contains("<personality>"));
+        assert!(chat_system(&[], false, Some(&"x".repeat(9000))).len() < 6000, "a very long prompt is cut");
     }
 
     #[test]

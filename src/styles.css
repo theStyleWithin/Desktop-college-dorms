@@ -804,3 +804,4 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .tmsg .src { margin-top: 6px; font-size: .78rem; color: var(--muted); }
 .tchat-composer { display: flex; gap: 8px; align-items: flex-end; padding-top: 8px; }
 .tchat-composer textarea { flex: 1; min-height: 0; resize: none; }
+.tchat.over { outline: 3px dashed var(--accent); outline-offset: -6px; }
