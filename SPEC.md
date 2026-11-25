@@ -311,6 +311,17 @@ Not built yet. Today a profile moves between a computer and a phone as a file (S
 - **Likely snags to design for:** the operating system asking permission (Windows firewall, Android camera and local network), and routers that isolate devices.
 - **Before building:** show rendered pictures of the QR screen, the "what arrived" prompt and the new tab. It cannot be fully tested without real devices on a real network.
 
+## Planned: drag a character into a chat
+
+Not built yet. A new room, in a world or not, can have a chat with nobody in it (the chat page then says "Characters in this chat show up here"). The plan is to let a character be dragged from the characters list on the right into the panel beside the chat that normally shows who is in it:
+
+- **Start a chat.** Dropping a character on that panel while the chat is empty adds them, so the conversation can begin without opening "Who's here".
+- **Quick group chats.** Dropping another character on the panel adds them too, so a group chat is made by dragging people in.
+- **A one-to-one chat (a DM) becomes a group chat** when a second character is dropped. Because that changes how the characters are prompted (in a group each message is labelled with who said it), it asks first ("Make this a group chat?"). Messages already written are kept as they are.
+- **Same limits and rules as "Who's here"**: the same people can be added, a character already in the chat is not added twice, and there is a sensible cap on the group's size. A playbook, lorebooks and the room's world apply as they do to any chat.
+- **Touch and keyboard.** Dragging is unreliable on touch screens and out of reach for keyboard users, so the panel also gets an "Add a character" button and a long-press or menu option on a character in the list. Dragging a character out of the panel (or a small remove button) takes them out again.
+- Before building: show rendered pictures of the empty panel, the drop highlight and the group-chat question. It can only be tested with the app's own tests and a fake model, and drag-and-drop with a real mouse and a touch screen was not tested.
+
 ## Status
 
 v0.3.0 adds a real 3D viewer for VRM / VRoid models (room, idle life, physics, hands, wardrobe) and voice input. v0.2.0 added local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.
