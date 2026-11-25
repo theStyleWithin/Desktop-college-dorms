@@ -287,7 +287,7 @@ export default function Editor({ id }: { id: string | null }) {
         )}
       </Field>
       <p className="tok" style={{ textAlign: "center" }}>Total: {total} token(s). Permanent: {permanent} token(s). Your context window is {settings.context_tokens}.</p>
-      <div style={{ textAlign: "center" }}><button type="button" className="btn sm" onClick={() => setTokOpen(true)} data-testid="tokenator-open">✂️ Tokenator</button></div>
+      <div style={{ textAlign: "center" }}><button type="button" className="btn sm" onClick={() => setTokOpen(true)} data-testid="tokenator-open">✂️ Tokenator</button><div className="hint" data-testid="tokenator-hint">A character card advisor: see how many tokens each part of your card uses, trim it down, or get help writing a part.</div></div>
       {tokOpen && <TokenatorPanel card={card} onApply={(f, t) => set(f as any, t as any)} onClose={() => setTokOpen(false)} />}
 
       <details className="card" style={{ marginTop: 24 }} open>
