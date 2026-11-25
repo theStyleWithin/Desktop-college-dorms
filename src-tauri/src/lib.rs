@@ -149,6 +149,7 @@ pub fn run() {
             shelf::delete_shelf_folder,
             shelf::move_to_shelf_folder,
             tokenator::tokenator_run,
+            tokenator::tokenator_make,
             novel::novel_status,
             novel::novel_start,
             novel::novel_stop,

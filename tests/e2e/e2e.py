@@ -1354,6 +1354,13 @@ try:
     tk_d = invoke("tokenator_run", {"mode": "draft", "field": "personality", "text": "", "notes": "shy, likes tea", "context": "", "targetTokens": 100})
     check("Tokenator drafts a field from notes", tk_d == "She likes tea." and "shy, likes tea" in seen["body"]["messages"][1]["content"], str(tk_d))
     check("Tokenator refuses an empty field and an unknown field", "nothing" in str(inv_err("tokenator_run", {"mode": "trim", "field": "description", "text": " ", "notes": "", "context": "", "targetTokens": 60})).lower() and bool(inv_err("tokenator_run", {"mode": "trim", "field": "name", "text": "x", "notes": "", "context": "", "targetTokens": 60})))
+    check("the instructions sent to the model have no stray backslashes, and the notes arrive on their own lines", "\\" not in seen["body"]["messages"][0]["content"] and "\n" in seen["body"]["messages"][1]["content"] and "\\n" not in seen["body"]["messages"][1]["content"], json.dumps(seen["body"]["messages"])[:300])
+    n_prompts_ = len(invoke("list_prompts"))
+    seen["pieces"] = ["TITLE: Slow it down\nLABEL: Pace\nTEXT:\n", "Let's take this scene more slowly, {{char}}."]
+    mk_ = invoke("tokenator_make", {"kind": "prompt", "notes": "a way to slow the story down", "context": ""})
+    check("Tokenator writes a prompt from an idea, as a title, label and text", mk_ == {"title": "Slow it down", "tag": "Pace", "body": "Let's take this scene more slowly, {{char}}."} and "saved prompts" in seen["body"]["messages"][0]["content"] and "a way to slow the story down" in seen["body"]["messages"][1]["content"], str(mk_))
+    check("and saves nothing by itself", len(invoke("list_prompts")) == n_prompts_)
+    check("Tokenator refuses an empty idea and a kind it can't write", "little about" in str(inv_err("tokenator_make", {"kind": "prompt", "notes": " ", "context": ""})) and bool(inv_err("tokenator_make", {"kind": "ship", "notes": "x", "context": ""})))
     seen["pieces"] = None
     nav("Characters"); time.sleep(0.8)
     d.execute_script("[...document.querySelectorAll('.ccard h3')].find(x=>x.textContent===arguments[0]).click()", tk_name); time.sleep(1.5)
@@ -1852,6 +1859,17 @@ try:
         check("the drawer can be stretched to the right", d.execute_script("return document.querySelector('[data-testid=prompts-panel]').offsetWidth") > w0_)
         d.execute_script("document.querySelector('[data-testid=drawer-pull]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))"); time.sleep(0.5)
         check("double-clicking the handle draws the drawer back in", d.execute_script("const p=document.querySelector('[data-testid=prompts-panel]');return !p.classList.contains('pulled') && p.offsetHeight===arguments[0]", h0_))
+        n_pr_ = len(invoke("list_prompts"))
+        seen["pieces"] = ["TITLE: Gentle brakes\nLABEL: Pace\nTEXT:\nLet's slow down for a moment."]
+        d.execute_script("document.querySelector('[data-testid=prompt-ask-tokenator]').click()"); time.sleep(0.8)
+        check("the Prompts drawer has a Tokenator button that opens the editor with the helper ready", d.execute_script("return !!document.querySelector('[data-testid=tokenator-helper-prompt] [data-testid=tokenator-make-notes]')"))
+        set_value("[data-testid=tokenator-make-notes]", "a gentle way to slow things down"); time.sleep(0.3)
+        d.execute_script("document.querySelector('[data-testid=tokenator-make-go]').click()"); time.sleep(2.5)
+        check("the draft is shown first, and nothing is filled in or saved yet", d.execute_script("const t=document.querySelector('[data-testid=tokenator-make-title]');return !!t && t.textContent==='Gentle brakes'") and d.execute_script("return document.querySelector(\"input[aria-label='Prompt title']\").value===''") and len(invoke("list_prompts")) == n_pr_)
+        d.execute_script("document.querySelector('[data-testid=tokenator-make-accept]').click()"); time.sleep(0.6)
+        check("accepting fills the title, label and text of the prompt", d.execute_script("return document.querySelector(\"input[aria-label='Prompt title']\").value==='Gentle brakes' && document.querySelector(\"input[aria-label='Prompt label']\").value==='Pace' && document.querySelector(\"textarea[aria-label='Prompt text']\").value.includes('slow down for a moment')"))
+        dismiss(); seen["pieces"] = None
+        check("closing the editor without saving adds no prompt", len(invoke("list_prompts")) == n_pr_)
         d.execute_script("document.querySelector('[data-testid=prompts-toggle]').click()"); time.sleep(0.3)
         check("the drop-down closes again", not d.execute_script("return !!document.querySelector('[data-testid=prompts-panel]')"))
         check("a prompt needs a title and some text", "title" in (inv_err("save_prompt", {"prompt": {"id": "", "title": " ", "body": "x", "tag": "", "created_at": 0, "updated_at": 0}}) or "") and "no text" in (inv_err("save_prompt", {"prompt": {"id": "", "title": "T", "body": "  ", "tag": "", "created_at": 0, "updated_at": 0}}) or ""))
