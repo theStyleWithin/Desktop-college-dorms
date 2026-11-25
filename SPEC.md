@@ -311,6 +311,43 @@ Not built yet. Today a profile moves between a computer and a phone as a file (S
 - **Likely snags to design for:** the operating system asking permission (Windows firewall, Android camera and local network), and routers that isolate devices.
 - **Before building:** show rendered pictures of the QR screen, the "what arrived" prompt and the new tab. It cannot be fully tested without real devices on a real network.
 
+## Planned: drag a character into a chat
+
+Not built yet. A new room, in a world or not, can have a chat with nobody in it (the chat page then says "Characters in this chat show up here"). The plan is to let a character be dragged from the characters list on the right into the panel beside the chat that normally shows who is in it:
+
+- **Start a chat.** Dropping a character on that panel while the chat is empty adds them, so the conversation can begin without opening "Who's here".
+- **Quick group chats.** Dropping another character on the panel adds them too, so a group chat is made by dragging people in.
+- **A one-to-one chat (a DM) becomes a group chat** when a second character is dropped. Because that changes how the characters are prompted (in a group each message is labelled with who said it), it asks first ("Make this a group chat?"). Messages already written are kept as they are.
+- **Same limits and rules as "Who's here"**: the same people can be added, a character already in the chat is not added twice, and there is a sensible cap on the group's size. A playbook, lorebooks and the room's world apply as they do to any chat.
+- **Touch and keyboard.** Dragging is unreliable on touch screens and out of reach for keyboard users, so the panel also gets an "Add a character" button and a long-press or menu option on a character in the list. Dragging a character out of the panel (or a small remove button) takes them out again.
+- Before building: show rendered pictures of the empty panel, the drop highlight and the group-chat question. It can only be tested with the app's own tests and a fake model, and drag-and-drop with a real mouse and a touch screen was not tested.
+
+## Planned: a built-in model on Android phones
+
+Not built yet. Today the Android app has no built-in engine: the desktop builds run a helper program (`llama-server`) and Android does not allow an app to launch one, so the phone uses a cloud or network model. The catalog already lists **Llama 3.2 3B** (`Llama-3.2-3B-Instruct-Q4_K_M.gguf`, about 2 GB), but downloading it on a phone would be pointless without an engine to run it, so the plan is to do both:
+
+- **An engine inside the app.** llama.cpp built for Android (arm64) as a library that runs inside the app process, answering the same requests the desktop's helper does. This is the big part. It needs the Android build tools in CI, the 16 KB page-size rule of newer Android versions, and a way to keep the model loaded without the system killing the app.
+- **Download on the phone** with the existing resumable downloader, into the app's storage. The catalog shows only models the phone can hold: Llama 3.2 1B and 3B on most capable phones, and the bigger ones only on phones with a lot of memory, with a warning.
+- **Hardware detection decides what is offered.** The app reads the phone's real memory (the physical total, not "virtual RAM" borrowed from storage, which some gaming phones add), its processor type (the engine is 64-bit only, so a 32-bit phone gets nothing), the free storage, and the Android version. A model the phone cannot run **has no download button at all**: there is just a plain line saying why ("This phone has 4 GB of memory; local models need at least 8 GB. Cloud and network models work as usual"). Starting guesses, to be confirmed on real phones: Llama 3.2 1B from about 6 GB of memory, Llama 3.2 3B from about 8 GB, the bigger models only from about 16 GB and then with a warning. A model also needs its file size plus about 1 GB of free storage. A phone close to the line sees the button with a warning about slow replies, heat and battery.
+- **A check on every start:** the model is not loaded if memory is short at that moment (for example many apps are open), and the app says so instead of crashing. A short speed test says what to expect, and a screen explains the cost (about 2 GB of storage and about 3 GB of memory for the 3B model).
+- **Aimed at recent flagship phones** (for example the RedMagic 8 Pro and up, which have a lot of memory and a cooling fan). Speed has not been measured: a 3B model on a phone's processor may be a few to a dozen words a second, so replies will be slower than a cloud model.
+- **Cloud and network models stay the default** and keep working as they do now.
+- **Before building:** rendered pictures of the phone's Models tab (the "this phone can run" card, the download and the speed test). CI can only prove it builds; whether it runs, how fast, and whether the phone overheats can only be tested on a real phone, so a real test on one is needed before it is released.
+
+## Planned: Tokenator, a built-in helper for character cards
+
+Not built yet. Tokenator is a small helper in the character editor that helps write a card and keeps it short, for models that don't cope well with big cards.
+
+- **Fill the card in.** He asks a few questions ("What is she like when she is nervous? How does she talk?") and drafts fields from the answers. A draft goes into a field only when it is accepted.
+- **Trim the card.** He shows the token count of each field and of the whole card, then offers a shorter version of a field next to the original. Each change is accepted on its own, and there is an undo. Nothing is saved without confirmation.
+- **No model needed for the counting side**, which matters for free models with a daily limit: a token count per field and in total, a flag for sentences repeated across fields, and target budgets (for example Tiny, Small and Normal) matched to the chosen model's context size, so someone on a small model knows what to aim for.
+- **He uses the person's own model.** The drafting and trimming run on whatever model is set up, so they use tokens or requests (and count against a daily limit if one is set), and with a cloud model the card text is sent to that provider just as it is when chatting. The editor says so.
+- **It works with every kind of model the app supports**: a built-in local model, a cloud provider, an "Other API" profile or a model on the network (and, once it exists, the built-in model on a phone). A very small model, such as Llama 3.2 1B, will write weaker drafts and trims than a large one, so the editor says which model he is using. With no model set up, the AI parts are switched off with a note, and the counting side (token counts, repeated sentences, budgets) still works.
+- **Counts are estimates.** Models count tokens differently and the app estimates rather than using each model's own counter.
+- **Shorter is not always better**: trimming can lose a detail the writer cared about, hence the side-by-side view and the per-field accept.
+- Later, the same help could be offered for lorebook entries.
+- Before building: show rendered pictures of his panel in the editor (the questions, the budgets and the before-and-after view). The flow can be tested with a fake model; how good his suggestions are can only be judged with a real model on real cards.
+
 ## Status
 
 v0.3.0 adds a real 3D viewer for VRM / VRoid models (room, idle life, physics, hands, wardrobe) and voice input. v0.2.0 added local profiles (optional passcode), a guest mode that can later be turned into a profile, per-profile data and keys, and Eject / backup / import to a verified `.dorms` file, modelled on the Eject feature of the author's Anti-Social app.
