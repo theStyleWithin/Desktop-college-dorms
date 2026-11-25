@@ -6,6 +6,7 @@ import { useToast } from "../components/ui";
 import { emptyBook, readLorebook } from "../lib/lore";
 import { errText, tokens } from "../lib/util";
 import { useStore } from "../store";
+import { useListWidth } from "../lib/listWidth";
 
 /** Lorebooks: keyword-triggered lore, kept in your library and attached to as many characters as you like. */
 export default function Lorebooks() {
@@ -52,9 +53,11 @@ export default function Lorebooks() {
   const attached = characters.filter((c) => sel && c.lorebooks?.includes(sel));
 
   if (books == null) return <div className="page sub">Loading…</div>;
+  const list = useListWidth("dorms.panel.lorebooks", 300, "Resize the lorebooks list");
   return (
-    <div className="notes">
+    <div className="notes" style={list.style}>
       <aside className="notes-list">
+        {list.resizer}
         <div className="row" style={{ marginBottom: 8 }}>
           <button className="btn primary grow" onClick={() => void create()}>＋ New lorebook</button>
           <NewFolderButton api={shelf} />

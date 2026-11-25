@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Note } from "../api";
 import { useToast } from "../components/ui";
 import { errText, timeAgo } from "../lib/util";
+import { useListWidth } from "../lib/listWidth";
 
 const words = (t: string) => (t.trim() ? t.trim().split(/\s+/).length : 0);
 const titleOf = (n: Pick<Note, "title" | "body">) => n.title.trim() || n.body.trim().split("\n")[0].slice(0, 60) || "Untitled note";
@@ -63,9 +64,11 @@ export default function Notes() {
   }, [notes, q]);
 
   if (notes == null) return <div className="page sub">Loading…</div>;
+  const list = useListWidth("dorms.panel.notes", 300, "Resize the notes list");
   return (
-    <div className="notes">
+    <div className="notes" style={list.style}>
       <aside className="notes-list">
+        {list.resizer}
         <div className="row" style={{ marginBottom: 8 }}>
           <button className="btn primary grow" onClick={() => void create()}>＋ New note</button>
         </div>
