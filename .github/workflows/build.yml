@@ -238,6 +238,13 @@ jobs:
       - run: npm ci
       - name: Generate the Android project
         run: npx tauri android init --ci
+      - name: Name the phone app "Mobile College Dorms"
+        run: |
+          # the launcher label only: the app id stays the same, so phones that already have the app keep their data and updates
+          F=$(find src-tauri/gen/android -path '*/res/values/strings.xml' | head -n1)
+          echo "strings file: $F"; cat "$F"
+          sed -i 's|<string name="app_name">[^<]*</string>|<string name="app_name">Mobile College Dorms</string>|' "$F"
+          grep -q '>Mobile College Dorms<' "$F"
       - name: Allow the microphone (voice input)
         run: |
           M=src-tauri/gen/android/app/src/main/AndroidManifest.xml
@@ -261,15 +268,15 @@ jobs:
           else
             echo "No signing key configured: using a throwaway key (installable, but updates need an uninstall first)."
             keytool -genkeypair -keystore release.jks -alias dorms -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass android -keypass android -dname "CN=Desktop College Dorms"
+              -storepass android -keypass android -dname "CN=Mobile College Dorms"
             PASS=android; ALIAS=dorms
           fi
           VERSION=$(node -p "require('./package.json').version")
           mkdir -p dist-packages
           "$BT/zipalign" -p -f 4 "$APK" aligned.apk
           "$BT/apksigner" sign --ks release.jks --ks-key-alias "$ALIAS" --ks-pass "pass:$PASS" --key-pass "pass:$PASS" \
-            --out "dist-packages/DesktopCollegeDorms_${VERSION}_android.apk" aligned.apk
-          "$BT/apksigner" verify --print-certs "dist-packages/DesktopCollegeDorms_${VERSION}_android.apk" | head -3
+            --out "dist-packages/MobileCollegeDorms_${VERSION}_android.apk" aligned.apk
+          "$BT/apksigner" verify --print-certs "dist-packages/MobileCollegeDorms_${VERSION}_android.apk" | head -3
       - uses: actions/upload-artifact@v4
         with:
           name: android-packages

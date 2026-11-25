@@ -2,7 +2,7 @@
 
 [![Your app | AlternativeTo](https://alternativeto.net/static/badges/badge-compact-dark.svg)](https://alternativeto.net/software/your-app/about/?utm_source=badge&utm_medium=referral)
 
-An offline-first desktop and Android app for creating AI characters and chatting with them: one-on-one, in group
+An offline-first desktop app (**Desktop College Dorms**) and Android app (**Mobile College Dorms**) for creating AI characters and chatting with them: one-on-one, in group
 chats, or in Discord-style channels where the characters talk to each other too.
 
 Everything lives on your device. A local model engine (llama.cpp) is **built in**, so there is nothing else to install.
@@ -207,7 +207,7 @@ Grab a file from the [Releases](https://github.com/theStyleWithin/Desktop-colleg
 | Flatpak | manifest in [`packaging/flatpak`](packaging/flatpak) | hand-off, see below |
 | Windows | `*_x64-setup.exe` | per-user installer, no admin needed |
 | Windows (no install) | `*_x64_portable.exe` | one file; engine inside; data in a `DormsData` folder beside it |
-| Android | `*_android.apk` | cloud / network models only (see limitations) |
+| Android (Mobile College Dorms) | `MobileCollegeDorms_*_android.apk` | cloud / network models only (see limitations) |
 
 **Steam Deck**: use the AppImage in Desktop Mode. The Vulkan engine uses the Deck's GPU.
 
