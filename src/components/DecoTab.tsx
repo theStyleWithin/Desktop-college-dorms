@@ -28,7 +28,7 @@ export function ProfileCard({ deco, name, src, frame }: { deco: UserDeco; name: 
 }
 
 /** Settings → Decorations: dress your profile, set your name tag and banner, and let the model dress your characters. */
-export default function DecoTab() {
+export default function DecoTab({ noCard }: { noCard?: boolean } = {}) {
   const { settings, setSettings, session, characters } = useStore();
   const toast = useToast();
   const charDeco = useCharDeco();
@@ -56,7 +56,7 @@ export default function DecoTab() {
     <div className="dc-tab" data-testid="deco-tab">
       <h3>Profile decorations</h3>
       <p className="sub">Dress up your profile. A nameplate sits behind your name at the bottom left, a wreath goes around your picture, and a moving background fills your profile card. Everything is filed by collection and kind, so pick a filter to narrow the list.</p>
-      <ProfileCard deco={deco} name={handle} src={profileAvatar(session.profile)} frame={session.profile?.avatar_frame} />
+      {!noCard && <ProfileCard deco={deco} name={handle} src={profileAvatar(session.profile)} frame={session.profile?.avatar_frame} />}
       <DecoPicker value={{ plate: deco.plate, bg: deco.bg, wreath: deco.wreath }} animate={deco.animate} avatar={avatar} name={handle} onChange={(p: Partial<Look>) => void set(p)}>
         <div className="btnrow"><button className="btn" type="button" onClick={() => setTagModal(true)}>Name tag and banner…</button></div>
       </DecoPicker>
