@@ -367,6 +367,19 @@ try:
         snap("desktop-settings-customization-emoji", (1440, 1100), scroll=700)
     safe("settings tabs", settings_tabs)
 
+    def tokenator_prompt():
+        reload_ui(); nav("Characters"); time.sleep(0.5)
+        d.execute_script("document.querySelector('[data-testid=prompts-toggle]').click()"); time.sleep(0.8)
+        d.execute_script("document.querySelector('[data-testid=prompt-ask-tokenator]').click()"); time.sleep(0.8)
+        d.execute_script("const t=document.querySelector('[data-testid=tokenator-make-notes]');const set=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;set.call(t,'a gentle way to slow the story down when it moves too fast');t.dispatchEvent(new Event('input',{bubbles:true}))"); time.sleep(0.4)
+        snap("desktop-tokenator-prompt-ask", (1440, 1000))
+        override["text"] = "TITLE: Gentle brakes\nLABEL: Pace\nTEXT:\n(OOC: Let's slow this scene down a little. Describe one small moment in detail before moving on, {{char}}, and let {{user}} react before anything big happens.)"
+        d.execute_script("document.querySelector('[data-testid=tokenator-make-go]').click()"); time.sleep(3.0)
+        snap("desktop-tokenator-prompt-draft", (1440, 1000))
+        d.execute_script("document.querySelector('.modal button[aria-label=Close]').click()"); time.sleep(0.4)
+        d.execute_script("document.querySelector('[data-testid=prompts-toggle]').click()"); time.sleep(0.3)
+    safe("tokenator prompt", tokenator_prompt)
+
     def folders():
         bk = lambda n: {"name": n, "description": "", "scan_depth": None, "token_budget": None, "recursive_scanning": None, "extensions": {}, "entries": [{"keys": ["lantern"], "content": "Paper lanterns hang between the rooftops.", "extensions": {}, "enabled": True, "insertion_order": 0, "case_sensitive": None, "name": "Lanterns", "priority": None, "id": 0, "comment": "", "selective": False, "secondary_keys": [], "constant": False, "position": "before_char"}]}
         made = {n: inv("save_lorebook", {"lorebook": {"id": "", "name": n, "book": bk(n), "created_at": 0, "updated_at": 0}}) for n in ["Lantern Quarter", "Corner shop regulars", "House rules", "Tea menu", "Old canal history", "Rooftop secrets"]}
