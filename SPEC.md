@@ -334,19 +334,14 @@ Not built yet. Today the Android app has no built-in engine: the desktop builds 
 - **Cloud and network models stay the default** and keep working as they do now.
 - **Before building:** rendered pictures of the phone's Models tab (the "this phone can run" card, the download and the speed test). CI can only prove it builds; whether it runs, how fast, and whether the phone overheats can only be tested on a real phone, so a real test on one is needed before it is released.
 
-## Planned: Tokenator, a built-in helper for character cards
+## Tokenator, a helper for character cards
 
-Not built yet. Tokenator is a small helper in the character editor that helps write a card and keeps it short, for models that don't cope well with big cards.
+In the character editor, the **✂️ Tokenator** button opens a panel (`TokenatorPanel.tsx`, with `lib/tokenator.ts` for the counting and the Rust command `tokenator_run` in `tokenator.rs`).
 
-- **Fill the card in.** He asks a few questions ("What is she like when she is nervous? How does she talk?") and drafts fields from the answers. A draft goes into a field only when it is accepted.
-- **Trim the card.** He shows the token count of each field and of the whole card, then offers a shorter version of a field next to the original. Each change is accepted on its own, and there is an undo. Nothing is saved without confirmation.
-- **No model needed for the counting side**, which matters for free models with a daily limit: a token count per field and in total, a flag for sentences repeated across fields, and target budgets (for example Tiny, Small and Normal) matched to the chosen model's context size, so someone on a small model knows what to aim for.
-- **He uses the person's own model.** The drafting and trimming run on whatever model is set up, so they use tokens or requests (and count against a daily limit if one is set), and with a cloud model the card text is sent to that provider just as it is when chatting. The editor says so.
-- **It works with every kind of model the app supports**: a built-in local model, a cloud provider, an "Other API" profile or a model on the network (and, once it exists, the built-in model on a phone). A very small model, such as Llama 3.2 1B, will write weaker drafts and trims than a large one, so the editor says which model he is using. With no model set up, the AI parts are switched off with a note, and the counting side (token counts, repeated sentences, budgets) still works.
-- **Counts are estimates.** Models count tokens differently and the app estimates rather than using each model's own counter.
-- **Shorter is not always better**: trimming can lose a detail the writer cared about, hence the side-by-side view and the per-field accept.
-- Later, the same help could be offered for lorebook entries.
-- Before building: show rendered pictures of his panel in the editor (the questions, the budgets and the before-and-after view). The flow can be tested with a fake model; how good his suggestions are can only be judged with a real model on real cards.
+- **Counting needs no model**: tokens per field and in total (an estimate of about 4 characters a token, the same one the editor uses), a bar per field against a budget, and sentences repeated within or across fields. Budgets: Tiny 400, Small 800, Normal 1500, Large 3000 or none; the suggested one is about a fifth of the context window, rounded down to a preset.
+- **Make shorter** asks the person's model to trim one field to its share of the budget (or to about 70% when there is no budget) and shows before and after, with Accept, Try again and Discard. **Help me write** drafts a chosen field from rough notes and the rest of the card, with Accept or Add to end. Nothing is applied until accepted, and the card still has to be saved.
+- **It uses the person's own model** (built-in, cloud, Other API or network), so it uses that model's tokens or requests, and with a cloud model the card text goes to that provider, as in chat. It is not counted against the novel writer's daily allowance. The panel says which model it is using; with none set up, the AI buttons are off with a note and counting still works.
+- **Limits**: counts are estimates; a very small model writes weaker suggestions; shorter can lose a detail, hence the before-and-after view. The backend and the flow are tested with a fake model; how good the suggestions are on real cards and real models was not tested.
 
 ## Status
 

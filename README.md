@@ -179,6 +179,8 @@ Also new: **emoji and stickers** (everywhere or per room, and the characters use
 - **Privacy**: no online accounts, no analytics. Remote traffic is HTTPS (TLS via rustls) from the Rust backend, so keys never touch the web view.
   Keys go in your OS keychain, or a private file if none exists. See *Settings → Privacy*.
 - **Hostile cards are contained**: an imported card's own system prompt is demoted to lower-priority notes until you trust it, and the web view can't read your database or keys. See [SECURITY.md](SECURITY.md).
+- **Tokenator, a helper for character cards.** In the character editor, the **✂️ Tokenator** button shows how many tokens each part of a card uses (an estimate), against a budget (Tiny 400, Small 800, Normal 1500, Large 3000, or none; one is suggested from your context size), and lists sentences that are said more than once. **Make shorter** offers a trimmed version of a field next to the original, and **Help me write** drafts a field from your rough notes. Nothing changes on the card until you accept it, and you still save the card as usual. Counting works with no model; the writing helpers use your own model (built-in, cloud, Other API or network), so with a cloud model the card text goes to that provider, as it does when chatting. A very small model writes weaker suggestions, and shorter can lose a detail, so check each one.
+- **Fewer Settings tabs.** Profile and Decorations are now **Profiles** (Decorations is a folded section), and Chat, Appearance and Emoji & stickers are now **Customization**. Chat and Appearance settings save as you change them.
 
 ## Coming soon
 
@@ -186,13 +188,9 @@ Ideas that are planned but **not built yet**. These are plans, not promises, and
 
 - **Move your profile to your phone over home Wi-Fi.** No USB cable and no file copying: scan a QR code on your phone to pair with your computer, and your profile (or just one character, lorebook or playbook) travels directly between the two over your home network. It stays on your network, is optional, and asks before adding anything.
 - **Worlds that come with their own set-up.** Give a world its own persona, a default playbook and prompts, so a place can arrive ready to play. A world adds to a character's own lorebooks, playbook and prompts and never replaces them (the persona is the one thing a world takes over, and only while you are in that world).
-- **Tidier Settings.** Fewer tabs: Profile and Decorations become **Profiles**, and Chat and Appearance become **Customization**.
-
 - **Drag a character into a chat.** In a new room with nobody in it, drag a character from the characters list onto the panel beside the chat to start talking, and drag in another to make a group chat. There will be an "Add a character" button too, for touch screens.
 
 - **A built-in model on recent Android phones.** Download a small model (such as Llama 3.2 3B) and chat fully offline on the phone. The app checks your phone's memory, processor and free space first, and only offers models it can run (a phone that is too weak gets no download button, just an explanation). It will be slower than a cloud model, and has not been built or tested yet.
-
-- **Tokenator, a helper for character cards.** In the character editor he helps you write a card by asking questions, shows how many tokens each field uses, and offers shorter versions you can accept one at a time, handy for models that struggle with big cards. Not built yet.
 
 Have an idea of your own? Open an issue.
 
