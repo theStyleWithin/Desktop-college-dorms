@@ -332,6 +332,17 @@ try:
         d.execute_script("document.querySelector('.modal button[aria-label=Close]').click()"); time.sleep(0.4)
     safe("playbook panel and novel", playbook_panel)
 
+    def tokenator():
+        reload_ui(); nav("Characters"); time.sleep(0.8)
+        d.execute_script("document.querySelector('.ccard h3').click()"); time.sleep(1.5)
+        d.execute_script("document.querySelector('[data-testid=tokenator-open]').scrollIntoView({block:'center'})"); time.sleep(0.5)
+        snap("desktop-tokenator-button", (1440, 1000))
+        d.execute_script("document.querySelector('[data-testid=tokenator-open]').click()"); time.sleep(0.8)
+        d.execute_script("const t=document.querySelector('[data-testid=tok-notes]');const set=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;set.call(t,'Shy library student who loves tea and secretly writes poems.');t.dispatchEvent(new Event('input',{bubbles:true}))"); time.sleep(0.5)
+        snap("desktop-tokenator", (1440, 1100))
+        d.execute_script("document.querySelector('.modal button[aria-label=Close]').click()"); time.sleep(0.4)
+    safe("tokenator", tokenator)
+
     def folders():
         bk = lambda n: {"name": n, "description": "", "scan_depth": None, "token_budget": None, "recursive_scanning": None, "extensions": {}, "entries": [{"keys": ["lantern"], "content": "Paper lanterns hang between the rooftops.", "extensions": {}, "enabled": True, "insertion_order": 0, "case_sensitive": None, "name": "Lanterns", "priority": None, "id": 0, "comment": "", "selective": False, "secondary_keys": [], "constant": False, "position": "before_char"}]}
         made = {n: inv("save_lorebook", {"lorebook": {"id": "", "name": n, "book": bk(n), "created_at": 0, "updated_at": 0}}) for n in ["Lantern Quarter", "Corner shop regulars", "House rules", "Tea menu", "Old canal history", "Rooftop secrets"]}

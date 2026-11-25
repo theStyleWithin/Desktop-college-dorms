@@ -974,7 +974,7 @@ pub(crate) fn remote_endpoint(st: &AppState, o: &db::Owner, s: &Settings) -> Opt
     }
 }
 
-async fn resolve_endpoint(st: &Shared, o: &db::Owner, s: &Settings) -> R<(Endpoint, usize)> {
+pub(crate) async fn resolve_endpoint(st: &Shared, o: &db::Owner, s: &Settings) -> R<(Endpoint, usize)> {
     if let Some(r) = remote_endpoint(st, o, s) {
         return r.map(|ep| (ep, s.context_tokens));
     }

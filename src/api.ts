@@ -302,6 +302,8 @@ const bin = (cmd: string, bytes: Uint8Array, headers: Record<string, string>) =>
 
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
+  tokenatorRun: (mode: "trim" | "draft", field: string, text: string, notes: string, context: string, targetTokens: number) =>
+    invoke<string>("tokenator_run", { mode, field, text, notes, context, targetTokens }),
   // characters
   listCharacters: () => invoke<Character[]>("list_characters"),
   getCharacter: (id: string) => invoke<Character | null>("get_character", { id }),
