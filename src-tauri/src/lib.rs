@@ -3,6 +3,7 @@ mod commands;
 mod db;
 mod extras;
 mod guide;
+mod handoff;
 mod llama;
 mod llm;
 mod novel;
@@ -80,7 +81,13 @@ pub fn run() {
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
-    tauri::Builder::default()
+    // started with a card (Sudo Make Art, a file manager): keep it until a profile is open
+    handoff::queue(&std::env::args().collect::<Vec<_>>());
+    let builder = tauri::Builder::default();
+    // a second start hands its cards to the app that is already running instead of opening another window
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| handoff::forwarded(app, &args)));
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
@@ -158,6 +165,7 @@ pub fn run() {
             novel::novels_running,
             tray::tray_available,
             tray::hide_to_tray,
+            handoff::import_pending_cards,
             tray::quit_app,
             accounts::stage_begin,
             accounts::stage_chunk,

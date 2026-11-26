@@ -473,7 +473,7 @@ pub fn clear_media(state: State<'_, Shared>, id: String) -> R<CharacterOut> {
 
 #[derive(Serialize)]
 pub struct ImportOut {
-    character: CharacterOut,
+    pub(crate) character: CharacterOut,
     warnings: Vec<String>,
     spec: String,
 }
@@ -484,6 +484,11 @@ pub struct ImportOut {
 pub fn import_card(request: Request<'_>, state: State<'_, Shared>) -> R<ImportOut> {
     let bytes = raw_body(&request)?;
     let name = header(&request, "x-file-name");
+    import_bytes(&state, bytes, &name)
+}
+
+/// The body of `import_card`, also used for cards handed over on the command line (see `handoff`).
+pub(crate) fn import_bytes(state: &AppState, bytes: &[u8], name: &str) -> R<ImportOut> {
     let is_png = dorms_core::png::is_png(bytes);
     if bytes.len() > MAX_CARD_BYTES {
         return Err(format!("That file is too large to be a character card (over {} MB).", MAX_CARD_BYTES / 1_048_576));
@@ -523,14 +528,14 @@ pub fn import_card(request: Request<'_>, state: State<'_, Shared>) -> R<ImportOu
         warnings.push("This card has its own system prompt or post-history instructions. They are used only as lower-priority notes until you choose to trust the card (Edit → Advanced).".into());
     }
     if ch.card.name.trim().is_empty() {
-        let stem = std::path::Path::new(&name).file_stem().and_then(|s| s.to_str()).unwrap_or("Imported character");
+        let stem = std::path::Path::new(name).file_stem().and_then(|s| s.to_str()).unwrap_or("Imported character");
         ch.card.name = stem.to_string();
     }
     if is_png {
-        ch.media = write_media(&state, &ch.id, "card.png", bytes).ok();
+        ch.media = write_media(state, &ch.id, "card.png", bytes).ok();
     }
-    db::save_character(&state.db.lock().unwrap(), &ch, &owner(&state)?).map_err(e)?;
-    Ok(ImportOut { character: out(&state, ch), warnings, spec })
+    db::save_character(&state.db.lock().unwrap(), &ch, &owner(state)?).map_err(e)?;
+    Ok(ImportOut { character: out(state, ch), warnings, spec })
 }
 
 /// format: `png` | `json_v2` | `json_v3`
