@@ -13,6 +13,9 @@ Tokenator is a helper that uses **your own model** (built-in, cloud, Other API o
 ### 🎁 Three starter characters
 A new profile starts with **Jeeves**, **Scouter** and **HAL 9000**, so the roster isn't empty. They are added once, only to a profile with no characters and no chats, and they are ordinary characters: delete one and it never comes back. (The Scouter has an always-on safe-for-work rule; HAL is a calm, cold ship computer, as in the film.)
 
+### 🔗 Hand a card over from Sudo Make Art
+Sudo Make Art's **Send to Desktop College Dorms** (which runs `desktop-college-dorms --import-card card.png`), or simply opening a `.png` or `.json` card with the app, imports the card into the profile that is open and opens it in the card editor. If the app is already running, the second start hands its card to the open window and closes itself, so you don't end up with two copies. If no profile is open yet (the start screen, or a profile with a passcode), the card waits and is imported as soon as one is. This is for the computer app; the phone app is unchanged.
+
 ### 🧰 Easier to get around
 - **Fewer Settings tabs**: 8 instead of 11. **Profiles** now holds Decorations (folded away), and **Customization** holds Chat, Appearance and Emoji & stickers. Chat and Appearance settings save as you change them. Old links to the old tabs still open the right place.
 - **The Lorebooks and Notes lists can be stretched** (drag the wall at the list's edge; double-click puts it back). Folder names in them get a line of their own, so long names can be read.
@@ -26,7 +29,7 @@ The Android app now has its own name, **Mobile College Dorms**, and its file is 
 - Tokenator's earlier instructions to the model had stray backslash characters in them. Fixed.
 
 ### What I couldn't test
-A **real model** doing any of the new things (how good its drafts are, whether it can really see a picture, whether it follows a personality and the honesty rules, and whether a small model keeps to the answer format the helpers expect: the readers are forgiving and refuse an unusable answer with a message); **real video files** decoding in the app on each system; the **microphone** with a real speech-to-text server; the **phone layout** with the extra side bar item; dragging with a **real mouse or touch screen** (the tests use the keyboard and scripted drops); and the starter characters on a real model. Everything else was covered by the app's own tests and a scripted fake model.
+A **real model** doing any of the new things (how good its drafts are, whether it can really see a picture, whether it follows a personality and the honesty rules, and whether a small model keeps to the answer format the helpers expect: the readers are forgiving and refuse an unusable answer with a message); **real video files** decoding in the app on each system; the **microphone** with a real speech-to-text server; the **phone layout** with the extra side bar item; dragging with a **real mouse or touch screen** (the tests use the keyboard and scripted drops); and the starter characters on a real model. The card hand-off was built and checked on Linux by the separate agent that made it; it wasn't tried on Windows or in the Flatpak, or with a profile that has a passcode. Everything else was covered by the app's own tests and a scripted fake model.
 
 ### Still planned (not in this release)
 Moving a profile to your phone over home Wi-Fi, a built-in model on Android phones, worlds that carry their own persona, playbook and prompts, and dragging a character into a chat. See the README's "Coming soon".

@@ -347,6 +347,10 @@ A general chat that is not a character (`TokenatorChat.tsx`, command `tokenator_
 - **Side bar**: Tokenator is the first item by default. For a device that already has its own saved side bar order, a page added later (Tokenator is the first such page) is put at the top, once, because it is missing from the saved order; after that it is an ordinary item that can be dragged, and any move saves the whole order, including it.
 - **History**: the conversation's text is kept on the device (the last 60 messages; pictures are not kept) and has a Clear button. Replies arrive all at once, not word by word.
 
+## Cards handed over from outside
+
+Other programs (Sudo Make Art's card editor, a file manager) can start the app with a card to import. `dorms_core::cli::card_args` picks the card paths out of the program's arguments (`--import-card <file>`, `--import-card=<file>`, or a bare path ending in `.png` or `.json`; anything else is ignored; at most 20). `handoff.rs` keeps them waiting until a profile is open; the window then asks for them with `import_pending_cards`, which reads and imports them in Rust (at most 64 MB each; the web view never names a file path) through `commands::import_bytes`, the body of the ordinary card import, and the app opens the editor for the last card imported. On the computer app, `tauri-plugin-single-instance` (the first plugin registered) makes a second start pass its arguments to the running copy, which queues the cards, shows its window and emits `dorms://cards-waiting`, then the second start exits. Phone builds have none of the single-instance or window-showing code. It was checked on Linux with a real build under a virtual screen (a cold start and a forwarded second start) and by unit tests of the argument reader; it was not tried on Windows or in the Flatpak, or with a profile that has a passcode.
+
 ## Tokenator, a helper for character cards
 
 In the character editor, the **✂️ Tokenator** button opens a panel (`TokenatorPanel.tsx`, with `lib/tokenator.ts` for the counting and the Rust command `tokenator_run` in `tokenator.rs`).
