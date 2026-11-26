@@ -1529,6 +1529,8 @@ try:
     dismiss(); time.sleep(0.4)
     d.execute_script("document.querySelector('[data-testid=wifi-open]').click()"); time.sleep(1.5)
     check("opening it again shows what arrived, with its counts, and nothing is added yet", d.execute_script("const a=document.querySelector('[data-testid=transfer-arrived-counts]');return !!a && a.textContent.includes('character')") and len(invoke("list_characters")) == chars_n_)
+    sug_ = d.execute_script("return document.querySelector('[data-testid=transfer-handle]').value")
+    check("the name suggested for a received guest space is the profile's own name, not the word guest", pv_["guest"] is True and sug_ == pv_["display_name"] and "guest" not in sug_.lower(), f"{sug_!r} vs {pv_['display_name']!r}")
     d.execute_script("document.querySelector('[data-testid=transfer-discard]').click()"); time.sleep(0.5)
     check("Discard throws it away", d.execute_script("return !document.querySelector('[data-testid=transfer-arrived]') && !!document.querySelector('[data-testid=transfer-scan]')"))
     dismiss(); time.sleep(0.3)
