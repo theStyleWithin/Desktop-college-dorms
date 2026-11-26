@@ -2,9 +2,9 @@
 
 What is planned, what state each idea is in, what has to be decided, and a suggested order. Nothing here has dates, and none of it is a promise. The longer technical write-ups are in [SPEC.md](../SPEC.md) under the "Planned:" headings.
 
-**Where things stand:** v0.13.1 is released. Only one planned item has any code so far (Tokenator's backend). Every new screen is shown as a rendered picture and approved before it is merged or released.
+**Where things stand:** v0.14.0 (the Happy Thanksgiving update: Enter Tokenator!) adds Tokenator everywhere, three starter characters, fewer Settings tabs and the Mobile College Dorms name, so items 1 and 4 below are done. The rest are still plans. Every new screen is shown as a rendered picture and approved before it is merged or released.
 
-## 1. Tokenator (in progress)
+## 1. Tokenator (done in 0.14.0)
 A helper in the character editor. It trims a card field to a token budget, or drafts a field from rough notes, using the person's own model (built-in, cloud, Other API or network).
 - **Done:** the backend command (`src-tauri/src/tokenator.rs`, branch `tokenator`) with tests.
 - **Left:** the panel (per-field token counts and bars against a budget, "Make shorter" with a before-and-after view, "Help me write", which model is in use), the editor button, repeated-sentence detection, tests, README and SPEC wording, and a rendered picture to approve.
@@ -29,7 +29,7 @@ A world already carries lorebooks. Plan: also a **persona**, a default **playboo
 - Prompts: both kinds, with a switch on each: a prompt shelf shown first in the Prompts menu while in the world, and standing instructions placed after the card's own system prompt (which wins).
 - The chat shows one line, for example "From this world: playbook X, 2 lorebooks, persona Kai".
 
-## 4. Fewer Settings tabs
+## 4. Fewer Settings tabs (done in 0.14.0)
 **Profiles** = Profile + Decorations (Decorations folded by default). **Customization** = Chat + Appearance. Old links to the Decorations tab open Profiles with that section open. Each Chat setting saves as it changes so nothing needs the Save button. Update the tests that click tabs by name and the README mentions.
 
 ## 5. A built-in model on Android phones
