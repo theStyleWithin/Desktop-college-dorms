@@ -1117,7 +1117,7 @@ try:
     d.execute_script("document.querySelector('.note-item').click()"); time.sleep(0.5)
     h2 = d.execute_script("return document.querySelector('textarea[aria-label=\"Note text\"]').getBoundingClientRect().height")
     check("the height is still there after a restart", abs(h2 - h1) < 3, f"{h1} vs {h2}")
-    ActionChains(d).double_click(d.find_element(By.CSS_SELECTOR, "[data-testid=note-grip]")).perform(); time.sleep(0.4)
+    d.execute_script("document.querySelector('[data-testid=note-grip]').dispatchEvent(new MouseEvent('dblclick', {bubbles: true}))"); time.sleep(0.4)
     check("double-clicking the bar puts it back", d.execute_script("return localStorage.getItem('dorms.notes.height')") is None)
     set_value("input[aria-label='Search notes']", "locket"); time.sleep(0.4)
     check("search finds a note by what's inside it", d.execute_script("return [...document.querySelectorAll('.note-item')].length") == 1)
