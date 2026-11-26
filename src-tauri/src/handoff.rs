@@ -26,10 +26,12 @@ pub fn queue(args: &[String]) -> bool {
     true
 }
 
+#[cfg_attr(not(desktop), allow(dead_code))]
 /// A second start of the app (already running): take its cards, show the window, tell the page.
 pub fn forwarded(app: &AppHandle, args: &[String]) {
     let any = queue(args);
     crate::tray::reveal(app);
+    #[cfg(desktop)]
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.unminimize();
