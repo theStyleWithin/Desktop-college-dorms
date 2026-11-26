@@ -143,7 +143,7 @@ fn lock_remaining(st: &AppState, id: &str) -> Option<u64> {
 // Session
 // ---------------------------------------------------------------------------
 
-fn owner_now(st: &AppState) -> R<Owner> {
+pub(crate) fn owner_now(st: &AppState) -> R<Owner> {
     let s = st.session.lock().unwrap();
     if s.chosen { Ok(s.profile.clone()) } else { Err("Pick a profile first.".into()) }
 }
@@ -243,7 +243,7 @@ pub fn session_state(state: State<'_, Shared>) -> R<SessionOut> {
 }
 
 /// Checks the passcode of an account that has one (with the same lock-out after too many wrong tries as signing in).
-async fn check_passcode(st: &Shared, prof: &db::Profile, passcode: Option<String>) -> R<()> {
+pub(crate) async fn check_passcode(st: &Shared, prof: &db::Profile, passcode: Option<String>) -> R<()> {
     let Some(hash) = prof.passcode_hash.clone() else { return Ok(()) };
     let id = &prof.id;
     if let Some(secs) = lock_remaining(st, id) {
@@ -660,7 +660,7 @@ pub struct ExportInfo {
     withheld_items: Vec<String>,
 }
 
-fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
+pub(crate) fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
     let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji, worlds) = {
         let db = st.db.lock().unwrap();
         let characters = db::list_characters(&db, o).map_err(e)?;

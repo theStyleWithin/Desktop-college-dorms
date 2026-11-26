@@ -11,7 +11,7 @@ A helper in the character editor. It trims a card field to a token budget, or dr
 - **Works without a model:** counts, repeated sentences and budgets. The AI parts need a model.
 - **Caveats:** counts are estimates; very small models write weaker suggestions; shorter can lose a detail, so every change is accepted one at a time. SPEC says it counts against a daily limit, which is not built and should be reworded.
 
-## 2. Move a profile between devices over home Wi-Fi
+## 2. Move a profile between devices over home Wi-Fi (stage 1 built)
 No more USB cable. Optional, off by default, direct between the two devices, encrypted, nothing in the cloud.
 - A QR code only **pairs** the devices (address plus a one-time secret). A QR holds about 2 KB, so it cannot carry a profile. A typed short code is the fallback.
 - The receiving device says what arrived and asks before adding ("Add as new" or "Replace").

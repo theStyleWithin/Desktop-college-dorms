@@ -7,6 +7,7 @@ import { PersonasTab, ProfilePicture } from "../components/Personas";
 import { ControllerTab } from "../components/ControllerTab";
 import DecoTab, { ProfileCard } from "../components/DecoTab";
 import { HiddenAccountsList } from "../components/HiddenAccounts";
+import TransferDialog from "../components/TransferDialog";
 import EmojiTab from "../components/EmojiTab";
 import { Modal, useToast } from "../components/ui";
 import { errText, fmtBytes } from "../lib/util";
@@ -650,7 +651,7 @@ function ProfileTab({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) =
   const p = session.profile;
   const [name, setName] = useState(p?.display_name ?? "");
   const [pc, setPc] = useState({ current: "", next: "", again: "" });
-  const [modal, setModal] = useState<null | "claim" | "export" | "eject" | "delete">(null);
+  const [modal, setModal] = useState<null | "claim" | "export" | "eject" | "delete" | "wifi">(null);
 
   useEffect(() => setName(p?.display_name ?? ""), [p?.display_name]);
 
@@ -730,6 +731,12 @@ function ProfileTab({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) =
         </label>
       </div>
 
+      <div className="card" data-testid="wifi-card">
+        <h3>Move to another device over Wi-Fi</h3>
+        <p className="hint">Send {p ? "this profile" : "the guest space"} to your phone or computer over your home Wi-Fi (or receive one), without copying a file. It is off until you open it, goes straight from device to device and is encrypted.</p>
+        <button className="btn" data-testid="wifi-open" onClick={() => setModal("wifi")}>Wi-Fi transfer…</button>
+      </div>
+
       <div className="card">
         <h3>Your data</h3>
         <p className="hint">Everything in {p ? "this profile" : "the guest space"}: characters, dorms, chats and messages, their images, GIFs, videos and 3D models, and your settings. API keys and passcodes are never saved to a file.</p>
@@ -741,6 +748,7 @@ function ProfileTab({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) =
         <p className="hint" style={{ marginTop: 10 }}><b>Eject</b> saves everything to a file, then takes it off this device. It isn't a delete: import the file from the profile screen, here or on another device, and it all comes back.</p>
       </div>
 
+      {modal === "wifi" && <TransferDialog profileName={p ? p.display_name || p.handle : "the guest space"} hasPasscode={!!p?.has_passcode} onClose={() => setModal(null)} />}
       {modal === "claim" && <CreateProfileModal claim onClose={() => setModal(null)} onDone={(st) => { setModal(null); setSession(st); }} />}
       {(modal === "export" || modal === "eject") && <ExportFlow eject={modal === "eject"} label={p ? p.handle : "guest data"} onClose={() => setModal(null)} onEjected={(st) => { setModal(null); setSession(st); }} />}
       {modal === "delete" && <DeleteFlow expected={p ? p.handle : "guest"} onClose={() => setModal(null)} onDeleted={(st) => { setModal(null); setSession(st); }} />}

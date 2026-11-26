@@ -11,6 +11,7 @@ mod phone;
 mod shelf;
 mod starters;
 mod tokenator;
+mod transfer;
 mod tray;
 mod deco;
 mod emoji;
@@ -40,6 +41,8 @@ pub struct AppState {
     pub session: Mutex<Session>,
     /// Export waiting to be saved (and, for eject, confirmed): (token, file bytes, profile it came from).
     pub pending_export: Mutex<Option<crate::accounts::PendingExport>>,
+    /// A profile being sent to, or received from, another device over the home network.
+    pub transfer: Mutex<transfer::TransferState>,
     /// Wrong-passcode tracking per profile: (failures, locked until).
     pub login_fails: Mutex<HashMap<String, (u32, std::time::Instant)>>,
     /// A profile file being brought in piece by piece (so a big file never has to cross into the app in one go, which phones can't do).
@@ -137,6 +140,7 @@ pub fn run() {
                 busy: Default::default(),
                 session: Default::default(),
                 pending_export: Default::default(),
+                transfer: Default::default(),
                 login_fails: Default::default(),
                 staged: Default::default(),
                 novels: Default::default(),
@@ -161,6 +165,10 @@ pub fn run() {
             tokenator::tokenator_make,
             tokenator::tokenator_chat,
             phone::phone_check,
+            transfer::transfer_send_start,
+            transfer::transfer_receive_start,
+            transfer::transfer_status,
+            transfer::transfer_cancel,
             novel::novel_status,
             novel::novel_start,
             novel::novel_stop,

@@ -245,6 +245,14 @@ jobs:
           echo "strings file: $F"; cat "$F"
           sed -i 's|<string name="app_name">[^<]*</string>|<string name="app_name">Mobile College Dorms</string>|' "$F"
           grep -q '>Mobile College Dorms<' "$F"
+      - name: Allow the camera (scanning a pairing QR code)
+        run: |
+          M=src-tauri/gen/android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.CAMERA' "$M" || sed -i '0,/<uses-permission/s||<uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission|' "$M"
+          # a phone without a camera can still install it (it can type the address and code instead)
+          grep -q 'android.hardware.camera' "$M" || sed -i '0,/<application/s||<uses-feature android:name="android.hardware.camera" android:required="false" />\n    <application|' "$M"
+          grep -q 'android.permission.CAMERA' "$M"
+          grep -q 'android.hardware.camera' "$M"
       - name: Allow the microphone (voice input)
         run: |
           M=src-tauri/gen/android/app/src/main/AndroidManifest.xml
