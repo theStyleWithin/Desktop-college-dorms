@@ -368,7 +368,9 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                   </select>
                 </>
               )}
-              {personas.length > 0 && (
+              {chatWorld && personas.some((x) => x.id === chatWorld.persona) ? (
+                <span className="chip" data-testid="world-persona-note" title="This world brings a persona, so it stands in for yours while you are in this world">Playing as {personas.find((x) => x.id === chatWorld.persona)?.name} (from this world)</span>
+              ) : personas.length > 0 && (
                 <select style={{ width: "auto" }} aria-label="Playing as" title="Who you are in this roleplay" value={settings.active_persona}
                   onChange={(e) => { void api.setActivePersona(e.target.value || null).then(refresh).catch((er) => toast(errText(er), "err")); }}>
                   <option value="">Playing as {settings.user_name}</option>
