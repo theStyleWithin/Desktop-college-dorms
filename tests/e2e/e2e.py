@@ -1114,7 +1114,7 @@ try:
     h1 = d.execute_script("return document.querySelector('textarea[aria-label=\"Note text\"]').getBoundingClientRect().height")
     check("the notes writing area can be made taller (arrow keys on its bar) and the height is kept", h1 > h0 + 40 and d.execute_script("return localStorage.getItem('dorms.notes.height')") is not None, f"{h0} -> {h1}")
     reload_ui(); nav("Notes"); time.sleep(0.8)
-    d.execute_script("document.querySelector('.note-item').click()"); time.sleep(0.5)
+    d.execute_script("[...document.querySelectorAll('.note-item')].find(b => b.textContent.includes('Ideas for Mira')).click()"); time.sleep(0.5)
     h2 = d.execute_script("return document.querySelector('textarea[aria-label=\"Note text\"]').getBoundingClientRect().height")
     check("the height is still there after a restart", abs(h2 - h1) < 3, f"{h1} vs {h2}")
     d.execute_script("document.querySelector('[data-testid=note-grip]').dispatchEvent(new MouseEvent('dblclick', {bubbles: true}))"); time.sleep(0.4)
