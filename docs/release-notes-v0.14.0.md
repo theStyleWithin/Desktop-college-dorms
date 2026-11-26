@@ -21,15 +21,25 @@ Sudo Make Art's **Send to Desktop College Dorms** (which runs `desktop-college-d
 - **The Lorebooks and Notes lists can be stretched** (drag the wall at the list's edge; double-click puts it back). Folder names in them get a line of their own, so long names can be read.
 - **A pull-out drawer for Prompts**: pull the handle on its bottom edge down, or the one on its right edge out, and the list grows over the side bar sections below it until you push it back.
 
+### 📶 Move a profile over your home Wi-Fi
+In **Settings → Profiles → Wi-Fi transfer…**, one device chooses **Send** and shows a QR code, an address and a code; the other chooses **Receive** and scans the QR code (or types the address and code). The profile goes straight from one device to the other, encrypted, and never leaves your home network: no account, no server of ours.
+- It is off until the Send screen is open, closes itself after 5 minutes, and locks after three wrong codes.
+- **The code can be anything you like**, short or long, with any characters. The two devices agree a key from it in a way that a short code can't be worked out from a recording of the exchange.
+- The receiving device shows **what arrived** (the profile's name and how many characters, dorms, chats, messages and pictures) and only adds it, as a **new profile**, when you say so, or you can discard it.
+- API keys are never sent, so add them again on the new device. A profile with a passcode asks for it before it is sent. It works in both directions, computer and phone.
+- This is the first stage: a whole profile. Sending single items and a "refresh my phone" that sends only what changed come later.
+
 ### 📱 Mobile College Dorms
 The Android app now has its own name, **Mobile College Dorms**, and its file is `MobileCollegeDorms_<version>_android.apk`. The computer app stays **Desktop College Dorms**. The app id is unchanged, so a phone that already has the app keeps its data and gets updates.
+
+On a phone, **Settings → Models** now says what that phone could run (its memory, free storage and processor against what each model needs) and why not if it can't. A phone that can't run a model gets only that explanation. The app still has no engine for phones, so nothing can be downloaded yet.
 
 ### 🐛 Fixes
 - **The daily limit for novels counted a "day" as about 90 seconds**, so the allowance reset over and over. A day is a real day now.
 - Tokenator's earlier instructions to the model had stray backslash characters in them. Fixed.
 
 ### What I couldn't test
-A **real model** doing any of the new things (how good its drafts are, whether it can really see a picture, whether it follows a personality and the honesty rules, and whether a small model keeps to the answer format the helpers expect: the readers are forgiving and refuse an unusable answer with a message); **real video files** decoding in the app on each system; the **microphone** with a real speech-to-text server; the **phone layout** with the extra side bar item; dragging with a **real mouse or touch screen** (the tests use the keyboard and scripted drops); and the starter characters on a real model. The card hand-off was built and checked on Linux by the separate agent that made it; it wasn't tried on Windows or in the Flatpak, or with a profile that has a passcode. Everything else was covered by the app's own tests and a scripted fake model.
+A **real model** doing any of the new things (how good its drafts are, whether it can really see a picture, whether it follows a personality and the honesty rules, and whether a small model keeps to the answer format the helpers expect: the readers are forgiving and refuse an unusable answer with a message); **real video files** decoding in the app on each system; the **microphone** with a real speech-to-text server; the **phone layout** with the extra side bar item; dragging with a **real mouse or touch screen** (the tests use the keyboard and scripted drops); and the starter characters on a real model. The **Wi-Fi transfer** was tried with the app sending a profile to itself over a real connection on one computer, but not between two real devices (a computer and a phone) on a real network, nor with the camera scanning the QR code, a router that keeps devices apart, or the permission questions Windows and Android may ask. The phone memory limits are guesses to be confirmed on real phones. The card hand-off was built and checked on Linux by the separate agent that made it; it wasn't tried on Windows or in the Flatpak, or with a profile that has a passcode. Everything else was covered by the app's own tests and a scripted fake model.
 
 ### Still planned (not in this release)
-Moving a profile to your phone over home Wi-Fi, a built-in model on Android phones, worlds that carry their own persona, playbook and prompts, and dragging a character into a chat. See the README's "Coming soon".
+Sending single items over Wi-Fi (a character, lorebook, playbook and so on) and a "refresh my phone" that sends only what changed; the engine itself for a built-in model on Android phones (this release only tells a phone what it could run); worlds that carry their own persona, playbook and prompts; and dragging a character into a chat. See the README's "Coming soon".
