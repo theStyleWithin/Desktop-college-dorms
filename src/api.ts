@@ -342,6 +342,8 @@ export const api = {
     const bytes = new Uint8Array(await file.arrayBuffer());
     return bin("import_card", bytes, { "x-file-name": enc(file.name) });
   },
+  /** Cards the app was started with (Sudo Make Art's "Send to Desktop College Dorms", a file opened with the app). Imports them and says how each went. */
+  importPendingCards: () => invoke<{ file: string; imported: ImportResult | null; error: string | null }[]>("import_pending_cards"),
   async exportCard(id: string, format: "png" | "json_v2" | "json_v3", suggestedName: string) {
     const buf = await invoke<ArrayBuffer>("export_card", { id, format });
     const ext = format === "png" ? "png" : "json";
