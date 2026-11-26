@@ -299,10 +299,20 @@ jobs:
     permissions:
       contents: write
     steps:
+      # the checkout comes first: it clears the folder, so it must not come after the packages are downloaded
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: docs
       - uses: actions/download-artifact@v4
         with: { path: artifacts, pattern: "*-packages", merge-multiple: true }
       - run: ls -la artifacts
+      - name: Use the release notes written for this version, if there are some
+        id: notes
+        run: |
+          F="docs/release-notes-${GITHUB_REF_NAME}.md"
+          if [ -f "$F" ]; then echo "file=$F" >> "$GITHUB_OUTPUT"; echo "Using $F as the release description."; else echo "No $F, so the description is made from the commits."; fi
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.file }}
+          generate_release_notes: ${{ steps.notes.outputs.file == '' }}

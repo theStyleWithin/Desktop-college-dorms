@@ -43,7 +43,7 @@ A world already carries lorebooks. Plan: also a **persona**, a default **playboo
 In a room with nobody in it, drag a character from the characters list onto the panel beside the chat to start a chat, and drag in another for a group chat. A one-to-one chat becomes a group when a second character is dropped, after asking first. Add an "Add a character" button and a menu option for touch screens and keyboards. Same rules as "Who's here" (no duplicates, a cap on group size).
 
 ## Smaller items and older backlog
-- **Release notes:** the release workflow does not read `docs/release-notes-vX.md`; the release description is pasted by hand. Could change the workflow to use it.
+- **Release notes:** the release workflow now uses `docs/release-notes-<tag>.md` as the release description when that file exists (and the generated notes when it doesn't). It has not been run on a real tag yet, so the first release after this will show whether it works.
 - **Flatpak / AUR:** version and hash bump after the release files are up and only with the owner's OK.
 - **Playbook "Advanced" mode** is JSON (a YAML option was dropped because adding the dependency was not approved); Lua scripting for playbooks is not included.
 - **Memory and speed:** large pictures and very long chats cost memory; characters' own GIF pictures were not looked at and might cost like GIF backdrops; the tray, a real novel on a real model and a real graphics card have not been tested for real.
