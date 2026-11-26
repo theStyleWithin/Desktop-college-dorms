@@ -2652,6 +2652,8 @@ try:
     check("the profile came back with only the shareable decoration, still marked shareable", [(i["name"], i["share"]) for i in back] == [("Lamp", True)] and os.path.exists(back[0]["path"]), str(back))
 
     # worlds that bring a persona, a playbook and standing instructions
+    kai = invoke("save_persona", {"persona": {"id": "", "name": "Harbour Kai", "description": "A deckhand.", "style": "", "avatar": None, "frame": None, "created_at": 0}})
+    pbs = invoke("save_playbook", {"playbook": dict(pbd, name="Harbour story")})
     ws = invoke("create_world", {"name": "Harbour", "description": "A salty port town."})
     wroom = invoke("create_room", {"room": dict(room_in, name="Pier", description="", owner_kind="self", character_id=None, id=0, created_at=0, world_id=ws["id"])})
     wdorm = invoke("create_dorm", {"name": "Harbour dorm", "roomId": wroom["id"]})
@@ -2668,7 +2670,7 @@ try:
     reload_ui(); nav("Dorms")
     d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'pier chat')]").click(); time.sleep(1.0)
     line = d.find_elements(By.CSS_SELECTOR, "[data-testid=world-brings]")
-    check("the chat says what its world brings", len(line) == 1 and "Harbour" in line[0].text and "playbook Trust test" in line[0].text and "standing instructions" in line[0].text, line[0].text if line else "no line")
+    check("the chat says what its world brings", len(line) == 1 and "Harbour" in line[0].text and "playbook Harbour story" in line[0].text and "standing instructions" in line[0].text, line[0].text if line else "no line")
 
 finally:
     try: d.quit()
