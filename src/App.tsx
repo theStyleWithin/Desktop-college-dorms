@@ -196,6 +196,28 @@ function Shell({ session, setSession, onHidden }: { session: SessionState; setSe
     }
   }, [toast]);
 
+  // a card handed over by another program (Sudo Make Art): import it and open it in the card editor.
+  // Runs when a profile is open and the lists are loaded, and again whenever the running app is started once more with a card.
+  const takeCards = useCallback(async () => {
+    try {
+      const done = await api.importPendingCards();
+      if (!done.length) return;
+      let last: string | null = null;
+      for (const d of done) {
+        if (d.imported) {
+          last = d.imported.character.id;
+          toast(`Imported ${d.imported.character.card.name}${d.imported.warnings.length ? ` (${d.imported.warnings.length} notes)` : ""}`, "ok");
+        } else toast(`${d.file}: ${d.error ?? "could not be imported"}`, "err");
+      }
+      await refresh();
+      if (last) go({ page: "editor", id: last });
+    } catch { /* nothing waiting, or no profile open yet */ }
+  }, [toast, refresh, go]);
+  useEffect(() => { if (ready) void takeCards(); }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const u = listen("dorms://cards-waiting", () => void takeCards());
+    return () => { void u.then((f) => f()); };
+  }, [takeCards]);
   useEffect(() => { refresh(); api.appInfo().then(setInfo).catch(() => {}); }, [refresh]);
   useEffect(() => { document.documentElement.dataset.theme = settings.theme; }, [settings.theme]);
   useEffect(() => { applyTextScale(); }, []);
