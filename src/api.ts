@@ -214,6 +214,8 @@ export interface Settings {
 }
 
 export interface Preset { id: string; label: string; blurb: string; file: string; url: string; size_gb: number; min_ram_gb: number }
+export interface PhoneOption { id: string; label: string; size_gb: number; min_ram_gb: number; fits: boolean; note: string | null }
+export interface PhoneCheck { is_android: boolean; arm64: boolean; ram_gb: number; free_gb: number | null; options: PhoneOption[]; can_run_any: boolean; engine_ready: boolean; download_allowed: boolean; summary: string }
 export interface Hardware { total_ram_gb: number; recommended: string; presets: Preset[]; engine_available: boolean }
 export interface ModelFile { file: string; size: number }
 export interface EngineStatus { running: boolean; model: string; backend: string }
@@ -302,6 +304,7 @@ const bin = (cmd: string, bytes: Uint8Array, headers: Record<string, string>) =>
 
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
+  phoneCheck: () => invoke<PhoneCheck>("phone_check"),
   tokenatorRun: (mode: "trim" | "draft", field: string, text: string, notes: string, context: string, targetTokens: number) =>
     invoke<string>("tokenator_run", { mode, field, text, notes, context, targetTokens }),
   tokenatorMake: (kind: "prompt" | "lorebook" | "playbook" | "room" | "world", notes: string, context = "") => invoke<any>("tokenator_make", { kind, notes, context }),

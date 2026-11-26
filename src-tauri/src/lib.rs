@@ -6,6 +6,7 @@ mod guide;
 mod llama;
 mod llm;
 mod novel;
+mod phone;
 mod shelf;
 mod starters;
 mod tokenator;
@@ -152,6 +153,7 @@ pub fn run() {
             tokenator::tokenator_run,
             tokenator::tokenator_make,
             tokenator::tokenator_chat,
+            phone::phone_check,
             novel::novel_status,
             novel::novel_start,
             novel::novel_stop,
