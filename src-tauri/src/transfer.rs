@@ -219,6 +219,16 @@ pub fn is_local(ip: IpAddr) -> bool {
     }
 }
 
+/// The address to listen on: this device's address on a home network. Only for tests (`loopback_ok`) is this very device used when there is no such address.
+pub fn pick_ip(found: Option<IpAddr>, loopback_ok: bool) -> R<IpAddr> {
+    match found {
+        Some(ip) if is_local(ip) => Ok(ip),
+        _ if loopback_ok => Ok(IpAddr::from([127, 0, 0, 1])),
+        Some(ip) => Err(format!("This device's network address ({ip}) doesn't look like a home network, so I won't open it to others. Connect to your home Wi-Fi.")),
+        None => Err("I couldn't find this device on a network. Connect to your home Wi-Fi first.".into()),
+    }
+}
+
 /// A short random code with no look-alike letters, for when the person doesn't choose one.
 pub fn random_code() -> String {
     use rand_core::{OsRng, RngCore};
@@ -325,12 +335,7 @@ pub async fn transfer_send_start(state: tauri::State<'_, crate::Shared>, code: S
     };
     let (st2, o2) = (st.clone(), o.clone());
     let (bytes, _info, _file) = tauri::async_runtime::spawn_blocking(move || crate::accounts::build_export(&st2, &o2)).await.map_err(|e| e.to_string())??;
-    let ip = match lan_ip() {
-        Some(ip) => ip,
-        None if std::env::var_os("DORMS_TRANSFER_LOOPBACK").is_some() => IpAddr::from([127, 0, 0, 1]),
-        None => return Err("I couldn't find this device on a network. Connect to your home Wi-Fi first.".into()),
-    };
-    if !is_local(ip) { return Err(format!("This device's network address ({ip}) doesn't look like a home network, so I won't open it to others. Connect to your home Wi-Fi.")); }
+    let ip = pick_ip(lan_ip(), std::env::var_os("DORMS_TRANSFER_LOOPBACK").is_some())?;
     let listener = TcpListener::bind((ip, 0)).await.map_err(|e| format!("I couldn't open a connection on this device: {e}"))?;
     let addr = listener.local_addr().map_err(|e| e.to_string())?;
     let cancel = Arc::new(Notify::new());
@@ -562,6 +567,17 @@ mod tests {
         assert_eq!(parse_pairing("hello"), None);
         assert_eq!(parse_pairing("DCD1|192.168.1.20:1|"), None, "no code is not a pairing");
         assert_eq!(parse_pairing("DCD1|not an address|x"), None);
+    }
+
+    #[test]
+    fn the_sender_only_opens_on_a_home_network() {
+        let home: IpAddr = "192.168.1.5".parse().unwrap();
+        let out: IpAddr = "8.8.8.8".parse().unwrap();
+        assert_eq!(pick_ip(Some(home), false).unwrap(), home);
+        assert!(pick_ip(Some(out), false).unwrap_err().contains("home network"));
+        assert!(pick_ip(None, false).unwrap_err().contains("couldn't find"));
+        assert_eq!(pick_ip(Some(out), true).unwrap(), IpAddr::from([127, 0, 0, 1]), "tests only");
+        assert_eq!(pick_ip(None, true).unwrap(), IpAddr::from([127, 0, 0, 1]));
     }
 
     #[test]
