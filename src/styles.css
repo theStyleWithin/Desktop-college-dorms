@@ -805,3 +805,5 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .tchat-composer { display: flex; gap: 8px; align-items: flex-end; padding-top: 8px; }
 .tchat-composer textarea { flex: 1; min-height: 0; resize: none; }
 .tchat.over { outline: 3px dashed var(--accent); outline-offset: -6px; }
+.note-grip { height: 10px; margin-top: 4px; border-radius: 6px; cursor: ns-resize; touch-action: none; background: linear-gradient(var(--line), var(--line)) center / 48px 3px no-repeat; }
+.note-grip:hover, .note-grip:focus-visible { background-color: color-mix(in srgb, var(--accent2) 18%, transparent); outline: none; }
