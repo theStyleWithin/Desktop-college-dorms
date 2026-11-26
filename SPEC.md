@@ -309,16 +309,16 @@ Stage 1 is built: a whole profile, in both directions, between two devices on th
 - **Camera and network on phones.** The Android build adds the camera permission (and says a camera is not required, so a phone without one can type the address and code). Android may also ask about local network access; that was not tried.
 - **Tested**: unit tests of the key agreement (any text pairs; one letter off does not), of tampering and repeated frames, of the file arriving whole with progress, of a file that is too big, of the pairing text, and of which addresses are accepted; and end-to-end tests in which the app sends its profile to itself over a real connection on the computer (a wrong code, the three-tries lock, the right code, the arrival screen and adding it as a new profile). **Not tested**: two real devices on a real network (a computer and a phone), the camera and QR scanning, a router that keeps devices apart, the operating system's firewall and permission questions, and a large profile over Wi-Fi.
 
-## Planned: drag a character into a chat
+## Drag a character into a chat
 
-Not built yet. A new room, in a world or not, can have a chat with nobody in it (the chat page then says "Characters in this chat show up here"). The plan is to let a character be dragged from the characters list on the right into the panel beside the chat that normally shows who is in it:
+Built (draft). A new room, in a world or not, can have a chat with nobody in it (the chat page then says "Characters in this chat show up here"). The plan is to let a character be dragged from the characters list on the right into the panel beside the chat that normally shows who is in it:
 
 - **Start a chat.** Dropping a character on that panel while the chat is empty adds them, so the conversation can begin without opening "Who's here".
 - **Quick group chats.** Dropping another character on the panel adds them too, so a group chat is made by dragging people in.
 - **A one-to-one chat (a DM) becomes a group chat** when a second character is dropped. Because that changes how the characters are prompted (in a group each message is labelled with who said it), it asks first ("Make this a group chat?"). Messages already written are kept as they are.
 - **Same limits and rules as "Who's here"**: the same people can be added, a character already in the chat is not added twice, and there is a sensible cap on the group's size. A playbook, lorebooks and the room's world apply as they do to any chat.
 - **Touch and keyboard.** Dragging is unreliable on touch screens and out of reach for keyboard users, so the panel also gets an "Add a character" button and a long-press or menu option on a character in the list. Dragging a character out of the panel (or a small remove button) takes them out again.
-- Before building: show rendered pictures of the empty panel, the drop highlight and the group-chat question. It can only be tested with the app's own tests and a fake model, and drag-and-drop with a real mouse and a touch screen was not tested.
+- Built with: rows of the characters list on the right are draggable; the chat's side panel is the drop target; an "Add a character" button on the panel opens "Who's here"; the cap is 8 characters. Not tested: a real mouse or touch screen (the app's tests send the drop events themselves). Before building the plan was to show rendered pictures of the empty panel, the drop highlight and the group-chat question. It can only be tested with the app's own tests and a fake model, and drag-and-drop with a real mouse and a touch screen was not tested.
 
 ## Planned: a built-in model on Android phones
 

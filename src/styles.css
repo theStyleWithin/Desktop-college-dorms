@@ -805,3 +805,4 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .tchat-composer { display: flex; gap: 8px; align-items: flex-end; padding-top: 8px; }
 .tchat-composer textarea { flex: 1; min-height: 0; resize: none; }
 .tchat.over { outline: 3px dashed var(--accent); outline-offset: -6px; }
+.side-panel.drop-over { outline: 2px dashed var(--accent, #7aa2ff); outline-offset: -6px; background: color-mix(in srgb, var(--accent, #7aa2ff) 12%, var(--bg2)); }

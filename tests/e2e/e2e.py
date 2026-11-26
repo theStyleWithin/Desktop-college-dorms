@@ -2651,6 +2651,30 @@ try:
     check("saved prompts come back with a backup (title, label and text)", [(x["title"], x["tag"], x["body"]) for x in rp] == [("Round trip", "Style", "[OOC: it came back.]")], str(rp))
     check("the profile came back with only the shareable decoration, still marked shareable", [(i["name"], i["share"]) for i in back] == [("Lamp", True)] and os.path.exists(back[0]["path"]), str(back))
 
+    # drag a character into a chat
+    hiro_c = by_name("Hiro Tanaka") or next(c_ for c_ in chars() if c_["id"] != mira["id"])
+    dchat = invoke("create_chat", {"dormId": None, "name": "drag room", "kind": "dm", "characterIds": []})
+    reload_ui(); nav("Dorms")
+    d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'drag room')]").click(); time.sleep(0.8)
+    check("an empty chat says how to add someone and has an Add a character button", "Drag one in" in d.find_element(By.CSS_SELECTOR, "[data-testid=side-panel-empty]").text and len(d.find_elements(By.CSS_SELECTOR, "[data-testid=add-person]")) == 1)
+    def drop_person(pid):
+        d.execute_script("""const el=document.querySelector('[data-testid=side-panel]');const dt=new DataTransfer();dt.setData('application/x-dorms-chat-character',JSON.stringify([arguments[0]]));
+          for(const t of ['dragover','drop']) el.dispatchEvent(new DragEvent(t,{bubbles:true,cancelable:true,dataTransfer:dt}));""", pid)
+        time.sleep(0.8)
+    drop_person(mira["id"])
+    got = next(c_ for c_ in invoke("list_chats") if c_["id"] == dchat["id"])
+    check("dropping a character on an empty chat adds them", got["character_ids"] == [mira["id"]], str(got)[:200])
+    drop_person(mira["id"])
+    got = next(c_ for c_ in invoke("list_chats") if c_["id"] == dchat["id"])
+    check("the same character is not added twice", got["character_ids"] == [mira["id"]])
+    drop_person(hiro_c["id"])
+    check("a second character on a one-to-one chat asks first", len(d.find_elements(By.CSS_SELECTOR, "[data-testid=group-ask]")) == 1)
+    got = next(c_ for c_ in invoke("list_chats") if c_["id"] == dchat["id"])
+    check("nothing changes until it is answered", got["kind"] == "dm" and got["character_ids"] == [mira["id"]])
+    d.find_element(By.CSS_SELECTOR, "[data-testid=group-ask-yes]").click(); time.sleep(0.8)
+    got = next(c_ for c_ in invoke("list_chats") if c_["id"] == dchat["id"])
+    check("saying yes makes it a group chat with both in it", got["kind"] == "group" and got["character_ids"] == [mira["id"], hiro_c["id"]], str(got)[:200])
+
 finally:
     try: d.quit()
     except Exception: pass
