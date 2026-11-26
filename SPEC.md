@@ -369,7 +369,7 @@ Android builds without the local engine (the OS can't run the helper binary); it
 
 ## Worlds that bring a persona, a playbook and instructions
 
-Built (draft). A world can carry three more things besides its description and lorebooks. The rule: a world adds and never replaces a character's own.
+Built (draft). A world can carry four more things besides its description and lorebooks. The rule: a world adds and never replaces a character's own.
 
 - **Persona**: while a chat is in a room of the world, the world's persona stands in for the person's active persona (the name and description the characters are told). Everywhere else the person's own returns. Old messages keep the names they were written with.
 - **Playbook**: used only when the chat did not choose one and none of its characters comes with one. The chat's own choice (including "none") and the character's playbook come first.
@@ -377,5 +377,6 @@ Built (draft). A world can carry three more things besides its description and l
 - **Lorebooks** already merged with the character's (unchanged).
 - A persona or playbook that is not the person's own is ignored; backups and Wi-Fi transfers carry all three (the persona and playbook are pointed at the copies that arrive).
 - The chat shows one line, for example "From this world (Harbour): you play Kai, playbook Trust test, 2 lorebooks, standing instructions".
-- **Not built**: a prompt shelf that belongs to a world, and a way to switch the world's persona off for one chat.
+- **Prompt shelf**: a world lists saved prompts (up to 30, the person's own, once each); while the chat page shows a chat in that world, the Prompts menu lists them first under "From <world>". Backups and transfers point the shelf at the copies that arrive.
+- **Per-chat switch**: "Use mine here" plays as the person's own persona in that one chat (and "Use the world's" undoes it). It is kept with the chat.
 - **Tested**: a unit test of the fallback order, the persona and the instructions reaching the model, and checks in the app's tests. Not tested with a real model.

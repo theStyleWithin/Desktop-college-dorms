@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Lorebook, type Playbook, type Room } from "../api";
+import { api, type Lorebook, type Playbook, type Room, type SavedPrompt } from "../api";
 import TokenatorHelper from "./TokenatorHelper";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
@@ -28,9 +28,11 @@ export default function WorldsBar({ rooms, sel, onSelect, onStart, onEdit, onMap
   const [instr, setInstr] = useState(world?.instructions ?? "");
   useEffect(() => { setInstr(world?.instructions ?? ""); }, [world?.id, world?.instructions]);
   useEffect(() => { api.listPlaybooks().then(setPbs).catch(() => {}); }, [sel]);
-  const saveSetup = async (patch: { persona?: string; playbook?: string; instructions?: string }) => {
+  const [shelfAll, setShelfAll] = useState<SavedPrompt[]>([]);
+  useEffect(() => { api.listPrompts().then(setShelfAll).catch(() => {}); }, [sel]);
+  const saveSetup = async (patch: { persona?: string; playbook?: string; instructions?: string; prompts?: string[] }) => {
     if (!world) return;
-    try { await api.setWorldSetup(world.id, patch.persona ?? world.persona, patch.playbook ?? world.playbook, patch.instructions ?? instr); await refresh(); }
+    try { await api.setWorldSetup(world.id, patch.persona ?? world.persona, patch.playbook ?? world.playbook, patch.instructions ?? instr, patch.prompts ?? world.prompts); await refresh(); }
     catch (e) { toast(errText(e), "err"); }
   };
   useEffect(() => { setName(world?.name ?? ""); setDesc(world?.description ?? ""); setLore(world?.lore ?? ""); }, [world?.id, world?.name, world?.description, world?.lore]);
@@ -130,6 +132,13 @@ export default function WorldsBar({ rooms, sel, onSelect, onStart, onEdit, onMap
               </select></label>
             <label className="field"><span>Standing instructions <small className="muted">(told to the characters in every chat here, after their own instructions)</small></span>
               <textarea rows={3} value={instr} maxLength={4000} data-testid="world-instructions" placeholder="e.g. Keep scenes grounded in the harbour town. Nobody here has magic." onChange={(e) => setInstr(e.target.value)} onBlur={() => instr !== world.instructions && void saveSetup({ instructions: instr })} /></label>
+            <div className="field"><span>Prompt shelf <small className="muted">(these sit first in the Prompts menu while you are in a chat in this world)</small></span>
+              {shelfAll.length === 0 ? <div className="hint">No prompts yet. Add some in the Prompts menu, then pick them here.</div> : (
+                <div className="chips" data-testid="world-shelf">
+                  {shelfAll.map((p) => { const on = world.prompts.includes(p.id); return <button key={p.id} type="button" className={`chip${on ? " on" : ""}`} aria-pressed={on} data-world-prompt={p.title} onClick={() => void saveSetup({ prompts: on ? world.prompts.filter((x) => x !== p.id) : [...world.prompts, p.id] })}>{p.title}</button>; })}
+                </div>
+              )}
+            </div>
           </div>
           <TokenatorHelper<WorldDraft> kind="world" label="Tokenator: help me map out this world"
             intro="Describe the world in your own words. Tokenator drafts some background, a few rooms, and which rooms connect. Rooms and text are only added (nothing you already have is changed or removed), and only after you accept. You can edit all of it afterwards."

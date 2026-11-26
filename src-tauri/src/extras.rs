@@ -739,7 +739,7 @@ pub fn update_world(state: State<'_, Shared>, id: i64, name: String, description
 /// Deleting a world never deletes its rooms: they are just not in a world any more.
 /// What a world brings along. A persona or playbook that isn't the person's own is ignored.
 #[tauri::command]
-pub fn set_world_setup(state: State<'_, Shared>, id: i64, persona: String, playbook: String, instructions: String) -> R<db::World> {
+pub fn set_world_setup(state: State<'_, Shared>, id: i64, persona: String, playbook: String, instructions: String, prompts: Vec<String>) -> R<db::World> {
     let o = owner(&state)?;
     let db = state.db.lock().unwrap();
     if db::get_world(&db, id, &o).map_err(e)?.is_none() {
@@ -748,7 +748,7 @@ pub fn set_world_setup(state: State<'_, Shared>, id: i64, persona: String, playb
     let persona = if db::get_persona(&db, &persona, &o).map_err(e)?.is_some() { persona } else { String::new() };
     let playbook = if crate::playbook::get(&db, &playbook, &o).is_some() { playbook } else { String::new() };
     let instructions: String = instructions.replace('\r', "").trim().chars().take(4000).collect();
-    db::set_world_setup(&db, id, &persona, &playbook, &instructions, &o).map_err(e)?;
+    db::set_world_setup(&db, id, &persona, &playbook, &instructions, &prompts, &o).map_err(e)?;
     Ok(db::get_world(&db, id, &o).map_err(e)?.ok_or("That world doesn't exist any more.")?)
 }
 
@@ -1633,6 +1633,7 @@ pub fn set_active_persona(state: State<'_, Shared>, id: Option<String>) -> R<db:
 /// wants to play and what to remember.
 /// While a chat is in a world that brings a persona, that persona stands in for the person's own (their own comes back everywhere else).
 pub fn apply_world_persona(db: &Connection, o: &db::Owner, chat: &db::Chat, s: &mut db::Settings) {
+    if chat.world_persona_off { return; }
     let Some(w) = db::chat_world(db, chat, o).ok().flatten() else { return };
     if !w.persona.is_empty() && db::get_persona(db, &w.persona, o).ok().flatten().is_some() {
         s.active_persona = w.persona;

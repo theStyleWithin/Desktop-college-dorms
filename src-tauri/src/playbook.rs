@@ -1148,7 +1148,7 @@ mod tests {
         let room = db::create_room(&c, &db::Room { id: 0, name: "Pier".into(), kind: "other".into(), description: String::new(), owner_kind: "self".into(), character_id: None, backdrop: String::new(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: db::RoomDeco::default(), world_id: None, gallery: vec![] }, &o).unwrap();
         let w = db::create_world(&c, "Harbour", "", &o).unwrap();
         db::move_rooms_to_world(&c, &[room.id], Some(w.id), &o).unwrap();
-        db::set_world_setup(&c, w.id, "kai", "p1", "Keep it salty.", &o).unwrap();
+        db::set_world_setup(&c, w.id, "kai", "p1", "Keep it salty.", &[], &o).unwrap();
         let w = db::get_world(&c, w.id, &o).unwrap().unwrap();
         assert_eq!((w.persona.as_str(), w.playbook.as_str(), w.instructions.as_str()), ("kai", "p1", "Keep it salty."));
         let ch = db::Character { id: "c1".into(), card: dorms_core::CharacterData { name: "C".into(), ..Default::default() }, media: None, outfits: vec![], gallery: vec![], gallery_mode: String::new(), outfit: Default::default(), ..serde_json::from_value(json!({"id":"c1","card":{"name":"C"}})).unwrap() };
@@ -1166,11 +1166,20 @@ mod tests {
         crate::extras::apply_world_persona(&c, &o, &chat, &mut s);
         assert_eq!(s.active_persona, "kai", "the world's persona stands in while the chat is in the world");
         assert!(crate::extras::extra_system(&c, &chat, &o, "").contains("Keep it salty."), "the instructions reach the model");
+        let mut off = chat.clone(); off.world_persona_off = true; db::update_chat(&c, &off, &o).unwrap();
+        let off = db::get_chat(&c, chat.id, &o).unwrap().unwrap();
+        assert!(off.world_persona_off, "the choice is kept");
+        let mut s = db::get_settings(&c, &o);
+        crate::extras::apply_world_persona(&c, &o, &off, &mut s);
+        assert_eq!(s.active_persona, "", "switched off for this chat, the person's own stays");
         let mut s = db::get_settings(&c, &o);
         let plain = db::create_chat(&c, None, "y", "dm", &["c1".to_string()], &o).unwrap();
         crate::extras::apply_world_persona(&c, &o, &plain, &mut s);
         assert_eq!(s.active_persona, "", "a chat outside the world keeps the person's own");
-        db::set_world_setup(&c, w.id, "", "", "", &o).unwrap();
+        db::save_prompt(&c, &db::SavedPrompt { id: "sp1".into(), title: "Salt".into(), body: "[OOC: salty]".into(), tag: String::new(), created_at: 0, updated_at: 0 }, &o).unwrap();
+        db::set_world_setup(&c, w.id, "kai", "p1", "Keep it salty.", &["sp1".to_string(), "sp1".to_string(), "not-mine".to_string()], &o).unwrap();
+        assert_eq!(db::get_world(&c, w.id, &o).unwrap().unwrap().prompts, vec!["sp1".to_string()], "the shelf keeps only the person's own prompts, once each");
+        db::set_world_setup(&c, w.id, "", "", "", &[], &o).unwrap();
     }
 
     #[test]

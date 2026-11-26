@@ -197,6 +197,7 @@ export default function Editor({ id }: { id: string | null }) {
         )}
       </div>
 
+      <div style={{ textAlign: "left", marginBottom: 12 }}><button type="button" className="btn sm" onClick={() => setTokOpen(true)} data-testid="tokenator-open">✂️ Tokenator</button><div className="hint" data-testid="tokenator-hint">A character card advisor: see how many tokens each part of your card uses, trim it down, or get help writing a part.</div></div>
       <h2>Character Info <span className="sub" style={{ fontSize: ".9rem", fontFamily: "var(--sans)" }}>(how they look in your library)</span></h2>
       <Field label="Name" req><input type="text" value={name} placeholder="Name" onChange={(e) => { setName(e.target.value); setDirty(true); }} /></Field>
       <Field label="Avatar" plain hint="JPG, PNG, WebP, GIF, MP4/WebM video, or a VRM / VRoid model (.vrm). Choose Upload, or drop a file onto the picture. Videos and GIFs animate; VRM models stand in a 3D room you can look around.">
@@ -288,7 +289,6 @@ export default function Editor({ id }: { id: string | null }) {
         )}
       </Field>
       <p className="tok" style={{ textAlign: "center" }}>Total: {total} token(s). Permanent: {permanent} token(s). Your context window is {settings.context_tokens}.</p>
-      <div style={{ textAlign: "center" }}><button type="button" className="btn sm" onClick={() => setTokOpen(true)} data-testid="tokenator-open">✂️ Tokenator</button><div className="hint" data-testid="tokenator-hint">A character card advisor: see how many tokens each part of your card uses, trim it down, or get help writing a part.</div></div>
       {tokOpen && <TokenatorPanel card={card} onApply={async (f, t) => { set(f as any, t as any); if (!(await save({ [f]: t } as Partial<CardData>))) throw new Error("The card could not be saved yet, so it was not applied."); }} onClose={() => setTokOpen(false)} />}
 
       <details className="card" style={{ marginTop: 24 }} open>
