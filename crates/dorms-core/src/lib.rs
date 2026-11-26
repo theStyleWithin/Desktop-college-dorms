@@ -3,6 +3,7 @@
 
 pub mod card;
 pub mod card_io;
+pub mod cli;
 pub mod mechanics;
 pub mod media;
 pub mod png;
