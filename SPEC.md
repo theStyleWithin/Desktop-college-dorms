@@ -365,3 +365,17 @@ v0.3.0 adds a real 3D viewer for VRM / VRoid models (room, idle life, physics, h
 
 Built: everything above except battery-aware pausing and a standalone lorebook library (lorebooks are embedded in characters).
 Android builds without the local engine (the OS can't run the helper binary); it uses cloud or network models. See README for the verification status of each platform.
+
+
+## Worlds that bring a persona, a playbook and instructions
+
+Built (draft). A world can carry three more things besides its description and lorebooks. The rule: a world adds and never replaces a character's own.
+
+- **Persona**: while a chat is in a room of the world, the world's persona stands in for the person's active persona (the name and description the characters are told). Everywhere else the person's own returns. Old messages keep the names they were written with.
+- **Playbook**: used only when the chat did not choose one and none of its characters comes with one. The chat's own choice (including "none") and the character's playbook come first.
+- **Standing instructions** (up to 4,000 characters): added to what the characters are told, with a note that a character's own instructions win if they disagree.
+- **Lorebooks** already merged with the character's (unchanged).
+- A persona or playbook that is not the person's own is ignored; backups and Wi-Fi transfers carry all three (the persona and playbook are pointed at the copies that arrive).
+- The chat shows one line, for example "From this world (Harbour): you play Kai, playbook Trust test, 2 lorebooks, standing instructions".
+- **Not built**: a prompt shelf that belongs to a world, and a way to switch the world's persona off for one chat.
+- **Tested**: a unit test of the fallback order, the persona and the instructions reaching the model, and checks in the app's tests. Not tested with a real model.

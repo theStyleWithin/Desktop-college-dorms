@@ -2651,6 +2651,25 @@ try:
     check("saved prompts come back with a backup (title, label and text)", [(x["title"], x["tag"], x["body"]) for x in rp] == [("Round trip", "Style", "[OOC: it came back.]")], str(rp))
     check("the profile came back with only the shareable decoration, still marked shareable", [(i["name"], i["share"]) for i in back] == [("Lamp", True)] and os.path.exists(back[0]["path"]), str(back))
 
+    # worlds that bring a persona, a playbook and standing instructions
+    ws = invoke("create_world", {"name": "Harbour", "description": "A salty port town."})
+    wroom = invoke("create_room", {"room": dict(room_in, name="Pier", description="", owner_kind="self", character_id=None, id=0, created_at=0, world_id=ws["id"])})
+    wdorm = invoke("create_dorm", {"name": "Harbour dorm", "roomId": wroom["id"]})
+    wchat = invoke("create_chat", {"dormId": wdorm["id"], "name": "pier chat", "kind": "dm", "characterIds": [mira["id"]]})
+    plain = invoke("create_chat", {"dormId": None, "name": "elsewhere", "kind": "dm", "characterIds": [mira["id"]]})
+    set_ = invoke("set_world_setup", {"id": ws["id"], "persona": kai["id"], "playbook": pbs["id"], "instructions": "  Keep it salty.  "})
+    check("a world keeps its persona, playbook and instructions", (set_["persona"], set_["playbook"], set_["instructions"]) == (kai["id"], pbs["id"], "Keep it salty."), str(set_))
+    bad = invoke("set_world_setup", {"id": ws["id"], "persona": "nope", "playbook": "nope", "instructions": ""})
+    check("a persona or playbook that isn't yours is ignored", bad["persona"] == "" and bad["playbook"] == "")
+    invoke("set_world_setup", {"id": ws["id"], "persona": kai["id"], "playbook": pbs["id"], "instructions": "Keep it salty."})
+    wp = invoke("get_chat_playbook", {"chatId": wchat["id"]})
+    check("a chat in the world uses the world's playbook when nothing else chooses one", wp["active"] and wp["active"]["id"] == pbs["id"] and wp["from_world"], str(wp)[:200])
+    check("a chat outside the world is unaffected", invoke("get_chat_playbook", {"chatId": plain["id"]})["active"] is None)
+    reload_ui(); nav("Dorms")
+    d.find_element(By.XPATH, "//button[contains(@class,'it') and contains(., 'pier chat')]").click(); time.sleep(1.0)
+    line = d.find_elements(By.CSS_SELECTOR, "[data-testid=world-brings]")
+    check("the chat says what its world brings", len(line) == 1 and "Harbour" in line[0].text and "playbook Trust test" in line[0].text and "standing instructions" in line[0].text, line[0].text if line else "no line")
+
 finally:
     try: d.quit()
     except Exception: pass

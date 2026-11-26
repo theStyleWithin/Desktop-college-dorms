@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api, displayName, mediaUrl, musicUrl, onAutoStopped, onGen, tagline, type Character, type Chat, type ChatKind, type Message, type TurnMode,
-  galleryUrl, onNovel, type MediaKind, type NovelStatus,
+  galleryUrl, onNovel, type MediaKind, type NovelStatus, type Playbook,
 } from "../api";
 import Art from "../components/Art";
 import MicButton from "../components/MicButton";
@@ -74,6 +74,19 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
     if (moved) return moved;
     const d = dorms.find((x) => x.id === chat?.dorm_id); return d?.room_id != null ? rooms.find((r) => r.id === d.room_id) ?? null : null;
   }, [chat, dorms, rooms]);
+  /** What the world this chat is in brings along (shown as one line under the title). */
+  const chatWorld = useMemo(() => (room?.world_id != null ? worlds.find((w) => w.id === room.world_id) : undefined), [room, worlds]);
+  const [worldPbs, setWorldPbs] = useState<Playbook[]>([]);
+  useEffect(() => { if (chatWorld?.playbook) api.listPlaybooks().then(setWorldPbs).catch(() => {}); }, [chatWorld?.playbook]);
+  const worldBrings = useMemo(() => {
+    if (!chatWorld) return "";
+    const bits: string[] = [];
+    const pe = personas.find((x) => x.id === chatWorld.persona); if (pe) bits.push(`you play ${pe.name}`);
+    const pb = worldPbs.find((x) => x.id === chatWorld.playbook); if (pb) bits.push(`playbook ${pb.name}`);
+    if (chatWorld.lorebooks.length) bits.push(`${chatWorld.lorebooks.length} lorebook${chatWorld.lorebooks.length === 1 ? "" : "s"}`);
+    if (chatWorld.instructions.trim()) bits.push("standing instructions");
+    return bits.length ? `From this world (${chatWorld.name}): ${bits.join(", ")}` : "";
+  }, [chatWorld, personas, worldPbs]);
   // a moving (GIF) backdrop moves only here, in the chat in front, and only while the app is in front and animation is on
   const awayNow = useAway();
   const roomBg = roomBackground(room, !awayNow && settings.deco?.animate !== false);
@@ -369,6 +382,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               <button className="btn sm" onClick={async () => { if (window.confirm("Clear every message in this chat?")) { await api.clearChat(chat.id); setMsgs([]); } }}>Clear</button>
               <button className="btn sm danger" onClick={deleteChat}>Delete</button>
               </div>
+              {worldBrings && <div className="hint" data-testid="world-brings" style={{ flexBasis: "100%" }}>🌍 {worldBrings}</div>}
             </header>
 
             {phone ? (

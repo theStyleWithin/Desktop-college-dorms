@@ -1050,8 +1050,9 @@ async fn run_generation(
     let (settings, chat, chars, msgs) = {
         let db = st.db.lock().unwrap();
         let mut settings = db::get_settings(&db, o);
-        crate::extras::apply_persona(&db, o, &mut settings);
         let chat = db::get_chat(&db, chat_id, o).map_err(e)?.ok_or("Chat not found")?;
+        crate::extras::apply_world_persona(&db, o, &chat, &mut settings);
+        crate::extras::apply_persona(&db, o, &mut settings);
         let mut chars = HashMap::new();
         for id in &chat.character_ids {
             if let Some(c) = db::get_character(&db, id, o).map_err(e)? {

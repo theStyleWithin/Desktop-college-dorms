@@ -201,6 +201,15 @@ pub struct World {
     /// Ids of the lorebooks attached to it.
     #[serde(default)]
     pub lorebooks: Vec<String>,
+    /// A persona (its id) that stands in for the person's own while a chat is in this world. "" for none.
+    #[serde(default)]
+    pub persona: String,
+    /// A playbook (its id) the chats here use when neither the chat nor its characters choose one. "" for none.
+    #[serde(default)]
+    pub playbook: String,
+    /// Standing instructions for every chat in this world, placed after the characters' own instructions (which win if they disagree).
+    #[serde(default)]
+    pub instructions: String,
     #[serde(default)]
     pub created_at: i64,
 }
@@ -676,6 +685,7 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
         "CREATE TABLE IF NOT EXISTS worlds(id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id TEXT, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS world_lorebooks(world_id INTEGER NOT NULL, book_id TEXT NOT NULL, PRIMARY KEY(world_id, book_id));",
     )?;
+    for col in ["persona", "playbook", "instructions"] { ensure_column(&conn, "worlds", col, "TEXT NOT NULL DEFAULT ''")?; }
     ensure_column(&conn, "worlds", "lore", "TEXT NOT NULL DEFAULT ''")?; // after the table exists (worlds made before this had no lore)
     ensure_column(&conn, "rooms", "deco_plate", "TEXT NOT NULL DEFAULT 'none'")?;
     ensure_column(&conn, "rooms", "deco_bg", "TEXT NOT NULL DEFAULT ''")?;
@@ -871,9 +881,9 @@ fn world_books(c: &Connection, id: i64) -> Vec<String> {
 }
 
 pub fn list_worlds(c: &Connection, owner: &Owner) -> R<Vec<World>> {
-    let mut s = c.prepare("SELECT id,name,description,lore,created_at FROM worlds WHERE profile_id IS ?1 ORDER BY id")?;
-    let rows: Vec<(i64, String, String, String, i64)> = s.query_map([owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?.filter_map(|r| r.ok()).collect();
-    Ok(rows.into_iter().map(|(id, name, description, lore, created_at)| World { id, name, description, lore, lorebooks: world_books(c, id), created_at }).collect())
+    let mut s = c.prepare("SELECT id,name,description,lore,created_at,persona,playbook,instructions FROM worlds WHERE profile_id IS ?1 ORDER BY id")?;
+    let rows: Vec<(i64, String, String, String, i64, String, String, String)> = s.query_map([owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)))?.filter_map(|r| r.ok()).collect();
+    Ok(rows.into_iter().map(|(id, name, description, lore, created_at, persona, playbook, instructions)| World { id, name, description, lore, lorebooks: world_books(c, id), persona, playbook, instructions, created_at }).collect())
 }
 
 pub fn get_world(c: &Connection, id: i64, owner: &Owner) -> R<Option<World>> {
@@ -894,6 +904,12 @@ pub fn update_world(c: &Connection, id: i64, name: &str, description: &str, lore
     for b in lorebooks.iter().filter(|b| mine.contains(b)) {
         c.execute("INSERT OR IGNORE INTO world_lorebooks(world_id,book_id) VALUES(?1,?2)", params![id, b])?;
     }
+    Ok(())
+}
+
+/// Sets what a world brings along: a persona and a playbook (ids; the caller has checked they are the owner's) and standing instructions.
+pub fn set_world_setup(c: &Connection, id: i64, persona: &str, playbook: &str, instructions: &str, owner: &Owner) -> R<()> {
+    c.execute("UPDATE worlds SET persona=?2, playbook=?3, instructions=?4 WHERE id=?1 AND profile_id IS ?5", params![id, persona, playbook, instructions, owner])?;
     Ok(())
 }
 

@@ -737,6 +737,21 @@ pub fn update_world(state: State<'_, Shared>, id: i64, name: String, description
 }
 
 /// Deleting a world never deletes its rooms: they are just not in a world any more.
+/// What a world brings along. A persona or playbook that isn't the person's own is ignored.
+#[tauri::command]
+pub fn set_world_setup(state: State<'_, Shared>, id: i64, persona: String, playbook: String, instructions: String) -> R<db::World> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    if db::get_world(&db, id, &o).map_err(e)?.is_none() {
+        return Err("That world doesn't exist any more.".into());
+    }
+    let persona = if db::get_persona(&db, &persona, &o).map_err(e)?.is_some() { persona } else { String::new() };
+    let playbook = if crate::playbook::get(&db, &playbook, &o).is_some() { playbook } else { String::new() };
+    let instructions: String = instructions.replace('\r', "").trim().chars().take(4000).collect();
+    db::set_world_setup(&db, id, &persona, &playbook, &instructions, &o).map_err(e)?;
+    Ok(db::get_world(&db, id, &o).map_err(e)?.ok_or("That world doesn't exist any more.")?)
+}
+
 #[tauri::command]
 pub fn delete_world(state: State<'_, Shared>, id: i64) -> R<()> {
     db::delete_world(&state.db.lock().unwrap(), id, &owner(&state)?).map_err(e)
@@ -985,7 +1000,9 @@ fn active(db: &Connection, chat_id: i64, o: &db::Owner) -> Vec<(ChatMechanic, Bu
 /// Everything beyond the character card that goes into the system prompt: the room, the texting style, the packs.
 pub fn extra_system(db: &Connection, chat: &db::Chat, o: &db::Owner, recent: &str) -> String {
     let room = db::chat_room(db, chat, o).ok().flatten().map(|r| r.id);
-    let mut parts = vec![room_block(db, chat, o), style_block(chat), crate::emoji::prompt_block(&db::list_emoji(db, o).unwrap_or_default(), room), crate::playbook::prompt_for_chat(db, chat, o)];
+    let world_note = db::chat_world(db, chat, o).ok().flatten().map(|w| w.instructions.trim().to_string()).filter(|t| !t.is_empty())
+        .map(|t| format!("Standing instructions for this world (if a character's own instructions disagree with these, the character's win):\n{t}")).unwrap_or_default();
+    let mut parts = vec![world_note, room_block(db, chat, o), style_block(chat), crate::emoji::prompt_block(&db::list_emoji(db, o).unwrap_or_default(), room), crate::playbook::prompt_for_chat(db, chat, o)];
     for (cm, b) in active(db, chat.id, o) {
         parts.push(mech::prompt_block(&b, &cm.state, recent));
     }
@@ -1614,6 +1631,14 @@ pub fn set_active_persona(state: State<'_, Shared>, id: Option<String>) -> R<db:
 /// The name and description the AI is given for the player: the active persona's, or the plain ones from Settings.
 /// The persona's roleplay preferences ride along with its description, so the AI knows beforehand how the player
 /// wants to play and what to remember.
+/// While a chat is in a world that brings a persona, that persona stands in for the person's own (their own comes back everywhere else).
+pub fn apply_world_persona(db: &Connection, o: &db::Owner, chat: &db::Chat, s: &mut db::Settings) {
+    let Some(w) = db::chat_world(db, chat, o).ok().flatten() else { return };
+    if !w.persona.is_empty() && db::get_persona(db, &w.persona, o).ok().flatten().is_some() {
+        s.active_persona = w.persona;
+    }
+}
+
 pub fn apply_persona(db: &Connection, o: &db::Owner, s: &mut db::Settings) {
     if s.active_persona.is_empty() {
         return;

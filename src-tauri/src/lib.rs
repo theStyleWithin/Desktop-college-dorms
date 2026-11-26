@@ -224,6 +224,7 @@ pub fn run() {
             extras::list_worlds,
             extras::create_world,
             extras::update_world,
+            extras::set_world_setup,
             extras::delete_world,
             extras::move_rooms_to_world,
             extras::set_room_music,

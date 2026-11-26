@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Lorebook, type Room } from "../api";
+import { api, type Lorebook, type Playbook, type Room } from "../api";
 import TokenatorHelper from "./TokenatorHelper";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
@@ -16,7 +16,7 @@ export type WorldSel = "all" | "none" | number;
 type WorldDraft = { name: string; description: string; lore: string; rooms: { name: string; kind: string; description: string }[]; links: [string, string][] };
 
 export default function WorldsBar({ rooms, sel, onSelect, onStart, onEdit, onMap }: { rooms: Room[]; sel: WorldSel; onSelect: (s: WorldSel) => void; onStart: (r: Room) => void; onEdit: (r: Room) => void; onMap: () => void }) {
-  const { worlds, refresh, go } = useStore();
+  const { worlds, refresh, go, personas } = useStore();
   const toast = useToast();
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -24,6 +24,15 @@ export default function WorldsBar({ rooms, sel, onSelect, onStart, onEdit, onMap
   const world = typeof sel === "number" ? worlds.find((w) => w.id === sel) : undefined;
   const [name, setName] = useState(world?.name ?? ""), [desc, setDesc] = useState(world?.description ?? ""), [lore, setLore] = useState(world?.lore ?? "");
   const [reading, setReading] = useState(false);
+  const [pbs, setPbs] = useState<Playbook[]>([]);
+  const [instr, setInstr] = useState(world?.instructions ?? "");
+  useEffect(() => { setInstr(world?.instructions ?? ""); }, [world?.id, world?.instructions]);
+  useEffect(() => { api.listPlaybooks().then(setPbs).catch(() => {}); }, [sel]);
+  const saveSetup = async (patch: { persona?: string; playbook?: string; instructions?: string }) => {
+    if (!world) return;
+    try { await api.setWorldSetup(world.id, patch.persona ?? world.persona, patch.playbook ?? world.playbook, patch.instructions ?? instr); await refresh(); }
+    catch (e) { toast(errText(e), "err"); }
+  };
   useEffect(() => { setName(world?.name ?? ""); setDesc(world?.description ?? ""); setLore(world?.lore ?? ""); }, [world?.id, world?.name, world?.description, world?.lore]);
   useEffect(() => { api.listLorebooks().then(setBooks).catch(() => {}); }, [sel]);
   const unfiled = rooms.filter((r) => r.world_id == null).length;
@@ -106,6 +115,21 @@ export default function WorldsBar({ rooms, sel, onSelect, onStart, onEdit, onMap
               </div>
             )}
             <div className="hint">Attached lorebooks work in every chat in any room of this world, together with the ones on each character.</div>
+          </div>
+          <div className="field" data-testid="world-setup"><span>What this world brings along</span>
+            <div className="hint">These only add to what a character already has. A character's own playbook and instructions come first.</div>
+            <label className="field"><span>Persona <small className="muted">(stands in for yours only while a chat is in this world)</small></span>
+              <select aria-label="Persona for this world" data-testid="world-persona" value={world.persona} onChange={(e) => void saveSetup({ persona: e.target.value })}>
+                <option value="">Keep my own</option>
+                {personas.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select></label>
+            <label className="field"><span>Playbook <small className="muted">(used when the chat and its characters don't choose one)</small></span>
+              <select aria-label="Playbook for this world" data-testid="world-playbook" value={world.playbook} onChange={(e) => void saveSetup({ playbook: e.target.value })}>
+                <option value="">None</option>
+                {pbs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select></label>
+            <label className="field"><span>Standing instructions <small className="muted">(told to the characters in every chat here, after their own instructions)</small></span>
+              <textarea rows={3} value={instr} maxLength={4000} data-testid="world-instructions" placeholder="e.g. Keep scenes grounded in the harbour town. Nobody here has magic." onChange={(e) => setInstr(e.target.value)} onBlur={() => instr !== world.instructions && void saveSetup({ instructions: instr })} /></label>
           </div>
           <TokenatorHelper<WorldDraft> kind="world" label="Tokenator: help me map out this world"
             intro="Describe the world in your own words. Tokenator drafts some background, a few rooms, and which rooms connect. Rooms and text are only added (nothing you already have is changed or removed), and only after you accept. You can edit all of it afterwards."
