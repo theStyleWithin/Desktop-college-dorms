@@ -10,7 +10,7 @@ import { HiddenAccountsList } from "../components/HiddenAccounts";
 import EmojiTab from "../components/EmojiTab";
 import { Modal, useToast } from "../components/ui";
 import { errText, fmtBytes } from "../lib/util";
-import type { SessionState } from "../api";
+import type { PhoneCheck, SessionState } from "../api";
 import { useStore } from "../store";
 
 type Tab = "profiles" | "custom" | "personas" | "models" | "voice" | "controller" | "privacy" | "about";
@@ -106,6 +106,29 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
   );
 }
 
+/** What this phone could run, and why not if it can't. It never has a download button: a phone that can't run a model is just told so, and no phone is offered one before the app has an engine for phones. */
+function PhoneCheckCard() {
+  const [c, setC] = useState<PhoneCheck | null>(null);
+  useEffect(() => { api.phoneCheck().then(setC).catch(() => {}); }, []);
+  if (!c) return null;
+  return (
+    <div className="card" data-testid="phone-check" style={{ background: "var(--panel2)", marginTop: 10 }}>
+      <h3>Could this phone run a built-in model?</h3>
+      <p data-testid="phone-check-summary">{c.summary}</p>
+      <div className="tok">This phone: about {c.ram_gb.toFixed(1)} GB of memory{c.free_gb != null ? `, about ${c.free_gb.toFixed(1)} GB of free storage` : ""}, {c.arm64 ? "a 64-bit ARM processor" : "not a 64-bit ARM processor"}.</div>
+      <ul style={{ margin: "8px 0 0 18px", padding: 0 }}>
+        {c.options.map((o) => (
+          <li key={o.id} data-testid={`phone-option-${o.id}`}>
+            {o.fits ? "✓" : "✕"} <b>{o.label}</b> <span className="tok">(about {o.size_gb.toFixed(1)} GB to download, wants about {o.min_ram_gb.toFixed(0)} GB of memory)</span>
+            {o.note && <div className="hint" style={{ margin: "2px 0 4px" }}>{o.note}</div>}
+          </li>
+        ))}
+      </ul>
+      <div className="hint" style={{ marginTop: 8 }}>These limits are estimates, to be adjusted after trying real phones. Nothing is downloaded from here.</div>
+    </div>
+  );
+}
+
 function Models({ s, patch, onChanged }: { s: Settings; patch: (p: Partial<Settings>) => void; onChanged: () => void }) {
   const toast = useToast();
   const { info } = useStore();
@@ -186,7 +209,10 @@ function Models({ s, patch, onChanged }: { s: Settings; patch: (p: Partial<Setti
         <div className="card">
           <h3>Models on this device</h3>
           {info && !info.local_engine ? (
-            <p className="hint">The built-in engine isn't available on {info.platform} yet. Use a cloud provider, or point "OpenAI-compatible" at a model server on your home network (Ollama, LM Studio, or this app running on your PC).</p>
+            <>
+              <p className="hint">The built-in engine isn't available on {info.platform} yet. Use a cloud provider, or point "OpenAI-compatible" at a model server on your home network (Ollama, LM Studio, or this app running on your PC).</p>
+              {info.platform === "android" && <PhoneCheckCard />}
+            </>
           ) : (
             <>
               {hw && <p className="hint">This computer has about {hw.total_ram_gb.toFixed(0)} GB of memory. The ★ pick should run comfortably.</p>}

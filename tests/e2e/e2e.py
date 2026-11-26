@@ -1480,6 +1480,8 @@ try:
     check("and 'back to normal' takes it away", "<personality>" not in seen["body"]["messages"][0]["content"])
     d.execute_script("localStorage.removeItem('dorms.tokenator.chat');localStorage.removeItem('dorms.tokenator.personality');localStorage.removeItem('dorms.tokenator.sees.fake-model')")
     seen["pieces"] = None
+    pc_ = invoke("phone_check")
+    check("the phone check works on any device and, away from a phone, says it is not one", pc_["is_android"] is False and pc_["ram_gb"] > 0 and len(pc_["options"]) == 3 and isinstance(pc_["summary"], str) and pc_["summary"] != "")
     # statuses: in the character's voice (written by the model) or in the user's own words
     cid = chars_now[0]["id"]
     old_pieces = seen.get("pieces"); seen["pieces"] = ["studying ", "hard"]
