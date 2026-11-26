@@ -71,7 +71,7 @@ def connect(opts, timeout=90):
 
 env = dict(os.environ, XDG_DATA_HOME=os.path.join(WORK, "data"), XDG_CONFIG_HOME=os.path.join(WORK, "cfg"),
            XDG_CACHE_HOME=os.path.join(WORK, "cache"), GDK_BACKEND="x11", APPIMAGE_EXTRACT_AND_RUN="1",
-           WEBKIT_DISABLE_COMPOSITING_MODE="1", WEBKIT_DISABLE_DMABUF_RENDERER="1", DORMS_NO_STARTERS="1")
+           WEBKIT_DISABLE_COMPOSITING_MODE="1", WEBKIT_DISABLE_DMABUF_RENDERER="1", DORMS_NO_STARTERS="1", DORMS_TRANSFER_LOOPBACK="1")
 if not os.environ.get("E2E_BUNDLED_ENGINE"):  # default: point at a dev build of the engine
     env["DORMS_LLAMA_SERVER"] = LLAMA
 os.makedirs(WORK, exist_ok=True)
@@ -1482,6 +1482,56 @@ try:
     seen["pieces"] = None
     pc_ = invoke("phone_check")
     check("the phone check works on any device and, away from a phone, says it is not one", pc_["is_android"] is False and pc_["ram_gb"] > 0 and len(pc_["options"]) == 3 and isinstance(pc_["summary"], str) and pc_["summary"] != "")
+    # Wi-Fi transfer: this app sends its open profile to itself over a real connection on this computer (a second device is not available here)
+    def tpoll(role, phases, secs=40):
+        end = time.time() + secs
+        while time.time() < end:
+            t_ = invoke("transfer_status", {"role": role})
+            if t_["phase"] in phases: return t_
+            time.sleep(0.4)
+        return invoke("transfer_status", {"role": role})
+    chars_n_ = len(invoke("list_characters"))
+    s1_ = invoke("transfer_send_start", {"code": "pizza \U0001F355", "passcode": None})
+    check("the sender opens, listens, and shows an address, a QR code and the code it was given", s1_["phase"] == "waiting" and ":" in s1_["addr"] and "<svg" in s1_["qr_svg"] and s1_["code"] == "pizza \U0001F355" and 0 < s1_["expires_in"] <= 300, str(s1_)[:200])
+    invoke("transfer_receive_start", {"addr": s1_["addr"], "code": "pizza"})
+    r1_ = tpoll("receive", ["failed"])
+    s1b_ = invoke("transfer_status", {"role": "send"})
+    check("a wrong code does not pair; the receiver is told, the sender counts the try and keeps waiting", r1_["phase"] == "failed" and "doesn't check out" in r1_["message"] and s1b_["phase"] == "waiting" and "2 tries left" in s1b_["message"], f"{r1_['message']} | {s1b_['message']}")
+    invoke("transfer_receive_start", {"addr": s1_["addr"], "code": "pizza \U0001F355"})
+    r2_ = tpoll("receive", ["arrived", "failed"])
+    check("the right code, with any characters in it, brings the profile across, and it waits to be looked at", r2_["phase"] == "arrived" and bool(r2_["token"]), str(r2_)[:200])
+    s2_ = tpoll("send", ["done", "failed"])
+    check("the sender says it is done", s2_["phase"] == "done" and "Sent" in s2_["message"], s2_["message"])
+    pv_ = invoke("inspect_staged", {"token": r2_["token"]})
+    check("what arrived has the same characters as what was sent", pv_["characters"] == chars_n_, str(pv_))
+    ses_ = invoke("import_staged", {"token": r2_["token"], "handle": "WifiCopy", "passcode": ""})
+    check("it is added as a new profile only when the person says so", ses_["profile"]["handle"] == "WifiCopy" and len(invoke("list_characters")) == chars_n_, str(ses_["profile"])[:120])
+    invoke("delete_profile", {"confirm": "wificopy"}); invoke("sign_in", {"profileId": None})
+    invoke("transfer_send_start", {"code": "tidepool", "passcode": None}); s3_ = invoke("transfer_status", {"role": "send"})
+    for i_ in range(3):
+        invoke("transfer_receive_start", {"addr": s3_["addr"], "code": "wrong%d" % i_}); tpoll("receive", ["failed"]); time.sleep(0.3)
+    s3b_ = tpoll("send", ["failed"])
+    check("three wrong codes lock the sender", s3b_["phase"] == "failed" and "locked" in s3b_["message"], s3b_["message"])
+    invoke("transfer_receive_start", {"addr": s3_["addr"], "code": "tidepool"}); r3_ = tpoll("receive", ["failed", "arrived"])
+    check("once locked, even the right code gets no answer", r3_["phase"] == "failed" and "couldn't reach" in r3_["message"], r3_["message"])
+    check("an address that is out on the internet is refused", "home network" in str(inv_err("transfer_receive_start", {"addr": "8.8.8.8:5000", "code": "x"})))
+    check("a sender needs a code", "code" in str(inv_err("transfer_send_start", {"code": "", "passcode": None})).lower())
+    # the same thing through the screens
+    reload_ui(); nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Profiles').click()"); time.sleep(0.6)
+    d.execute_script("document.querySelector('[data-testid=wifi-open]').click()"); time.sleep(0.6)
+    d.execute_script("document.querySelector('[data-testid=transfer-choose-send]').click()"); time.sleep(0.4)
+    set_value("[data-testid=transfer-code]", "harbour"); time.sleep(0.2)
+    d.execute_script("document.querySelector('[data-testid=transfer-start]').click()"); time.sleep(1.5)
+    check("the Send screen shows the QR code, the address and the code", d.execute_script("return !!document.querySelector('[data-testid=transfer-qr]') && document.querySelector('[data-testid=transfer-code-shown]').textContent==='harbour' && /:\\d+$/.test(document.querySelector('[data-testid=transfer-addr]').textContent)"))
+    ui_addr_ = d.execute_script("return document.querySelector('[data-testid=transfer-addr]').textContent")
+    invoke("transfer_receive_start", {"addr": ui_addr_, "code": "harbour"}); tpoll("receive", ["arrived", "failed"]); time.sleep(1.5)
+    check("the Send screen says when it is done", d.execute_script("const r=document.querySelector('[data-testid=transfer-send-result]');return !!r && r.textContent.includes('Sent')"))
+    dismiss(); time.sleep(0.4)
+    d.execute_script("document.querySelector('[data-testid=wifi-open]').click()"); time.sleep(1.5)
+    check("opening it again shows what arrived, with its counts, and nothing is added yet", d.execute_script("const a=document.querySelector('[data-testid=transfer-arrived-counts]');return !!a && a.textContent.includes('character')") and len(invoke("list_characters")) == chars_n_)
+    d.execute_script("document.querySelector('[data-testid=transfer-discard]').click()"); time.sleep(0.5)
+    check("Discard throws it away", d.execute_script("return !document.querySelector('[data-testid=transfer-arrived]') && !!document.querySelector('[data-testid=transfer-scan]')"))
+    dismiss(); time.sleep(0.3)
     # statuses: in the character's voice (written by the model) or in the user's own words
     cid = chars_now[0]["id"]
     old_pieces = seen.get("pieces"); seen["pieces"] = ["studying ", "hard"]

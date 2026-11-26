@@ -117,7 +117,7 @@ class Fake(BaseHTTPRequestHandler):
 threading.Thread(target=HTTPServer(("127.0.0.1", 18998), Fake).serve_forever, daemon=True).start()
 
 env = dict(os.environ, XDG_DATA_HOME=os.path.join(WORK, "data"), XDG_CONFIG_HOME=os.path.join(WORK, "cfg"), XDG_CACHE_HOME=os.path.join(WORK, "cache"),
-           GDK_BACKEND="x11", WEBKIT_DISABLE_COMPOSITING_MODE="1", WEBKIT_DISABLE_DMABUF_RENDERER="1", **({} if os.environ.get("STARTERS_SHOT") else {"DORMS_NO_STARTERS": "1"}))
+           GDK_BACKEND="x11", WEBKIT_DISABLE_COMPOSITING_MODE="1", WEBKIT_DISABLE_DMABUF_RENDERER="1", DORMS_TRANSFER_LOOPBACK="1", **({} if os.environ.get("STARTERS_SHOT") else {"DORMS_NO_STARTERS": "1"}))
 drv = subprocess.Popen(["tauri-driver"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(2)
 opts = ArgOptions(); opts.set_capability("browserName", "wry"); opts.set_capability("tauri:options", {"application": APP})
 from selenium.webdriver.remote.client_config import ClientConfig
@@ -430,6 +430,26 @@ try:
         snap("desktop-tokenator-chat", (1440, 900))
         d.execute_script("localStorage.removeItem('dorms.tokenator.chat');localStorage.removeItem('dorms.tokenator.personality')")
     safe("tokenator chat", tokenator_chat_shots)
+
+    def wifi_transfer():
+        reload_ui(); nav("Settings"); tab("Profiles"); time.sleep(0.4)
+        d.execute_script("document.querySelector('[data-testid=wifi-card]').scrollIntoView({block:'center'})"); time.sleep(0.4)
+        snap("desktop-wifi-card", (1440, 900))
+        d.execute_script("document.querySelector('[data-testid=wifi-open]').click()"); time.sleep(0.6)
+        snap("desktop-wifi-choose", (1440, 900))
+        d.execute_script("document.querySelector('[data-testid=transfer-choose-send]').click()"); time.sleep(0.4)
+        snap("desktop-wifi-send-setup", (1440, 900))
+        d.execute_script("document.querySelector('[data-testid=transfer-start]').click()"); time.sleep(1.8)
+        snap("desktop-wifi-send-qr", (1440, 1000))
+        addr = d.execute_script("return document.querySelector('[data-testid=transfer-addr]').textContent"); code = d.execute_script("return document.querySelector('[data-testid=transfer-code-shown]').textContent")
+        inv("transfer_receive_start", {"addr": addr, "code": code}); time.sleep(3.0)
+        d.execute_script("document.querySelector('.modal button[aria-label=Close]').click()"); time.sleep(0.4)
+        d.execute_script("document.querySelector('[data-testid=wifi-open]').click()"); time.sleep(1.8)
+        snap("desktop-wifi-arrived", (1440, 1000))
+        d.execute_script("document.querySelector('[data-testid=transfer-discard]').click()"); time.sleep(0.5)
+        snap("desktop-wifi-receive", (1440, 900))
+        d.execute_script("document.querySelector('.modal button[aria-label=Close]').click()"); time.sleep(0.3)
+    safe("wifi transfer", wifi_transfer)
 
     def folders():
         bk = lambda n: {"name": n, "description": "", "scan_depth": None, "token_budget": None, "recursive_scanning": None, "extensions": {}, "entries": [{"keys": ["lantern"], "content": "Paper lanterns hang between the rooftops.", "extensions": {}, "enabled": True, "insertion_order": 0, "case_sensitive": None, "name": "Lanterns", "priority": None, "id": 0, "comment": "", "selective": False, "secondary_keys": [], "constant": False, "position": "before_char"}]}
