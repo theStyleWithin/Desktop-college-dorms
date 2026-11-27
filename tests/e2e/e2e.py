@@ -2928,6 +2928,26 @@ try:
     time.sleep(1.0)
     k2_ = disk_keys_()
     check("dragging a folder onto another puts it there", k2_[0] == k1_[-1] and sorted(k2_) == sorted(k1_), f"{k1_} -> {k2_}")
+    # folder cards can be stretched (wider and taller) and put back to the usual size
+    first_ = "document.querySelector('[data-testid=gallery-folders] [data-gal-key]')"
+    key_ = lambda e: d.execute_script("const s=%s; const g=s.querySelector('[data-testid=gallery-grip]'); g.dispatchEvent(new KeyboardEvent('keydown',{key:arguments[0],shiftKey:true,bubbles:true}))" % first_, e)
+    attr_ = lambda a: d.execute_script("return %s.dataset.%s" % (first_, a))
+    check("a folder card starts at the usual size", attr_("span") == "1" and attr_("hmul") == "1" and not d.execute_script("return !!%s.querySelector('[data-testid=gallery-size-reset]')" % first_))
+    key_("ArrowRight"); time.sleep(0.3); key_("ArrowDown"); time.sleep(0.3)
+    check("a card can be made wider and taller (Shift and the arrow keys, or by dragging its corner)", attr_("span") == "2" and attr_("hmul") == "1.25", f"{attr_('span')} {attr_('hmul')}")
+    check("a stretched card has a way back, and is taller and wider", d.execute_script("const s=%s; const c=s.querySelector('.gal-cover').getBoundingClientRect(); return !!s.querySelector('[data-testid=gallery-size-reset]') && s.getBoundingClientRect().width > 300 && c.height > c.width * 0.9" % first_))
+    sizes_key_ = "dorms.gallery.cardsizes.guest"
+    check("the size is remembered for this profile", d.execute_script("return Object.keys(JSON.parse(localStorage.getItem(arguments[0])||'{}')).length", sizes_key_) == 1)
+    reload_ui(); nav("Gallery"); time.sleep(1.5)
+    check("and is still there after a restart of the screen", attr_("span") == "2" and attr_("hmul") == "1.25")
+    d.execute_script("document.querySelector('[data-testid=gallery-size-reset]').click()"); time.sleep(0.4)
+    check("the reset button puts it back to the usual size", attr_("span") == "1" and attr_("hmul") == "1" and d.execute_script("return localStorage.getItem(arguments[0])", sizes_key_) in ("{}", None))
+    d.execute_script("""const s=%s; const g=s.querySelector('[data-testid=gallery-grip]'); const r=g.getBoundingClientRect();
+      const mk=(t,x,y)=>new PointerEvent(t,{clientX:x,clientY:y,bubbles:true,pointerId:2,isPrimary:true});
+      g.dispatchEvent(mk('pointerdown',r.x+5,r.y+5)); window.dispatchEvent(mk('pointermove',r.x+5+430,r.y+5+120)); window.dispatchEvent(mk('pointerup',r.x+5+430,r.y+5+120));""" % first_); time.sleep(0.5)
+    check("dragging the corner stretches a card", int(attr_("span")) >= 2 and float(attr_("hmul")) > 1.1, f"{attr_('span')} {attr_('hmul')}")
+    d.execute_script("const g=%s.querySelector('[data-testid=gallery-grip]'); g.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))" % first_); time.sleep(0.4)
+    check("double-clicking the corner resets it", attr_("span") == "1" and attr_("hmul") == "1")
     # all in one place
     check("by default characters' folders and the others are in separate sections", d.execute_script("return !!document.querySelector('[data-testid=gallery-disk]') && !document.querySelector('[data-testid=gallery-folders] [data-gallery-disk-folder]')"))
     d.execute_script("document.querySelector('[data-testid=gallery-merge]').click()"); time.sleep(1.0)

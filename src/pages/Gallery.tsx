@@ -84,6 +84,23 @@ function Pic({ t, fit = "cover" }: { t: Tile; fit?: "cover" | "contain" }) {
   return <img src={t.url} alt={t.note ? `${t.title}: ${t.note}` : t.title} loading="lazy" decoding="async" draggable={false} style={{ objectFit: fit }} />;
 }
 
+/** How wide a folder card is at least (the same as the grid's own minimum in the style sheet), and the gap between cards. */
+const CARD_MIN = 190, CARD_GAP = 16;
+/** A grid of folder cards that tells its cards how many columns it has, so a card can be widened over several of them (but never past the edge). */
+function SizeGrid({ testid, children }: { testid: string; children: (cols: number) => ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [cols, setCols] = useState(4);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const f = () => setCols(Math.max(1, Math.floor((el.clientWidth + CARD_GAP) / (CARD_MIN + CARD_GAP))));
+    f();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(f); ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return <div ref={ref} className="gal-folders" data-testid={testid}>{children(cols)}</div>;
+}
+
 /** Asks for a name and makes a new, empty gallery folder in the app. */
 function NewFolderDialog({ make, onClose }: { make: (name: string) => Promise<ViewFolder>; onClose: () => void }) {
   const toast = useToast();
@@ -167,6 +184,15 @@ function GalleryPage() {
   const [order, setOrder] = useState<string[]>(settings.gallery_order ?? []);
   const [merge, setMerge] = useState<boolean>(!!settings.gallery_merge);
   const [arrange, setArrange] = useState(false);
+  // how big the person made each folder card: how many columns wide, and how much taller than usual (kept for this profile; nothing here means the usual size)
+  type Size = { w: number; h: number };
+  const [sizes, setSizes] = useState<Record<string, Size>>(() => { try { const v = JSON.parse(sget("dorms.gallery.cardsizes") ?? "{}"); return v && typeof v === "object" ? v : {}; } catch { return {}; } });
+  const resizing = useRef(false);
+  const setSize = (k: string, z: Size | null) => setSizes((o) => {
+    const n = { ...o }; if (z && (z.w !== 1 || Math.abs(z.h - 1) > 0.02)) n[k] = z; else delete n[k];
+    try { sset("dorms.gallery.cardsizes", JSON.stringify(n)); } catch { /* not remembered */ }
+    return n;
+  });
   const [dragKey, setDragKey] = useState<string | null>(null), [overKey, setOverKey] = useState<string | null>(null);
   useEffect(() => { setOrder(settings.gallery_order ?? []); setMerge(!!settings.gallery_merge); }, [settings.gallery_order, settings.gallery_merge]);
   const saveLayout = async (o: string[], m: boolean) => {
@@ -445,12 +471,28 @@ function GalleryPage() {
     void saveLayout([...keys, ...order.filter((k) => !keys.includes(k))], merge);
   };
   /** One folder in a grid: it can be dragged to a new place (or moved with Alt and the arrow keys, or the arrows shown in Arrange mode). */
-  const slot = (k: string, visible: string[], node: ReactNode) => {
+  const slot = (k: string, visible: string[], node: ReactNode, cols: number) => {
     const i = visible.indexOf(k);
+    const z = sizes[k], span = Math.max(1, Math.min(z?.w ?? 1, cols)), hm = z?.h ?? 1;
+    const grip = (e: React.PointerEvent<HTMLButtonElement>) => {
+      e.preventDefault(); e.stopPropagation();
+      const slotEl = e.currentTarget.closest<HTMLElement>(".gal-slot"); if (!slotEl) return;
+      const r = slotEl.getBoundingClientRect(), unit = (r.width + CARD_GAP) / span, startH = hm, coverH = slotEl.querySelector<HTMLElement>(".gal-cover")?.getBoundingClientRect().height ?? r.height;
+      const x0 = e.clientX, y0 = e.clientY;
+      resizing.current = true;
+      const move = (ev: PointerEvent) => {
+        const w = Math.max(1, Math.min(cols, Math.round((r.width + (ev.clientX - x0) + CARD_GAP) / unit)));
+        const h = Math.max(0.5, Math.min(2.5, Math.round(((coverH + (ev.clientY - y0)) / coverH) * startH * 20) / 20));
+        setSize(k, { w, h });
+      };
+      const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up); window.setTimeout(() => { resizing.current = false; }, 0); };
+      window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
+    };
     return (
-      <div key={k} className={`gal-slot${dragKey === k ? " dragging" : ""}${overKey === k && dragKey && dragKey !== k ? " over" : ""}`} data-gal-key={k} data-testid="gallery-slot"
+      <div key={k} className={`gal-slot${dragKey === k ? " dragging" : ""}${overKey === k && dragKey && dragKey !== k ? " over" : ""}${z ? " sized" : ""}`} data-gal-key={k} data-testid="gallery-slot" data-span={span} data-hmul={hm}
+        style={z ? ({ gridColumn: `span ${span}`, "--ar": `${3 * span} / ${(4 * hm).toFixed(2)}` } as React.CSSProperties) : undefined}
         draggable={canArrange}
-        onDragStart={(e) => { setDragKey(k); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", k); }}
+        onDragStart={(e) => { if (resizing.current) { e.preventDefault(); return; } setDragKey(k); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", k); }}
         onDragOver={(e) => { if (dragKey && visible.includes(dragKey)) { e.preventDefault(); if (overKey !== k) setOverKey(k); } }}
         onDragLeave={() => setOverKey((o) => (o === k ? null : o))}
         onDrop={(e) => { e.preventDefault(); const from = dragKey; setDragKey(null); setOverKey(null); if (from && from !== k && visible.includes(from)) move(visible, from, k, visible.indexOf(from) < i); }}
@@ -461,6 +503,19 @@ function GalleryPage() {
           else if (e.key === "ArrowRight" && i < visible.length - 1) { e.preventDefault(); move(visible, k, visible[i + 1], true); }
         }}>
         {node}
+        <span className="gal-size">
+          {z ? <button type="button" className="btn ghost sm gal-size-reset" data-testid="gallery-size-reset" aria-label="Back to the usual size" title="Back to the usual size (or double-click the corner)" onClick={() => setSize(k, null)}>↺</button> : null}
+          <button type="button" className="gal-grip" data-testid="gallery-grip" aria-label="Drag to resize this folder card (double-click to reset)" title="Drag to make this card wider or taller. Double-click to reset."
+            onPointerDown={grip} onDoubleClick={() => setSize(k, null)}
+            onKeyDown={(e) => {
+              if (!e.shiftKey) return;
+              const cur = { w: span, h: hm };
+              if (e.key === "ArrowRight") { e.preventDefault(); setSize(k, { ...cur, w: Math.min(cols, cur.w + 1) }); }
+              else if (e.key === "ArrowLeft") { e.preventDefault(); setSize(k, { ...cur, w: Math.max(1, cur.w - 1) }); }
+              else if (e.key === "ArrowDown") { e.preventDefault(); setSize(k, { ...cur, h: Math.min(2.5, Math.round((cur.h + 0.25) * 100) / 100) }); }
+              else if (e.key === "ArrowUp") { e.preventDefault(); setSize(k, { ...cur, h: Math.max(0.5, Math.round((cur.h - 0.25) * 100) / 100) }); }
+            }}>⤡</button>
+        </span>
         {arrange && canArrange ? (
           <span className="gal-arrange">
             <button type="button" className="btn sm" data-testid="gallery-move-earlier" aria-label="Move earlier" disabled={i <= 0} onClick={() => move(visible, k, visible[i - 1], false)}>◀</button>
@@ -503,9 +558,9 @@ function GalleryPage() {
 
       {merge ? (
         !mergedList.length ? <p className="hint">{characters.length || disk.length ? "No folders match." : <>No folders yet. Add some on the <button className="link" onClick={() => go({ page: "library" })}>Characters</button> page, or use <b>Add folder</b>.</>}</p> : (
-          <div className="gal-folders" data-testid="gallery-folders">
-            {mergedList.map((e) => slot(e.k, mergedKeys, e.c ? charCard(e.c) : diskCard(e.f!)))}
-          </div>
+          <SizeGrid testid="gallery-folders">
+            {(cols) => mergedList.map((e) => slot(e.k, mergedKeys, e.c ? charCard(e.c) : diskCard(e.f!), cols))}
+          </SizeGrid>
         )
       ) : (
         <>
@@ -514,17 +569,17 @@ function GalleryPage() {
           ) : !shown.length ? (
             <p className="hint">No folders match.</p>
           ) : (
-            <div className="gal-folders" data-testid="gallery-folders">
-              {charList.map((c) => slot(`char:${c.id}`, charKeys, charCard(c)))}
-            </div>
+            <SizeGrid testid="gallery-folders">
+              {(cols) => charList.map((c) => slot(`char:${c.id}`, charKeys, charCard(c), cols))}
+            </SizeGrid>
           )}
           <section style={{ marginTop: 28 }} data-testid="gallery-disk">
             <h2 className="sect" style={{ borderTop: 0, marginTop: 0 }}>My folders</h2>
             <p className="sub" style={{ marginTop: 0 }}>Folders that aren't part of any character: ones you made here (kept by the app, 🗂️) and ones from this computer{canAddFolders ? "" : " (a phone can't pick those)"} that are only looked at. Nothing from your computer is copied, changed or deleted.</p>
             {!disk.length ? <p className="hint" data-testid="gallery-disk-empty">No folders added yet. Press <b>Add folder</b> to pick one from your computer, copy a picture from a link, or make a new folder.</p> : !diskList.length ? <p className="hint">No folders match.</p> : (
-              <div className="gal-folders" data-testid="gallery-disk-folders">
-                {diskList.map((f) => slot(`disk:${f.id}`, diskKeys, diskCard(f)))}
-              </div>
+              <SizeGrid testid="gallery-disk-folders">
+                {(cols) => diskList.map((f) => slot(`disk:${f.id}`, diskKeys, diskCard(f), cols))}
+              </SizeGrid>
             )}
           </section>
         </>
