@@ -44,6 +44,17 @@ export default function GalleryEditor({ char, onChanged }: { char: Character | n
       }
     } catch (e) { toast(errText(e), "err"); } finally { setBusy(""); }
   };
+  /** A linked file moved: choose where it is now (others from the same old folder that are in the new one come along). */
+  const relocate = async (itemId: string) => {
+    try {
+      const p = await pickFiles({ multiple: false, directory: false, title: "Where is this file now?", filters: [{ name: "Pictures and videos", extensions: ["png", "jpg", "jpeg", "webp", "avif", "bmp", "gif", "mp4", "webm", "mov", "m4v", "ogv"] }] });
+      if (!p || Array.isArray(p)) return;
+      setBusy("Relocating…");
+      const r = await api.relocateGalleryLink(char.id, itemId, p);
+      onChanged(r.character);
+      toast(r.also ? `Pointed at its new place, and ${r.also} more linked file${r.also === 1 ? "" : "s"} from the same folder.` : "Pointed at its new place.", "ok");
+    } catch (e) { toast(errText(e), "err"); } finally { setBusy(""); }
+  };
   const addFiles = async (files: FileList | File[] | null) => {
     if (!files) return;
     for (const f of Array.from(files)) {
@@ -74,6 +85,8 @@ export default function GalleryEditor({ char, onChanged }: { char: Character | n
             <div key={it.id} className="gal-card" data-gal={it.id}>
               <div className="gal-thumb" data-linked={it.link ? "1" : undefined} title={it.link ? `Linked, not copied: ${it.link}` : undefined}>
                 {url && (it.kind === "video" ? <video src={url} muted loop playsInline onMouseEnter={(e) => void e.currentTarget.play().catch(() => {})} onMouseLeave={(e) => e.currentTarget.pause()} /> : <img src={url} alt="" draggable={false} loading="lazy" />)}
+                {it.link ? <button type="button" className="btn sm gal-relink" data-testid="gallery-relocate" aria-label="Relocate this linked file" title="The file moved? Choose where it is now" disabled={!!busy} onClick={() => void relocate(it.id)}>📍 Relocate…</button> : null}
+                {it.link && char.gallery_paths?.find((g) => g.id === it.id)?.missing ? <div className="gal-missing" data-testid="gallery-missing">File not found. If you moved it, press Relocate.</div> : null}
                 <button type="button" className="iconbtn gal-del" aria-label="Remove this picture" title="Remove" onClick={() => { if (window.confirm("Remove this picture from the gallery?")) void run("Removing…", api.removeGalleryItem(char.id, it.id)); }}>✕</button>
               </div>
               <div className="gal-moods" aria-label="Moods this picture shows">

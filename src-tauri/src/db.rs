@@ -1522,6 +1522,24 @@ pub fn add_view_folder(c: &Connection, id: &str, path: &str, owner: &Owner) -> R
     Ok(())
 }
 
+/// Points a folder on the list at a new place (the person moved it).
+pub fn set_view_folder_path(c: &Connection, id: &str, path: &str, owner: &Owner) -> R<()> {
+    c.execute("UPDATE view_folders SET path=?3 WHERE id=?1 AND profile_id IS ?2", params![id, owner, path])?;
+    Ok(())
+}
+
+/// After a folder is moved, the comments on its pictures follow them: `disk:<from><sep>x` becomes `disk:<to><sep>x`. Returns how many.
+pub fn remap_gallery_comment_keys(c: &Connection, owner: &Owner, from: &str, to: &str) -> R<usize> {
+    let sep = std::path::MAIN_SEPARATOR;
+    let from_p = format!("disk:{from}{sep}");
+    let like = format!("{}%", from_p.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"));
+    let n = c.execute(
+        "UPDATE gallery_comments SET pic_key = ?3 || substr(pic_key, ?4) WHERE profile_id IS ?1 AND pic_key LIKE ?2 ESCAPE '\\'",
+        params![owner, like, format!("disk:{to}{sep}"), from_p.chars().count() as i64 + 1],
+    )?;
+    Ok(n)
+}
+
 /// Adds a gallery folder made in the app: its pictures are kept in `path`, inside the app's own data folder.
 pub fn add_own_folder(c: &Connection, id: &str, path: &str, name: &str, owner: &Owner) -> R<()> {
     c.execute("INSERT INTO view_folders(id,profile_id,path,added_at,name,own) VALUES(?1,?2,?3,?4,?5,1)", params![id, owner, path, now(), name])?;
@@ -1974,6 +1992,22 @@ mod tests {
     fn me(id: &str) -> Owner {
         Some(id.to_string())
     }
+    #[test]
+    fn comments_follow_a_folder_that_was_moved() {
+        let c = fresh();
+        let sep = std::path::MAIN_SEPARATOR;
+        let key = |root: &str, f: &str| format!("disk:{root}{sep}{f}");
+        for (k, who) in [(key("/old/art", "a.png"), "ann"), (key("/old/art", "sub/b.png"), "ann"), (key("/old/artsy", "c.png"), "ann"), (key("/old/art", "a.png"), "bob")] {
+            insert_gallery_comment(&c, &me(who), &GalleryComment { id: uid_test(&k, who), pic_key: k, parent_id: None, author: who.into(), body: "hi".into(), created_at: 1, edited_at: None }).unwrap();
+        }
+        assert_eq!(remap_gallery_comment_keys(&c, &me("ann"), "/old/art", "/new/art").unwrap(), 2, "the folder's own pictures, including those in its subfolders, and nothing else");
+        assert_eq!(list_gallery_comments(&c, &me("ann"), &key("/new/art", "a.png")).unwrap().len(), 1);
+        assert_eq!(list_gallery_comments(&c, &me("ann"), &key("/new/art", "sub/b.png")).unwrap().len(), 1);
+        assert!(list_gallery_comments(&c, &me("ann"), &key("/old/art", "a.png")).unwrap().is_empty());
+        assert_eq!(list_gallery_comments(&c, &me("ann"), &key("/old/artsy", "c.png")).unwrap().len(), 1, "a folder with a similar name is untouched");
+        assert_eq!(list_gallery_comments(&c, &me("bob"), &key("/old/art", "a.png")).unwrap().len(), 1, "another profile's comments are untouched");
+    }
+    fn uid_test(k: &str, who: &str) -> String { format!("{who}:{k}") }
     fn ch(id: &str, name: &str) -> Character {
         Character {
             id: id.into(),

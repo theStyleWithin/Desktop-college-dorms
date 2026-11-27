@@ -225,6 +225,26 @@ pub fn remove_view_folder(state: State<'_, Shared>, id: String) -> R<()> {
     Ok(())
 }
 
+/// Points a folder on the list at its new place after the person moved it (or chose the wrong one). The comments on its pictures follow. It has to pass the
+/// same checks as adding a folder, and can't be a place that is already on the list. A folder made in the app can't be moved this way.
+#[tauri::command]
+pub fn relocate_view_folder(state: State<'_, Shared>, id: String, path: String) -> R<Folder> {
+    let o = owner(&state)?;
+    let have = db::list_view_folders(&state.db.lock().unwrap(), &o).map_err(e)?;
+    let old = have.iter().find(|f| f.id == id).ok_or("That folder isn't on the list any more.")?;
+    if old.own { return Err("That folder is kept by the app, so it has no place on your computer to change.".into()); }
+    let real = check_folder(&path, &state.data_dir, home().as_deref())?;
+    let real_s = real.to_string_lossy().into_owned();
+    if have.iter().any(|f| f.id != id && f.path == real_s) { return Err("That folder is already in the Gallery.".into()); }
+    let db = state.db.lock().unwrap();
+    db::set_view_folder_path(&db, &id, &real_s, &o).map_err(e)?;
+    if old.path != real_s { let _ = db::remap_gallery_comment_keys(&db, &o, &old.path, &real_s); }
+    let scope = state.app.asset_protocol_scope();
+    let _ = scope.forbid_directory(&old.path, true);
+    let _ = scope.allow_directory(&real, true);
+    Ok(shown(id, real_s, "", false))
+}
+
 /// What is in a folder on the list: its pictures, and its folders with theirs.
 #[tauri::command]
 pub async fn scan_view_folder(state: State<'_, Shared>, id: String) -> R<Scan> {

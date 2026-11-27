@@ -78,7 +78,7 @@ export interface Character {
   outfit_paths?: { id: string; name: string; path: string }[];
   /** More pictures of the character, where each is (by id), and how they are used in a chat. */
   gallery?: GalleryItem[];
-  gallery_paths?: { id: string; path: string }[];
+  gallery_paths?: { id: string; path: string; missing?: boolean }[];
   gallery_mode?: GalleryMode | "";
   /** How the picture is framed so a face is never cut off. */
   frame?: Frame | null;
@@ -352,6 +352,8 @@ export const api = {
   transcribe: (wav: Uint8Array) => bin("transcribe_audio", wav, {}) as Promise<string>,
   testVoice: () => invoke<string>("test_voice"),
   linkGalleryFile: (id: string, path: string) => invoke<Character>("link_gallery_file", { id, path }),
+  relocateGalleryLink: (id: string, itemId: string, path: string) => invoke<{ character: Character; also: number }>("relocate_gallery_link", { id, itemId, path }),
+  relocateViewFolder: (id: string, path: string) => invoke<ViewFolder>("relocate_view_folder", { id, path }),
   async addGalleryImage(id: string, file: File): Promise<Character> {
     return bin("add_gallery_image", new Uint8Array(await file.arrayBuffer()), { "x-char-id": id, "x-file-name": enc(file.name) });
   },

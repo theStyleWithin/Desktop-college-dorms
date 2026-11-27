@@ -100,6 +100,9 @@ pub struct CharacterOut {
 pub struct GalleryPath {
     pub id: String,
     pub path: String,
+    /// True for a linked file that isn't where it was (moved or deleted).
+    #[serde(default)]
+    pub missing: bool,
 }
 
 fn out(st: &AppState, c: Character) -> CharacterOut {
@@ -110,8 +113,8 @@ fn out(st: &AppState, c: Character) -> CharacterOut {
     let scope = st.app.asset_protocol_scope();
     let gallery_paths = c.gallery.iter().map(|g| {
         // a linked file is read from where it is (the web view may read just that file)
-        if !g.link.is_empty() { let _ = scope.allow_file(&g.link); return GalleryPath { id: g.id.clone(), path: g.link.clone() }; }
-        GalleryPath { id: g.id.clone(), path: abs(&g.file) }
+        if !g.link.is_empty() { let _ = scope.allow_file(&g.link); return GalleryPath { id: g.id.clone(), path: g.link.clone(), missing: !std::path::Path::new(&g.link).exists() }; }
+        GalleryPath { id: g.id.clone(), path: abs(&g.file), missing: false }
     }).collect();
     CharacterOut { c, media_path, outfit_paths, gallery_paths }
 }
@@ -422,18 +425,24 @@ pub fn add_gallery_image(request: Request<'_>, state: State<'_, Shared>) -> R<Ch
     Ok(out(&state, c))
 }
 
-/// Adds a picture, GIF or video to the character's gallery by remembering where the file is on this computer, instead of making a copy (for a big video).
-/// The file is never changed, moved or deleted; if it is moved or deleted later, the gallery just can't show it. Desktop only.
-#[tauri::command]
-pub fn link_gallery_file(state: State<'_, Shared>, id: String, path: String) -> R<CharacterOut> {
+/// Checks a file the person chose to link (a real picture, GIF or video outside the app's own data folder). Returns its real place and what kind it is.
+fn linkable(state: &AppState, path: &str) -> R<(std::path::PathBuf, String, &'static str)> {
     if cfg!(target_os = "android") { return Err("A phone can't link to files in place; add the file itself.".into()); }
-    let real = std::path::Path::new(&path).canonicalize().map_err(|_| "I couldn't find that file.".to_string())?;
+    let real = std::path::Path::new(path).canonicalize().map_err(|_| "I couldn't find that file.".to_string())?;
     if !real.is_file() { return Err("That isn't a file.".into()); }
     let real_s = { let t = real.to_string_lossy().into_owned(); t.strip_prefix(r"\\?\").map(str::to_string).unwrap_or(t) };
     let name = real.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let (kind, _ext) = media_kind(&name)?;
     if kind == "vrm" { return Err("A gallery holds pictures, GIFs and videos. (A 3D model is the character's main model.)".into()); }
     if state.data_dir.canonicalize().map(|d| real.starts_with(d)).unwrap_or(false) || real.starts_with(&state.data_dir) { return Err("That file is inside the app's own data folder; add it as a file instead.".into()); }
+    Ok((real, real_s, kind))
+}
+
+/// Adds a picture, GIF or video to the character's gallery by remembering where the file is on this computer, instead of making a copy (for a big video).
+/// The file is never changed, moved or deleted; if it is moved or deleted later, the gallery just can't show it. Desktop only.
+#[tauri::command]
+pub fn link_gallery_file(state: State<'_, Shared>, id: String, path: String) -> R<CharacterOut> {
+    let (real, real_s, kind) = linkable(&state, &path)?;
     let o = owner(&state)?;
     let db = state.db.lock().unwrap();
     let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Save the character first")?;
@@ -444,6 +453,55 @@ pub fn link_gallery_file(state: State<'_, Shared>, id: String, path: String) -> 
     c.updated_at = db::now();
     db::save_character(&db, &c, &o).map_err(e)?;
     Ok(out(&state, c))
+}
+
+#[derive(Serialize)]
+pub struct RelocOut {
+    pub character: CharacterOut,
+    /// How many other linked files were found in the same new place and pointed there too.
+    pub also: usize,
+}
+
+/// Points a linked gallery file at its new place (the person moved it). Any other linked file that was in the same old folder and is missing now, but is in the
+/// new folder under the same name, is pointed there too (so moving a whole folder of videos is one choice, not many).
+#[tauri::command]
+pub fn relocate_gallery_link(state: State<'_, Shared>, id: String, item_id: String, path: String) -> R<RelocOut> {
+    let (real, real_s, kind) = linkable(&state, &path)?;
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("That character isn't here any more.")?;
+    if c.gallery.iter().any(|g| g.id != item_id && g.link == real_s) { return Err("That file is already in this gallery.".into()); }
+    let item = c.gallery.iter_mut().find(|g| g.id == item_id).ok_or("That picture isn't in the gallery any more.")?;
+    if item.link.is_empty() { return Err("That picture is kept by the app, not linked to a file.".into()); }
+    let old = std::path::PathBuf::from(&item.link);
+    item.link = real_s; item.kind = kind.into();
+    let _ = state.app.asset_protocol_scope().allow_file(&real);
+    c.updated_at = db::now();
+    db::save_character(&db, &c, &o).map_err(e)?;
+    // the others that were in the same folder and are missing now
+    let (old_dir, new_dir) = (old.parent().map(|p| p.to_path_buf()), real.parent().map(|p| p.to_path_buf()));
+    let mut also = 0;
+    if let (Some(od), Some(nd)) = (old_dir, new_dir) {
+        for mut other in db::list_characters(&db, &o).map_err(e)? {
+            let mut changed = false;
+            for g in other.gallery.iter_mut().filter(|g| !g.link.is_empty()) {
+                let gp = std::path::Path::new(&g.link);
+                if gp.exists() || gp.parent() != Some(od.as_path()) { continue; }
+                let Some(name) = gp.file_name() else { continue };
+                let cand = nd.join(name);
+                if let Ok(real2) = cand.canonicalize().and_then(|p| if p.is_file() { Ok(p) } else { Err(std::io::ErrorKind::NotFound.into()) }) {
+                    if linkable(&state, &real2.to_string_lossy()).is_ok() {
+                        let s2 = { let t = real2.to_string_lossy().into_owned(); t.strip_prefix(r"\\?\").map(str::to_string).unwrap_or(t) };
+                        let _ = state.app.asset_protocol_scope().allow_file(&real2);
+                        g.link = s2; changed = true; also += 1;
+                    }
+                }
+            }
+            if changed { other.updated_at = db::now(); db::save_character(&db, &other, &o).map_err(e)?; }
+        }
+    }
+    let c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("That character isn't here any more.")?;
+    Ok(RelocOut { character: out(&state, c), also })
 }
 
 /// Which moods a gallery picture shows (unknown ones are ignored).

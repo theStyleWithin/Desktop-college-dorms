@@ -244,6 +244,16 @@ function GalleryPage() {
       toast(`Added "${f.name}" to the Gallery.`, "ok");
     } catch (e) { toast(errText(e), "err"); }
   };
+  /** Points a folder at the place the person moved it to (its comments follow). */
+  const relocateFolder = async (f: ViewFolder) => {
+    try {
+      const p = await pickFolder({ directory: true, multiple: false, title: `Where is "${f.name}" now?` });
+      if (!p || Array.isArray(p)) return;
+      const nf = await api.relocateViewFolder(f.id, p);
+      setDisk((d) => d.map((x) => (x.id === f.id ? nf : x))); void scan(nf);
+      toast(`"${f.name}" now looks in ${nf.path}.`, "ok");
+    } catch (e) { toast(errText(e), "err"); }
+  };
   const removeFolder = async (f: ViewFolder) => {
     const sc = scans[f.id], n = sc && sc !== "error" ? sc.root.total : 0;
     if (!window.confirm(f.own
@@ -394,7 +404,7 @@ function GalleryPage() {
       return (
         <div className="page" data-testid="gallery-folder">
           {crumbs([{ label: "🖼️ Gallery", go: () => setAt(null) }])}
-          <p className="hint">{sc === "error" || (f && !f.exists) ? "That folder has been moved or deleted. You can take it off the Gallery from the list." : "Looking in the folder…"}</p>
+          <p className="hint">{sc === "error" || (f && !f.exists) ? "That folder has been moved or deleted. If you moved it, use Relocate to point the Gallery at its new place (its comments come along); otherwise you can take it off the Gallery from the list." : "Looking in the folder…"}</p>
         </div>
       );
     }
@@ -460,6 +470,7 @@ function GalleryPage() {
           <b>{f.own ? "🗂️" : "📁"} {f.name}</b>
           <small>{!f.exists || sc === "error" ? "moved or deleted" : root ? `${plural(root.total, "picture")}${root.dirs.length ? ` · ${plural(root.dirs.length, "folder")}` : ""}${sc?.truncated ? " (first ones)" : ""}` : "looking…"}</small>
         </button>
+        {!f.own && canAddFolders ? <button type="button" className={`btn ghost sm gal-relocate${f.exists ? "" : " needed"}`} data-testid="gallery-relocate-folder" aria-label={`Relocate ${f.name}`} title="The folder moved? Point the Gallery at its new place (the comments come along)" onClick={() => void relocateFolder(f)}>📍</button> : null}
         <button type="button" className="btn ghost sm gal-remove" data-testid="gallery-remove-folder" aria-label={f.own ? `Delete the gallery folder ${f.name}` : `Take ${f.name} off the Gallery`} title={f.own ? "Delete this folder and its pictures" : "Take it off the Gallery (nothing on your computer is touched)"} onClick={() => void removeFolder(f)}>✕</button>
       </div>
     );
