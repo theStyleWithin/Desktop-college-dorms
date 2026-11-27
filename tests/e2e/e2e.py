@@ -243,12 +243,14 @@ try:
             check("the chosen position and zoom are saved with the character", c.get("frame") and abs(c["frame"]["zoom"] - 2.5) < 0.01 and (abs(c["frame"]["x"] - 0.5) > 0.005 or abs(c["frame"]["y"] - 0.5) > 0.005), str(c.get("frame")))
             check("the picture in the editor uses that framing", d.execute_script("const i=document.querySelector('.editor-media img');return !!i&&i.style.transform==='scale(2.5)'"))
             # a picture link does the same as an upload: it is fetched, positioned, then saved
+            frame_before_ = invoke("get_character", {"id": mira["id"]}).get("frame")
             set_value("[data-testid=avatar-link]", "http://127.0.0.1:18997/cat.png"); time.sleep(0.3)
             d.find_element(By.CSS_SELECTOR, "[data-testid=avatar-link-use]").click(); time.sleep(2.0)
             check("using a picture link opens the same positioning window as an upload", d.execute_script("return !!document.querySelector('[data-testid=frame-main] img')"))
             click_text(".modal button", "Save"); time.sleep(2.2)
             check("and the picture from the link becomes the avatar", ((invoke("get_character", {"id": mira["id"]})["media"]) or {}).get("kind") == "image")
             set_media_ipc(mira["id"], os.path.join(FIX, fname))   # the GIF goes back, for what follows
+            invoke("set_frame", {"id": mira["id"], "frame": frame_before_})   # and so does the framing that was chosen above
             check("a ⤧ Position button reopens the window with the saved framing", click_text("button", "Position") and d.execute_script("return document.querySelector('input[aria-label=Zoom]').value") == "2.5")
             click_text(".modal button", "Reset"); click_text(".modal button", "Save"); time.sleep(1.2)
             check("Reset puts the picture back to its default framing", invoke("get_character", {"id": mira["id"]}).get("frame") is None)
