@@ -44,7 +44,7 @@ export default function EmojiTab() {
           <div className="btnrow">
             <button className="btn primary" disabled={busy || list(kind).length >= MAX[kind]} onClick={() => (kind === "emoji" ? emojiInput : stickerInput).current?.click()}>＋ Add {kind === "emoji" ? "emoji" : "stickers"}</button>
             <input ref={kind === "emoji" ? emojiInput : stickerInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden data-testid={`emoji-file-${kind}`} onChange={(e) => { void add(kind, e.target.files); e.target.value = ""; }} />
-            <small className="muted">PNG, JPG, WebP or GIF, up to {kind === "emoji" ? "512 KB" : "3 MB"} each. The file name becomes its name.</small>
+            <small className="muted">Any size of PNG, JPG, WebP or GIF: it is shrunk to fit and made into {kind === "emoji" ? "an emoji" : "a sticker"} for you (animated GIFs stay animated). The file name becomes its name.</small>
           </div>
           <div className="emoji-list">
             {list(kind).map((it) => <EmojiRow key={it.id} it={it} />)}
