@@ -44,6 +44,7 @@
     <binary>desktop-college-dorms</binary>
   </provides>
   <releases>
+    <release version="0.17.0" date="2026-11-27"/>
     <release version="0.16.0" date="2026-11-27"/>
     <release version="0.15.0" date="2026-11-27"/>
     <release version="0.14.0" date="2026-11-25"/>

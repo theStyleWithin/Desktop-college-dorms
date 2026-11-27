@@ -225,7 +225,7 @@ Then create or import a character and start a chat.
 
 ## Limitations (please read)
 
-- **Android has no built-in engine yet.** Android doesn't allow launching the helper program the desktop builds use. Use a cloud provider,
+- **Android's built-in engine is new and runs on the processor only** (64-bit phones; no graphics-chip acceleration yet), so how fast it is depends on your phone. Phones that can't run a model get no download button; you can always use a cloud provider,
   or point *Other API* at a model server on your home network (Ollama, LM Studio, or this app on your PC).
 - **Passcodes are a lock, not encryption.** A profile passcode keeps other people on the same computer out of your profile inside the app. It does not encrypt files on disk, and Eject/backup files are not encrypted either (they never contain API keys or passcodes). See [SECURITY.md](SECURITY.md).
 - The built-in engine needs an **AVX2 CPU** (Intel Haswell / AMD Zen or newer, which includes the Steam Deck).
@@ -234,7 +234,7 @@ Then create or import a character and start a chat.
 - Battery-aware pausing isn't implemented; the per-channel pace and turn limit are the power controls.
 - **Verification status**: the Linux AppImage, the portable (single-file) build and the whole app are covered by an automated end-to-end suite
   that drives the real packaged app (card import/export, editing, GIF/video/VRM, real model chat, channels with bots, downloads, cloud and
-  Other API paths, local profiles with passcodes and lockout, profile isolation, and the export / eject / import round trip, and the live 3D viewer). The **Windows installer/portable and the Android APK are built by CI but have not been run on a real device by the author**.
+  Other API paths, local profiles with passcodes and lockout, profile isolation, and the export / eject / import round trip, and the live 3D viewer). The author tests the **Linux AppImage and the Android app**; the **Windows installer and portable build are built by CI but are not tested by the author**.
   If your graphics drivers can't run WebGL, the app notices an unfinished 3D attempt on the next launch and
   shows a placeholder with a "Try again" button instead of repeating a crash.
   The Flatpak and AUR files are untested hand-offs.
