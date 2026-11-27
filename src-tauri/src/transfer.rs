@@ -454,6 +454,7 @@ async fn run_receive(st: crate::Shared, gen: u64, addr: SocketAddr, code: String
 pub fn clear_receive(st: &crate::AppState) {
     let mut t = st.transfer.lock().unwrap();
     let g = slot(&mut t, RECV);
+    if g.status.phase != "arrived" { return; }   // something still on its way is left alone
     g.gen += 1;
     g.status = TransferStatus::default();
 }

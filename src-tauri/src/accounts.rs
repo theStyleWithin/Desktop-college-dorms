@@ -1580,6 +1580,7 @@ pub fn stage_chunk(state: State<'_, Shared>, token: String, data: String) -> R<u
 #[tauri::command]
 pub fn stage_clear(state: State<'_, Shared>) {
     *state.staged.lock().unwrap() = None;
+    crate::transfer::clear_receive(&state);   // what had arrived over Wi-Fi is thrown away with it
 }
 
 pub(crate) fn staged_bytes(st: &AppState, token: &str) -> R<Arc<Vec<u8>>> {
