@@ -1391,6 +1391,18 @@ try:
         move_(box_["left"] + 60, box_["top"] + box_["h"] / 2); time.sleep(0.4)
         check("and moving away unmarks it", near_() == 0)
         check("the scroll bar strip is wide enough to hit (about 16 px)", 14 <= d.execute_script("const e=[...document.querySelectorAll('*')].find(x=>x.scrollHeight>x.clientHeight+50&&/(auto|scroll)/.test(getComputedStyle(x).overflowY)&&x.clientWidth>300); return e ? e.offsetWidth - e.clientWidth : -1") <= 24)
+    # the setting that brings back the thinner scroll bars
+    d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Customization').click()"); time.sleep(0.8)
+    width_ = lambda: d.execute_script("const e=[...document.querySelectorAll('*')].find(x=>x.scrollHeight>x.clientHeight+50&&/(auto|scroll)/.test(getComputedStyle(x).overflowY)&&x.clientWidth>300); return e ? e.offsetWidth - e.clientWidth : -1")
+    check("Customization has a Wider scroll bars switch, on by default", d.execute_script("const c=document.querySelector('[data-testid=scroll-wide]');return !!c && c.checked") and d.execute_script("return document.documentElement.dataset.scrollbar") == "wide")
+    d.execute_script("document.querySelector('[data-testid=scroll-wide]').click()"); time.sleep(0.5)
+    check("turning it off brings back the thinner size (and it is remembered)", d.execute_script("return document.documentElement.dataset.scrollbar") == "slim" and d.execute_script("return localStorage.getItem('dorms.scrollbar.size')") == "slim" and 0 < width_() <= 12, str(width_()))
+    if box_:
+        move_(box_["right"] - 30, box_["top"] + box_["h"] / 2); time.sleep(0.4)
+        check("the handle still lights up near the pointer with the thinner bars", near_() >= 1)
+        move_(box_["left"] + 60, box_["top"] + box_["h"] / 2); time.sleep(0.3)
+    d.execute_script("document.querySelector('[data-testid=scroll-wide]').click()"); time.sleep(0.5)
+    check("turning it back on makes them wide again", d.execute_script("return document.documentElement.dataset.scrollbar") == "wide" and width_() >= 14)
     # hiding an account: off the start screen, into Settings' list of hidden accounts, with a prompt to make another or use the guest space
     invoke("create_profile", {"handle": "Hider", "displayName": None, "passcode": None}); reload_ui(); time.sleep(1.0)
     ctx_me()

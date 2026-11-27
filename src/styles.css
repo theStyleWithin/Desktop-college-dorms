@@ -27,6 +27,10 @@ a { color: var(--accent2); }
 ::-webkit-scrollbar-thumb { background-color: var(--line); background-clip: padding-box; border: 5px solid transparent; border-radius: 999px; min-height: 44px; min-width: 44px; }
 ::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active, .sb-near::-webkit-scrollbar-thumb { background-color: var(--muted); border-width: 3px; }
 ::-webkit-scrollbar-thumb:active { background-color: var(--accent); }
+/* the thinner size they used to be (Settings → Customization → Scroll bars); the handle still brightens near the pointer */
+html[data-scrollbar="slim"] ::-webkit-scrollbar { width: 10px; height: 10px; }
+html[data-scrollbar="slim"] ::-webkit-scrollbar-thumb { border-width: 0; border-radius: 8px; min-height: 30px; min-width: 30px; }
+html[data-scrollbar="slim"] ::-webkit-scrollbar-thumb:hover, html[data-scrollbar="slim"] ::-webkit-scrollbar-thumb:active, html[data-scrollbar="slim"] .sb-near::-webkit-scrollbar-thumb { border-width: 0; }
 
 .shell { display: grid; grid-template-columns: var(--side-w, 220px) 1fr; position: relative; grid-template-rows: minmax(0, 1fr); height: 100%; }
 .side { background: var(--bg2); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 18px 12px; gap: 4px; }
