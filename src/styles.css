@@ -868,3 +868,4 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .pc-body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 2px 0 4px; }
 .pc-acts { display: flex; gap: 2px; margin-left: -6px; }
 @media (max-width: 800px) { .gal-vbody { flex-direction: column; } .gal-comments { flex: 0 0 42%; max-width: none; border-left: 0; border-top: 1px solid var(--line); } }
+.side-panel.drop-over { outline: 2px dashed var(--accent, #7aa2ff); outline-offset: -6px; background: color-mix(in srgb, var(--accent, #7aa2ff) 12%, var(--bg2)); }

@@ -28,6 +28,9 @@ const LIGHT: Record<Presence, { cls: string; label: string }> = {
   checking: { cls: "idle", label: "Checking…" },
 };
 
+/** What a row of the characters list carries when it is dragged: the id of the character, to be dropped on a chat. */
+export const DRAG_PERSON = "application/x-dorms-chat-character";
+
 export const presenceLabel = (p: Presence) => LIGHT[p].label;
 
 /** The members list itself (a round avatar, a light, and a status bubble above each name); the connected panel gives it real data. */
@@ -87,7 +90,7 @@ export function MembersList({
         {rows.map((r) => {
           const pl = plateProps(r.plate, animate);
           return (
-          <div key={r.id} className={`m-row${expandedId === r.id ? " open" : ""} ${pl.className}`} data-member={r.name} data-id={r.id} {...(pl["data-plate"] ? { "data-plate": pl["data-plate"], "data-anim": pl["data-anim"] } : {})} data-wreath-of={r.wreath || undefined}>
+          <div key={r.id} className={`m-row${expandedId === r.id ? " open" : ""} ${pl.className}`} data-member={r.name} data-id={r.id} draggable onDragStart={(e) => { e.dataTransfer.setData(DRAG_PERSON, JSON.stringify([r.id])); e.dataTransfer.effectAllowed = "copy"; }} {...(pl["data-plate"] ? { "data-plate": pl["data-plate"], "data-anim": pl["data-anim"] } : {})} data-wreath-of={r.wreath || undefined}>
             <button className="m-main" onClick={() => onToggle?.(r.id)} aria-expanded={expandedId === r.id}>
               <span className="m-av"><Wreathed wreath={r.wreath} size="sm"><ProfileAvatar name={r.name} size={38} src={r.avatar} frame={r.frame} /></Wreathed><span className={`m-dot ${L.cls}`} title={L.label} data-testid="member-light" /></span>
               <span className="m-text">
