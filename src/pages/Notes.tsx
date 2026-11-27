@@ -3,6 +3,7 @@ import { api, type Note } from "../api";
 import { useToast } from "../components/ui";
 import { errText, timeAgo } from "../lib/util";
 import { useListWidth } from "../lib/listWidth";
+import SendToDevice from "../components/SendToDevice";
 
 const words = (t: string) => (t.trim() ? t.trim().split(/\s+/).length : 0);
 const titleOf = (n: Pick<Note, "title" | "body">) => n.title.trim() || n.body.trim().split("\n")[0].slice(0, 60) || "Untitled note";
@@ -109,6 +110,7 @@ export default function Notes() {
             <div className="row" style={{ marginBottom: 8 }}>
               <input type="text" className="note-title grow" placeholder="Title" value={draft.title} onChange={(e) => edit({ title: e.target.value })} aria-label="Note title" />
               <button className={`btn sm ${draft.pinned ? "primary" : ""}`} aria-pressed={draft.pinned} onClick={() => edit({ pinned: !draft.pinned })} title="Keep at the top">📌</button>
+              <SendToDevice item={{ kind: "note", id: sel }} name={draft.title || "this note"} />
               <button className="btn sm danger" onClick={() => void remove()} aria-label="Delete note">🗑</button>
             </div>
             <textarea ref={bodyRef} className="note-body" style={bodyH ? { flex: "none", height: bodyH } : undefined} placeholder="Write anything. There is no length limit." value={draft.body} onChange={(e) => edit({ body: e.target.value })} aria-label="Note text" spellCheck />

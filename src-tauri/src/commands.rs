@@ -87,7 +87,7 @@ pub struct OutfitOut {
 #[derive(Serialize)]
 pub struct CharacterOut {
     #[serde(flatten)]
-    c: Character,
+    pub(crate) c: Character,
     /// What to show right now: the outfit being worn, or the original model.
     media_path: Option<String>,
     /// The wardrobe: where each extra outfit's model file is.

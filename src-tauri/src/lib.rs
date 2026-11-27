@@ -5,6 +5,7 @@ mod extras;
 mod gallerycomments;
 mod guide;
 mod handoff;
+mod itemxfer;
 mod llama;
 mod llm;
 mod netpic;
@@ -265,6 +266,8 @@ pub fn run() {
             viewfolders::create_gallery_folder,
             viewfolders::add_folder_picture,
             viewfolders::remove_folder_picture,
+            itemxfer::inspect_staged_item,
+            itemxfer::add_staged_item,
             netpic::fetch_picture,
             deco::list_char_deco,
             deco::list_custom_deco,
@@ -372,6 +375,7 @@ pub fn run() {
             accounts::prepare_export,
             accounts::read_export,
             accounts::save_export,
+            accounts::save_export_to_uri,
             accounts::confirm_export_saved,
             accounts::eject_profile,
             accounts::delete_profile,
