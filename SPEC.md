@@ -449,3 +449,15 @@ Built (draft). A world can carry four more things besides its description and lo
 - **Prompt shelf**: a world lists saved prompts (up to 30, the person's own, once each); while the chat page shows a chat in that world, the Prompts menu lists them first under "From <world>". Backups and transfers point the shelf at the copies that arrive.
 - **Per-chat switch**: "Use mine here" plays as the person's own persona in that one chat (and "Use the world's" undoes it). It is kept with the chat.
 - **Tested**: a unit test of the fallback order, the persona and the instructions reaching the model, and checks in the app's tests. Not tested with a real model.
+
+
+## Emoji and stickers from any picture
+
+`add_emoji` no longer refuses a picture for being big: `src-tauri/src/emojiconv.rs` converts it (off the main thread, because a big animation takes a moment).
+
+- **What is accepted**: PNG, JPG, WebP or GIF, recognised by the file's first bytes (not its name), up to 40 MB, at most 16,384 pixels a side and 100 million pixels (a "decompression bomb" is refused before anything is allocated for it). Anything else is refused with "Emoji and stickers are pictures". An animated PNG or WebP uses its first picture.
+- **Emoji**: shrunk to fit 128 × 128 (never enlarged, never stretched) and centred on a see-through square, so every emoji has the same shape; a picture that is already a square no bigger than 128 and under 512 KB is kept byte for byte. **Stickers** fit 320 × 320 and keep their shape (no square); the result is at most 3 MB.
+- **Animated GIFs** stay animated and keep their timing: each frame is shrunk as it is read (so a long GIF doesn't fill the memory), at most 400 frames are kept (evenly thinned when there are more, the waiting time of the dropped frames added to the one kept), and a wait under 20 ms is raised to 20 (browsers do that anyway). If the result is over the size limit, every second frame is dropped (down to a handful), then the picture is made 25% smaller at a time (down to 48 pixels); if it still doesn't fit, it is refused with a message. A GIF with one picture is a PNG.
+- **Output** is a PNG, or a GIF for an animation; the file name still gives the name.
+- **Not built**: animated PNG/WebP, and trimming a long animation to a part of it.
+- **Tested**: Rust unit tests (huge pictures, shapes, no stretching or enlarging, kept exactly when already fine, JPG, animated GIFs that fit and ones that are lightened, one-frame GIFs, stickers, things that are not pictures, a fake huge PNG) and the app's tests (a 2400 × 1800 noise PNG, a 40-frame GIF, a JPG, a wide sticker, junk refused, a small picture kept as it is). Not tested: very large GIFs on a phone (memory and time), and WebP with transparency in a real run.

@@ -17,6 +17,7 @@ mod transfer;
 mod tray;
 mod deco;
 mod emoji;
+mod emojiconv;
 mod playbook;
 mod presence;
 mod secrets;
