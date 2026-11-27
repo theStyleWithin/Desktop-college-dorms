@@ -866,9 +866,20 @@ try:
     check("the lore's heading is drawn as a heading", d.execute_script("return !!document.querySelector('[data-testid=world-lore-read] h3')"))
     d.execute_script("[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Close').click()"); time.sleep(0.5)
     d.execute_script("document.querySelector('[data-testid=new-world]').click()"); time.sleep(0.4)
+    set_value("[data-testid=new-world-link-input]", "http://127.0.0.1:18997/cat.png"); d.execute_script("document.querySelector('[data-testid=new-world-link-use]').click()"); time.sleep(2.5)
+    check("a cover can be chosen from a picture link while a world is being made", d.execute_script("const n=document.querySelector('[data-testid=new-world-cover-name]');return !!n && n.textContent.includes('cat')"))
     d.find_element(By.CSS_SELECTOR, "[data-testid=new-world-name]").send_keys("Skyrealm"); d.execute_script("document.querySelector('[data-testid=new-world-create]').click()"); time.sleep(1.2)
     w3_ = [w for w in invoke("list_worlds") if w["name"] == "Skyrealm"]
     check("a world can be made from the Rooms page, and is picked at once", len(w3_) == 1 and d.execute_script("return document.querySelector('[data-testid=world-name]').value") == "Skyrealm")
+    check("the world made with a cover link keeps the picture as its own file, and shows it", len(w3_) == 1 and str(w3_[0].get("cover", "")).startswith("media/world-") and os.path.isfile(w3_[0]["cover_path"]) and d.execute_script("const i=document.querySelector('[data-testid=world-cover-img]');return !!i && i.complete && i.naturalWidth>0"), str(w3_[0])[:300])
+    old_cover_ = w3_[0]["cover_path"]
+    set_value("[data-testid=world-cover-link-input]", "http://127.0.0.1:18997/cat.png"); time.sleep(0.3)
+    d.execute_script("document.querySelector('[data-testid=world-cover-link-use]').click()"); time.sleep(2.5)
+    w3b_ = [w for w in invoke("list_worlds") if w["name"] == "Skyrealm"][0]
+    check("a world's cover can be replaced from a link in its panel (the old file is deleted)", w3b_["cover_path"] != old_cover_ and os.path.isfile(w3b_["cover_path"]) and not os.path.exists(old_cover_))
+    check("a cover has to be an image", "image" in (inv_err_file("set_world_cover", os.path.join(FIX, "loose.json"), {"x-world-id": str(w3b_["id"]), "x-file-name": "loose.json"}) or "").lower())
+    d.execute_script("document.querySelector('[data-testid=world-cover-remove]').click()"); time.sleep(1.0)
+    check("a cover can be removed (the file goes)", [w for w in invoke("list_worlds") if w["name"] == "Skyrealm"][0]["cover"] == "" and not os.path.exists(w3b_["cover_path"]))
     d.execute_script("const t=document.querySelector('[data-testid=world-desc]');t.focus();"); d.find_element(By.CSS_SELECTOR, "[data-testid=world-desc]").send_keys("Floating islands."); d.execute_script("document.querySelector('[data-testid=world-name]').focus()"); time.sleep(1.0)
     d.find_element(By.CSS_SELECTOR, "[data-testid=world-lore]").send_keys("The islands drift on the wind."); d.execute_script("document.querySelector('[data-testid=world-name]').focus()"); time.sleep(1.0)
     check("a world's lore is written in its panel", [w for w in invoke("list_worlds") if w["id"] == w3_[0]["id"]][0]["lore"] == "The islands drift on the wind.")
@@ -1085,9 +1096,12 @@ try:
     check("choosing a backdrop shows the shelf of scenes", click_text("button", "Choose a backdrop") and d.execute_script("return document.querySelectorAll('.preset').length") >= 6)
     d.execute_script("document.querySelector('.preset').click()"); time.sleep(0.3)
     check("a picked backdrop previews in the form", d.execute_script("return getComputedStyle(document.querySelector('.room-preview')).backgroundImage.includes('gradient')"))
+    set_value("[data-testid=room-backdrop-link-input]", "http://127.0.0.1:18997/cat.png"); d.execute_script("document.querySelector('[data-testid=room-backdrop-link-use]').click()"); time.sleep(2.5)
+    check("a backdrop can also come from a picture link (it previews like an upload)", d.execute_script("return getComputedStyle(document.querySelector('.room-preview')).backgroundImage.includes('blob:')"))
     shot("room-form")
     check("Create & enter makes the room and drops you into a chat set in it", click_text("button", "Create & enter") and text_present("Rooftop hangout") and wait(15).until(lambda x: x.execute_script("return !!document.querySelector('.chatmain .room-bg')")))
     rr = [r for r in invoke("list_rooms") if r["name"] == "Rooftop hangout"]
+    check("the room made with a backdrop from a link keeps the picture as its own file", rr and str(rr[0]["backdrop"]).startswith("file:"), str(rr[0]["backdrop"]) if rr else "")
     check("the room, a dorm in it and a first chat now exist", len(rr) == 1 and any(dd["room_id"] == rr[0]["id"] for dd in invoke("list_dorms")) and rr[0]["owner_kind"] == "character" and rr[0]["character_id"])
     check("the chat header shows which room it is in", d.execute_script("return !!document.querySelector('.chathead .linklike')") and "Rooftop hangout" in d.execute_script("return document.querySelector('.chathead .linklike').textContent"))
     d.execute_script("document.querySelector('.chatopts')?.classList.add('open')")
@@ -1781,6 +1795,11 @@ try:
     inp_ = d.find_element(By.CSS_SELECTOR, "[data-testid=emoji-file-emoji]"); d.execute_script("arguments[0].hidden=false;arguments[0].style.display='block';", inp_)
     n_before_ = len(invoke("list_emoji")); inp_.send_keys(mk_png("from-ui.png", (5, 200, 200))); time.sleep(2.0)
     check("emoji can be added from the tab", len(invoke("list_emoji")) == n_before_ + 1 and any(x["name"] == "from_ui" for x in invoke("list_emoji")))
+    set_value("[data-testid=emoji-link-emoji-input]", "http://127.0.0.1:18997/cat.png"); d.execute_script("document.querySelector('[data-testid=emoji-link-emoji-use]').click()"); time.sleep(3.0)
+    cat_ = [x for x in invoke("list_emoji") if x["name"] == "cat" and x["kind"] == "emoji"]
+    check("an emoji can be copied from a picture link (it is converted like an upload)", len(cat_) == 1 and os.path.isfile(cat_[0]["path"]))
+    for x_ in cat_: invoke("delete_emoji", {"id": x_["id"]})
+    n_before_ = len(invoke("list_emoji"))
     invoke("delete_room", {"id": ero_["id"]})
     freed_ = {x["name"]: x["room_id"] for x in invoke("list_emoji")}
     check("deleting a room frees what was tied to it: it works everywhere from then on (nothing is lost)", freed_.get("bow") is None and freed_.get("stove") is None, str(freed_))

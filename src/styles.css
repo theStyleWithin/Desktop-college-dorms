@@ -871,3 +871,4 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .side-panel.drop-over { outline: 2px dashed var(--accent, #7aa2ff); outline-offset: -6px; background: color-mix(in srgb, var(--accent, #7aa2ff) 12%, var(--bg2)); }
 .note-grip { height: 10px; margin-top: 4px; border-radius: 6px; cursor: ns-resize; touch-action: none; background: linear-gradient(var(--line), var(--line)) center / 48px 3px no-repeat; }
 .note-grip:hover, .note-grip:focus-visible { background-color: color-mix(in srgb, var(--accent2) 18%, transparent); outline: none; }
+.world-cover { display: block; width: 100%; max-height: 220px; object-fit: cover; border-radius: 12px; margin-bottom: 12px; }

@@ -667,7 +667,7 @@ pub struct ExportInfo {
 }
 
 pub(crate) fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
-    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji, worlds) = {
+    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji, mut worlds) = {
         let db = st.db.lock().unwrap();
         let characters = db::list_characters(&db, o).map_err(e)?;
         let dorms = db::list_dorms(&db, o).map_err(e)?;
@@ -877,6 +877,22 @@ pub(crate) fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, 
             }
         }
     }
+    // a world's cover picture travels with it
+    for w in worlds.iter_mut() {
+        if w.cover.is_empty() { continue; }
+        let base = std::path::Path::new(&w.cover).file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+        match std::fs::read(st.data_dir.join(&w.cover)) {
+            Ok(bytes) if safe_media_name(&base) => {
+                if seen.insert(base.clone()) {
+                    zip.start_file(format!("media/{base}"), stored).map_err(e)?;
+                    zip.write_all(&bytes).map_err(e)?;
+                    media_count += 1;
+                }
+                w.cover = format!("media/{base}");
+            }
+            _ => w.cover.clear(),
+        }
+    }
     let counts = Counts { characters: characters.len(), dorms: dorms.len(), chats: chats.len(), messages: messages.len(), media: media_count };
     let manifest = Manifest {
         format: EXPORT_FORMAT.into(),
@@ -1002,6 +1018,7 @@ fn remove_owner_data(st: &AppState, o: &Owner) -> R<()> {
         files.extend(db::list_personas(&db, o).map_err(e)?.into_iter().filter_map(|p| p.avatar));
         if let Some(pid) = o { files.extend(db::get_profile_avatar(&db, pid).map(|(f, _)| f)); }
         files.extend(db::list_rooms(&db, o).map_err(e)?.into_iter().flat_map(|r| r.backdrop.strip_prefix("file:").map(str::to_string).into_iter().chain(Some(r.music).filter(|m| !m.is_empty())).chain(Some(r.model).filter(|m| !m.is_empty())).chain(r.gallery.into_iter().map(|g| g.file))));
+        files.extend(db::list_worlds(&db, o).map_err(e)?.into_iter().filter(|w| !w.cover.is_empty()).map(|w| w.cover));
         files.extend(db::list_dorms(&db, o).map_err(e)?.into_iter().filter(|d| !d.music.is_empty()).map(|d| d.music));
         files.extend(db::list_decor(&db, o).map_err(e)?.into_iter().map(|d| d.file));
         files.extend(db::list_emoji(&db, o).map_err(e)?.into_iter().map(|d| d.file));
@@ -1332,6 +1349,18 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             db::update_world(&db, nw.id, &nw.name, &nw.description, &w.lore.replace('\r', "").chars().take(20_000).collect::<String>(), &books, &o).map_err(e)?;
             let (wp, wb) = (persona_map.get(&w.persona).cloned().unwrap_or_default(), playbook_map.get(&w.playbook).cloned().unwrap_or_default());
             db::set_world_setup(&db, nw.id, &wp, &wb, &w.instructions.replace('\r', "").trim().chars().take(4000).collect::<String>(), &[], &o).map_err(e)?;
+            if let Some(base) = w.cover.strip_prefix("media/").filter(|b| safe_media_name(b)) {
+                if let Some(bytes) = parsed.media.get(base) {
+                    let ext = std::path::Path::new(base).extension().and_then(|x| x.to_str()).unwrap_or("png").to_lowercase();
+                    if ["png", "jpg", "jpeg", "webp", "gif", "avif", "bmp"].contains(&ext.as_str()) {
+                        let rel = format!("media/world-{}-{}.{ext}", nw.id, db::now());
+                        let abs = st.data_dir.join(&rel);
+                        std::fs::write(&abs, bytes).map_err(e)?;
+                        written.push(abs);
+                        db::set_world_cover(&db, nw.id, &rel, &o).map_err(e)?;
+                    }
+                }
+            }
             world_map.insert(w.id, nw.id);
             world_shelves.push((nw.id, w.prompts.clone()));
         }

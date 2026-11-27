@@ -264,7 +264,7 @@ export interface CustomDeco {
 }
 export interface CharDeco { character_id: string; plate: string; bg: string; wreath: string; source: "ai" | "user"; updated_at: number }
 /** A world: a folder of connected rooms, kept apart from other worlds, with lorebooks attached that apply to every chat in it. */
-export interface World { id: number; name: string; description: string; /** background lore written to be read (not sent to the model) */ lore: string; lorebooks: string[]; /** a persona that stands in for yours while a chat is in this world ("" for none) */ persona: string; /** a playbook used when neither the chat nor its characters choose one */ playbook: string; /** standing instructions for every chat in this world */ instructions: string; /** saved prompts (ids) shown first in the Prompts menu in chats of this world */ prompts: string[]; created_at: number }
+export interface World { id: number; name: string; description: string; /** background lore written to be read (not sent to the model) */ lore: string; lorebooks: string[]; /** a persona that stands in for yours while a chat is in this world ("" for none) */ persona: string; /** a playbook used when neither the chat nor its characters choose one */ playbook: string; /** standing instructions for every chat in this world */ instructions: string; /** saved prompts (ids) shown first in the Prompts menu in chats of this world */ prompts: string[]; /** the cover picture (a path inside the data folder) and where to show it from */ cover?: string; cover_path?: string | null; created_at: number }
 export interface RoomDeco { plate: string; bg: string; wreath: string; tag: string; tag_color: string; tag_glyph: string }
 export const DEFAULT_ROOM_DECO: RoomDeco = { plate: "none", bg: "", wreath: "", tag: "", tag_color: "#5865f2", tag_glyph: "" };
 export interface UserDeco { plate: string; bg: string; wreath: string; animate: boolean; tag: string; tag_color: string; tag_glyph: string; banner: string; ai_pick: boolean }
@@ -450,6 +450,8 @@ export const api = {
   createWorld: (name: string, description: string) => invoke<World>("create_world", { name, description }),
   setWorldSetup: (id: number, persona: string, playbook: string, instructions: string, prompts: string[]) => invoke<World>("set_world_setup", { id, persona, playbook, instructions, prompts }),
   updateWorld: (id: number, name: string, description: string, lore: string, lorebooks: string[]) => invoke<World>("update_world", { id, name, description, lore, lorebooks }),
+  setWorldCover: async (id: number, file: File) => bin("set_world_cover", new Uint8Array(await file.arrayBuffer()), { "x-world-id": String(id), "x-file-name": encodeURIComponent(file.name) }) as Promise<World>,
+  clearWorldCover: (id: number) => invoke<World>("clear_world_cover", { id }),
   deleteWorld: (id: number) => invoke<void>("delete_world", { id }),
   moveRoomsToWorld: (ids: number[], worldId: number | null) => invoke<void>("move_rooms_to_world", { ids, worldId }),
   getShelf: (kind: ShelfKind) => invoke<Shelf>("get_shelf", { kind }),

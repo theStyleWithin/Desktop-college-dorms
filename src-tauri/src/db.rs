@@ -213,6 +213,9 @@ pub struct World {
     /// Saved prompts (their ids) that sit first in the Prompts menu while the person is in a chat in this world.
     #[serde(default)]
     pub prompts: Vec<String>,
+    /// The world's cover picture (a path inside the data folder, `media/world-*`), or "" for none.
+    #[serde(default)]
+    pub cover: String,
     #[serde(default)]
     pub created_at: i64,
 }
@@ -707,6 +710,7 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
     )?;
     for col in ["persona", "playbook", "instructions"] { ensure_column(&conn, "worlds", col, "TEXT NOT NULL DEFAULT ''")?; }
     ensure_column(&conn, "worlds", "prompts", "TEXT NOT NULL DEFAULT '[]'")?;
+    ensure_column(&conn, "worlds", "cover", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "worlds", "lore", "TEXT NOT NULL DEFAULT ''")?; // after the table exists (worlds made before this had no lore)
     ensure_column(&conn, "rooms", "deco_plate", "TEXT NOT NULL DEFAULT 'none'")?;
     ensure_column(&conn, "rooms", "deco_bg", "TEXT NOT NULL DEFAULT ''")?;
@@ -904,9 +908,9 @@ fn world_books(c: &Connection, id: i64) -> Vec<String> {
 }
 
 pub fn list_worlds(c: &Connection, owner: &Owner) -> R<Vec<World>> {
-    let mut s = c.prepare("SELECT id,name,description,lore,created_at,persona,playbook,instructions,prompts FROM worlds WHERE profile_id IS ?1 ORDER BY id")?;
-    let rows: Vec<(i64, String, String, String, i64, String, String, String, String)> = s.query_map([owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)))?.filter_map(|r| r.ok()).collect();
-    Ok(rows.into_iter().map(|(id, name, description, lore, created_at, persona, playbook, instructions, prompts)| World { id, name, description, lore, lorebooks: world_books(c, id), persona, playbook, instructions, prompts: serde_json::from_str(&prompts).unwrap_or_default(), created_at }).collect())
+    let mut s = c.prepare("SELECT id,name,description,lore,created_at,persona,playbook,instructions,prompts,cover FROM worlds WHERE profile_id IS ?1 ORDER BY id")?;
+    let rows: Vec<(i64, String, String, String, i64, String, String, String, String, String)> = s.query_map([owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?)))?.filter_map(|r| r.ok()).collect();
+    Ok(rows.into_iter().map(|(id, name, description, lore, created_at, persona, playbook, instructions, prompts, cover)| World { id, name, description, lore, lorebooks: world_books(c, id), persona, playbook, instructions, prompts: serde_json::from_str(&prompts).unwrap_or_default(), cover, created_at }).collect())
 }
 
 pub fn get_world(c: &Connection, id: i64, owner: &Owner) -> R<Option<World>> {
@@ -936,6 +940,12 @@ pub fn set_world_setup(c: &Connection, id: i64, persona: &str, playbook: &str, i
     let mut keep: Vec<&String> = Vec::new();
     for p in prompts.iter().filter(|p| mine.contains(p)) { if !keep.contains(&p) && keep.len() < 30 { keep.push(p); } }
     c.execute("UPDATE worlds SET persona=?2, playbook=?3, instructions=?4, prompts=?6 WHERE id=?1 AND profile_id IS ?5", params![id, persona, playbook, instructions, owner, serde_json::to_string(&keep).unwrap_or_else(|_| "[]".into())])?;
+    Ok(())
+}
+
+/// Sets (or, with "", clears) a world's cover picture. The caller has written the file.
+pub fn set_world_cover(c: &Connection, id: i64, cover: &str, owner: &Owner) -> R<()> {
+    c.execute("UPDATE worlds SET cover=?2 WHERE id=?1 AND profile_id IS ?3", params![id, cover, owner])?;
     Ok(())
 }
 
