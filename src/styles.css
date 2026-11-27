@@ -877,6 +877,18 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .pc-head { display: flex; gap: 8px; align-items: baseline; } .pc-head small { color: var(--muted); }
 .pc-body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 2px 0 4px; }
 .pc-acts { display: flex; gap: 2px; margin-left: -6px; }
+/* the panel below the picture instead of beside it */
+.gal-vbody.below { flex-direction: column; }
+.gal-vbody.below .gal-comments { flex: 0 0 40%; max-width: none; border-left: 0; border-top: 1px solid var(--line); }
+.gal-panelbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; margin-bottom: 10px; }
+.gal-seg { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.picchat { display: grid; gap: 8px; }
+.picchat-log { display: grid; gap: 8px; max-height: 40vh; overflow: auto; padding: 4px 2px; }
+.picchat-msg { display: grid; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--panel2); }
+.picchat-msg.user { background: color-mix(in srgb, var(--accent) 22%, var(--panel2)); justify-self: end; max-width: 92%; }
+.picchat-msg span { white-space: pre-wrap; overflow-wrap: anywhere; }
+.picchat textarea { width: 100%; resize: vertical; }
+.gal-vbody.below .picchat-log { max-height: 16vh; }
 @media (max-width: 800px) { .gal-vbody { flex-direction: column; } .gal-comments { flex: 0 0 42%; max-width: none; border-left: 0; border-top: 1px solid var(--line); } }
 .side-panel.drop-over { outline: 2px dashed var(--accent, #7aa2ff); outline-offset: -6px; background: color-mix(in srgb, var(--accent, #7aa2ff) 12%, var(--bg2)); }
 .note-grip { height: 10px; margin-top: 4px; border-radius: 6px; cursor: ns-resize; touch-action: none; background: linear-gradient(var(--line), var(--line)) center / 48px 3px no-repeat; }

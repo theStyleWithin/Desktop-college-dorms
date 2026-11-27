@@ -487,6 +487,9 @@ export const api = {
   removeFolderPicture: (id: string, path: string) => invoke<void>("remove_folder_picture", { id, path }),
   /** The small picture (kept on this device) for a picture inside a Gallery folder; the Gallery shows these in its grids instead of full-size photos. */
   viewThumb: (path: string) => invoke<string>("view_thumb", { path }),
+  /** One turn of a chat with a character about the picture or video on screen. */
+  galleryChat: (characterId: string, messages: { role: string; text: string; attached: number; images: string[] }[], pic: { key: string; title: string; note: string; kind: string; at: number | null; length: number | null }, show: boolean) =>
+    invoke<{ reply: string; saw: boolean }>("gallery_chat", { characterId, messages, pic, show }),
   scanViewFolder: (id: string) => invoke<{ root: ViewDir; truncated: boolean }>("scan_view_folder", { id }),
   listCustomDeco: () => invoke<CustomDeco[]>("list_custom_deco"),
   saveCustomDeco: (items: CustomDeco[]) => invoke<string[]>("save_custom_deco", { items }),

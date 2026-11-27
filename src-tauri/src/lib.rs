@@ -10,6 +10,7 @@ mod llm;
 mod netpic;
 mod novel;
 mod phone;
+mod picchat;
 mod shelf;
 mod starters;
 mod tokenator;
@@ -252,6 +253,7 @@ pub fn run() {
             viewfolders::remove_view_folder,
             viewfolders::scan_view_folder,
             viewfolders::view_thumb,
+            picchat::gallery_chat,
             viewfolders::create_gallery_folder,
             viewfolders::add_folder_picture,
             viewfolders::remove_folder_picture,

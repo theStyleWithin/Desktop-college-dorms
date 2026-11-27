@@ -8,6 +8,7 @@ import { Modal, useToast } from "../components/ui";
 import PictureComments from "../components/PictureComments";
 import PictureLinkBox, { pastedPicture } from "../components/PictureLinkBox";
 import GalleryStage from "../components/GalleryStage";
+import PictureChat from "../components/PictureChat";
 
 /**
  * Gallery: a quick look at pictures, for when you just want to look at the art and not chat. Every character is an art folder holding
@@ -171,6 +172,13 @@ function GalleryPage() {
     setOrder(o); setMerge(m);
     try { await api.saveSettings({ ...settings, gallery_order: o, gallery_merge: m }); await refresh(); } catch (e) { toast(errText(e), "err"); }
   };
+  // the panel beside (or below) the big picture: comments, or a chat with a character about what is on screen
+  const lsGet = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
+  const lsPut = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* not remembered */ } };
+  const [panel, setPanelState] = useState<"comments" | "chat">(lsGet("dorms.gallery.panel") === "chat" ? "chat" : "comments");
+  const [layout, setLayoutState] = useState<"side" | "below">(lsGet("dorms.gallery.layout") === "below" ? "below" : "side");
+  const setPanel = (p: "comments" | "chat") => { setPanelState(p); lsPut("dorms.gallery.panel", p); };
+  const setLayout = (l: "side" | "below") => { setLayoutState(l); lsPut("dorms.gallery.layout", l); };
   const [menu, setMenu] = useState(false), [dialog, setDialog] = useState<null | "new" | "link">(null);
   useEffect(() => {
     if (!menu) return;
@@ -271,13 +279,24 @@ function GalleryPage() {
             <button className="btn sm" data-testid="gallery-close" onClick={() => setView(null)} aria-label="Close">✕</button>
           </span>
         </div>
-        <div className="gal-vbody">
+        <div className={`gal-vbody${layout === "below" ? " below" : ""}`} data-layout={layout}>
         <div className="gal-vmain">
           {v.list.length > 1 && <button className="gal-nav left" aria-label="Previous picture" data-testid="gallery-prev" onClick={() => setView({ ...v, at: (v.at - 1 + v.list.length) % v.list.length })}>‹</button>}
           <div className="gal-vpic" data-testid="gallery-big"><GalleryStage key={t.id} t={t} /></div>
           {v.list.length > 1 && <button className="gal-nav right" aria-label="Next picture" data-testid="gallery-next" onClick={() => setView({ ...v, at: (v.at + 1) % v.list.length })}>›</button>}
         </div>
-        <aside className="gal-comments" aria-label="Comments on this picture"><PictureComments picKey={t.key} author={me.name} onCount={(n) => setCount(t.key, n)} /></aside>
+        <aside className="gal-comments" aria-label={panel === "chat" ? "Chat about this picture" : "Comments on this picture"} data-testid="gallery-panel">
+          <div className="gal-panelbar">
+            <span className="gal-seg" role="tablist" aria-label="What to show beside the picture">
+              <button type="button" role="tab" aria-selected={panel === "comments"} className={`btn sm${panel === "comments" ? " primary" : ""}`} data-testid="gallery-tab-comments" onClick={() => setPanel("comments")}>💬 Comments</button>
+              <button type="button" role="tab" aria-selected={panel === "chat"} className={`btn sm${panel === "chat" ? " primary" : ""}`} data-testid="gallery-tab-chat" onClick={() => setPanel("chat")}>🧑 Talk to a character</button>
+            </span>
+            <button type="button" className="btn sm" data-testid="gallery-flip" aria-label={layout === "side" ? "Move this panel below the picture" : "Move this panel beside the picture"} title={layout === "side" ? "Put this panel below the picture (a wider box to type in)" : "Put this panel beside the picture"} onClick={() => setLayout(layout === "side" ? "below" : "side")}>{layout === "side" ? "⬇ Below" : "➡ Side"}</button>
+          </div>
+          {panel === "chat"
+            ? <PictureChat key={t.key} pic={{ key: t.key, title: t.title, note: t.note, kind: t.kind }} />
+            : <PictureComments picKey={t.key} author={me.name} onCount={(n) => setCount(t.key, n)} />}
+        </aside>
         </div>
       </div>
     );

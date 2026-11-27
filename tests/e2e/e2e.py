@@ -2841,6 +2841,30 @@ try:
     d.find_element(By.CSS_SELECTOR, "[data-fit=fill]").click(); time.sleep(0.2)
     check("the chosen size mode is remembered", d.execute_script("return localStorage.getItem('dorms.gallery.fit')") == "fill")
     d.find_element(By.CSS_SELECTOR, "[data-fit=fit]").click(); time.sleep(0.2)
+    # the panel can sit below the picture, and can be a chat with a character about what is on screen
+    d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-flip]").click(); time.sleep(0.3)
+    check("the panel can be flipped below the picture (and it is remembered)", d.execute_script("return document.querySelector('.gal-vbody').dataset.layout") == "below" and d.execute_script("return localStorage.getItem('dorms.gallery.layout')") == "below")
+    d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-flip]").click(); time.sleep(0.3)
+    check("and flipped back beside it", d.execute_script("return document.querySelector('.gal-vbody').dataset.layout") == "side")
+    d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-tab-chat]").click(); time.sleep(0.5)
+    check("the panel can switch to talking to a character, with a picker", d.execute_script("const s=document.querySelector('[data-testid=picchat-char]');return !!s && s.options.length >= 1 && !!document.querySelector('[data-testid=picchat-input]')"))
+    gprov_ = invoke("get_settings")
+    set_provider(provider="openai", openai_base_url="http://127.0.0.1:18999/v1", openai_model="fake-model")
+    seen["pieces"] = ["Oh, ", "that's ", "lovely!"]
+    set_value("[data-testid=picchat-input]", "Look at this blue picture!"); d.execute_script("document.querySelector('[data-testid=picchat-send]').click()"); time.sleep(3.0)
+    check("a character answers about the picture", d.execute_script("return [...document.querySelectorAll('[data-testid=picchat-log] [data-role=assistant]')].some(x=>x.textContent.includes('lovely'))"))
+    gm_ = seen["body"]["messages"]
+    check("they are told who they are and what is on screen", gm_[0]["role"] == "system" and "You are " in gm_[0]["content"] and "c.png" in gm_[0]["content"])
+    check("a picture is really sent to a model that can see it, and they are told they can see it", isinstance(gm_[-1]["content"], list) and any(p_.get("type") == "image_url" and p_["image_url"]["url"].startswith("data:image/jpeg;base64,") for p_ in gm_[-1]["content"]) and "you can see it" in gm_[0]["content"])
+    d.execute_script("document.querySelector('[data-testid=picchat-see]').click()"); time.sleep(0.2)
+    set_value("[data-testid=picchat-input]", "What do you think?"); d.execute_script("document.querySelector('[data-testid=picchat-send]').click()"); time.sleep(3.0)
+    gm2_ = seen["body"]["messages"]
+    check("with 'Let them see' off, no picture is sent and they are told they can't see it", isinstance(gm2_[-1]["content"], str) and "cannot see the picture" in gm2_[0]["content"])
+    check("the conversation is kept for this picture", len(d.execute_script("return document.querySelectorAll('[data-testid=picchat-log] .picchat-msg')")) >= 4)
+    seen["pieces"] = None
+    set_provider(provider=gprov_["provider"], openai_base_url=gprov_["openai_base_url"], openai_model=gprov_["openai_model"])
+    d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-tab-comments]").click(); time.sleep(0.4)
+    check("and back to the comments", d.execute_script("return !!document.querySelector('.pc-title')"))
     d.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE); time.sleep(0.4)
     d.execute_script("[...document.querySelectorAll('[data-testid=gallery-crumbs] button')].find(b=>b.textContent.includes('Gallery')).click()"); time.sleep(0.6)
     d.execute_script("window.confirm=()=>true; document.querySelector('[data-testid=gallery-remove-folder]').click()"); time.sleep(1.0)
