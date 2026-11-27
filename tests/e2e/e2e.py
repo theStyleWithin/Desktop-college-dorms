@@ -1572,7 +1572,7 @@ try:
     check("a lorebook says how many entries it holds", invoke("inspect_staged_item", {"token": rl_["token"], "kind": "lorebook"})["detail"] == "1 entry")
     invoke("add_staged_item", {"token": rl_["token"], "kind": "lorebook"})
     check("a lorebook can be sent and added", len([x for x in invoke("list_lorebooks") if x["name"] == "Sent lore"]) == 2)
-    xcid_ = invoke("list_characters")[0]["id"]; nchars_ = len(invoke("list_characters"))
+    chars_before_ = {c["id"] for c in invoke("list_characters")}; xcid_ = invoke("list_characters")[0]["id"]; nchars_ = len(chars_before_)
     rc_ = xfer_item("character", xcid_, "charX")
     check("a character can be sent", rc_["phase"] == "arrived" and rc_["kind"] == "character" and bool(rc_["name"]), str(rc_))
     invoke("add_staged_item", {"token": rc_["token"], "kind": "character"})
@@ -1592,6 +1592,12 @@ try:
     check("an arrived item shows what it is and asks before adding", d.execute_script("const a=document.querySelector('[data-testid=transfer-arrived-item]');return !!a && !!document.querySelector('[data-testid=transfer-add-item]')"))
     d.execute_script("document.querySelector('[data-testid=transfer-discard]').click()"); time.sleep(0.5)
     dismiss(); time.sleep(0.3)
+    # tidy up what these checks made, so the checks after them see the same data as before
+    for n_ in [x for x in invoke("list_notes") if x["title"] == "Sent note"]: invoke("delete_note", {"id": n_["id"]})
+    for p_ in [x for x in invoke("list_prompts") if x["title"] == "Sent prompt"]: invoke("delete_prompt", {"id": p_["id"]})
+    for q_ in [x for x in invoke("list_personas") if x["name"] == "Sent persona"]: invoke("delete_persona", {"id": q_["id"]})
+    for l_ in [x for x in invoke("list_lorebooks") if x["name"] == "Sent lore"]: invoke("delete_lorebook", {"id": l_["id"]})
+    for c_ in [x for x in invoke("list_characters") if x["id"] not in chars_before_]: invoke("delete_character", {"id": c_["id"]})
     # the same thing through the screens
     reload_ui(); nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Profiles').click()"); time.sleep(0.6)
     d.execute_script("document.querySelector('[data-testid=wifi-open]').click()"); time.sleep(0.6)
