@@ -278,7 +278,7 @@ for the portable build. Copy that folder to back up or move everything.
 ## Packaging hand-off
 
 The Flatpak manifest and AUR packages are ready for someone else to submit; the project owner **has given full consent** for
-anyone to package and publish this MIT-licensed app, no need to ask. Details in [`packaging/README.md`](packaging/README.md).
+anyone to package and publish this MIT-licensed app, no need to ask. Every release comes with a **hand-off bundle** (`desktop-college-dorms-packaging-<version>.tar.gz`) holding the Flatpak manifest and the AUR packages with that version and checksum filled in, and step-by-step instructions for whoever submits them. Details in [`packaging/README.md`](packaging/README.md).
 
 ## License
 
