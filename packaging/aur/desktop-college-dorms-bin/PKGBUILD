@@ -1,8 +1,9 @@
 # Maintainer: (whoever submits this to the AUR; the project owner has given full consent, see LICENSE)
-# NOT yet tested by the author. Update `sha256sums` from the release (`.sha256` file) before building.
+# NOT built or tested by the author. In the release's hand-off bundle `pkgver` and `sha256sums` are already filled in;
+# in the repository they are placeholders (see packaging/README.md).
 pkgname=desktop-college-dorms-bin
 _name=desktop-college-dorms
-pkgver=0.2.1
+pkgver=0.17.0
 pkgrel=1
 pkgdesc='Offline AI character creator and chat rooms with a built-in local model engine (prebuilt)'
 arch=('x86_64')
@@ -16,9 +17,8 @@ optdepends=('vulkan-icd-loader: GPU acceleration for the built-in engine'
 provides=("$_name")
 conflicts=("$_name" "$_name-git")
 options=('!strip')
-source=("$_name-$pkgver-linux-x86_64.tar.gz::$url/releases/download/v$pkgver/$_name-$pkgver-linux-x86_64.tar.gz"
-        "$_name-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP' 'SKIP')
+source=("$_name-$pkgver-linux-x86_64.tar.gz::$url/releases/download/v$pkgver/$_name-$pkgver-linux-x86_64.tar.gz")
+sha256sums=('REPLACE_WITH_SHA256_OF_THE_TARBALL')
 
 package() {
   # The engines must sit next to the main binary; keep them out of /usr/bin so they
@@ -28,11 +28,11 @@ package() {
   install -m755 desktop-college-dorms dorms-engine dorms-engine-vulkan "$pkgdir/usr/lib/$_name/"
   ln -s "/usr/lib/$_name/desktop-college-dorms" "$pkgdir/usr/bin/desktop-college-dorms"
 
-  cd "$srcdir/Desktop-college-dorms-$pkgver"
+  # the desktop entry, metadata and icons come in the same tarball
   local id=io.github.thestylewithin.DesktopCollegeDorms
-  install -Dm644 "packaging/linux/$id.desktop" "$pkgdir/usr/share/applications/$id.desktop"
-  install -Dm644 "packaging/linux/$id.metainfo.xml" "$pkgdir/usr/share/metainfo/$id.metainfo.xml"
-  install -Dm644 packaging/linux/icons/256.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/$id.png"
-  install -Dm644 packaging/linux/icons/512.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/$id.png"
+  install -Dm644 "share/applications/$id.desktop" "$pkgdir/usr/share/applications/$id.desktop"
+  install -Dm644 "share/metainfo/$id.metainfo.xml" "$pkgdir/usr/share/metainfo/$id.metainfo.xml"
+  install -Dm644 "share/icons/hicolor/256x256/apps/$id.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/$id.png"
+  install -Dm644 "share/icons/hicolor/512x512/apps/$id.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/$id.png"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
