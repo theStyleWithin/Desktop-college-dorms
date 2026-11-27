@@ -12,6 +12,7 @@ mod novel;
 mod phone;
 mod shelf;
 mod starters;
+mod steam;
 mod tokenator;
 mod transfer;
 mod tray;
@@ -259,6 +260,9 @@ pub fn run() {
             viewfolders::add_view_folder,
             viewfolders::remove_view_folder,
             viewfolders::scan_view_folder,
+            steam::steam_status,
+            steam::steam_add,
+            steam::steam_remove,
             netpic::fetch_picture,
             deco::list_char_deco,
             deco::list_custom_deco,

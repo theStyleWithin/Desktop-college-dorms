@@ -221,6 +221,7 @@ export interface Settings {
 
 export interface Preset { id: string; label: string; blurb: string; file: string; url: string; size_gb: number; min_ram_gb: number }
 export interface TransferStatus { phase: "idle" | "waiting" | "connected" | "sending" | "receiving" | "arrived" | "done" | "failed" | "cancelled" | ""; role: string; message: string; done: number; total: number; addr: string; code: string; qr_svg: string; expires_in: number; token: string | null; name: string }
+export interface SteamStatus { supported: boolean; found: boolean; running: boolean | null; users: { id: string; name: string; added: boolean }[]; exe: string }
 export interface PhoneOption { id: string; label: string; size_gb: number; min_ram_gb: number; fits: boolean; note: string | null }
 export interface PhoneCheck { is_android: boolean; arm64: boolean; ram_gb: number; free_gb: number | null; options: PhoneOption[]; can_run_any: boolean; engine_ready: boolean; download_allowed: boolean; summary: string }
 export interface Hardware { total_ram_gb: number; recommended: string; presets: Preset[]; engine_available: boolean }
@@ -322,6 +323,9 @@ const bin = (cmd: string, bytes: Uint8Array, headers: Record<string, string>) =>
 
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
+  steamStatus: () => invoke<SteamStatus>("steam_status"),
+  steamAdd: (user: string) => invoke<string>("steam_add", { user }),
+  steamRemove: (user: string) => invoke<string>("steam_remove", { user }),
   phoneCheck: () => invoke<PhoneCheck>("phone_check"),
   transferSendStart: (code: string, passcode: string | null) => invoke<TransferStatus>("transfer_send_start", { code, passcode }),
   transferReceiveStart: (addr: string, code: string) => invoke<TransferStatus>("transfer_receive_start", { addr, code }),
