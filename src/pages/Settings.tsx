@@ -1,4 +1,5 @@
 import { sdel } from "../lib/scoped";
+import { useLinkFiles } from "../lib/galleryLink";
 import { useTextScale, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
 import { DEFAULT_NAMES, WIDGETS, useWidgetNames, useWidgetPrefs } from "../components/SideWidgets";
 import { useEffect, useRef, useState } from "react";
@@ -430,6 +431,7 @@ function Look({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void
       <SideExtras />
       <h3 style={{ marginTop: 22 }}>Text size in chats</h3>
       <TextSizeSetting />
+      <GalleryLinkSetting />
       <SteamSetting />
     </div>
   );
@@ -452,6 +454,22 @@ function SideExtras() {
       ))}
       <div className="row"><button className="btn sm" onClick={resetNames}>Use the usual names</button><span className="hint">You can also double-click a section's name in the side bar, or press its ✎, to rename it. Kept on this device.</span></div>
       <div className="hint">Recent chats, the characters you've marked as favorites (as many as you like), the ones you talk to most, and a picture frame that shows the character you talked to last (click it to go back to that chat).</div>
+    </div>
+  );
+}
+
+/** Gallery files: copy them in (the default) or just remember where they are. Desktop only. Kept for the profile. */
+function GalleryLinkSetting() {
+  const { info } = useStore();
+  const [on, set] = useLinkFiles();
+  if (info?.platform === "android") return null;
+  return (
+    <div data-testid="gallery-link-setting">
+      <h3 style={{ marginTop: 22 }}>Gallery files</h3>
+      <label className="row" style={{ gap: 8, cursor: "pointer", marginTop: 10 }}>
+        <input type="checkbox" style={{ width: "auto", minHeight: 0 }} checked={on} data-testid="gallery-link-toggle" onChange={(e) => set(e.target.checked)} /> Link files instead of copying them
+      </label>
+      <div className="hint" style={{ marginTop: 6 }}>When on, adding files to a character's gallery (with the picture chooser) remembers where each file is on your computer instead of making a copy, so big videos take no extra space and have no size limit. The app never changes, moves or deletes your file; if you move it, it stops showing. Linked files aren't included in backups. Pictures from a link, pasted pictures and dropped files are still copied. Kept for your profile.</div>
     </div>
   );
 }

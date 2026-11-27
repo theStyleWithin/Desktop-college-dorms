@@ -11,6 +11,7 @@ mod llm;
 mod netpic;
 mod novel;
 mod phone;
+mod picchat;
 mod shelf;
 mod starters;
 mod steam;
@@ -261,6 +262,12 @@ pub fn run() {
             viewfolders::add_view_folder,
             viewfolders::remove_view_folder,
             viewfolders::scan_view_folder,
+            viewfolders::relocate_view_folder,
+            viewfolders::view_thumb,
+            picchat::gallery_chat,
+            viewfolders::create_gallery_folder,
+            viewfolders::add_folder_picture,
+            viewfolders::remove_folder_picture,
             steam::steam_status,
             steam::steam_add,
             steam::steam_remove,
@@ -324,6 +331,8 @@ pub fn run() {
             commands::test_voice,
             commands::clear_media,
             commands::add_gallery_image,
+            commands::link_gallery_file,
+            commands::relocate_gallery_link,
             commands::set_gallery_moods,
             commands::remove_gallery_item,
             commands::set_gallery_mode,

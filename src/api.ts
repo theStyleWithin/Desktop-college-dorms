@@ -63,7 +63,7 @@ export const DEFAULT_FRAME: Frame = { x: 0.5, y: 0.5, zoom: 1 };
 export interface Lorebook { id: string; name: string; book: CharacterBook; created_at: number; updated_at: number }
 export interface Folder { id: string; name: string; cover: string | null; frame: Frame | null; created_at: number; cover_path?: string | null; /** the folder this one sits inside (null = top level) */ parent?: string | null; /** a character whose picture stands in when the folder has none */ cover_char?: string | null }
 
-export interface GalleryItem { id: string; file: string; kind: "image" | "gif" | "video"; moods: string[] }
+export interface GalleryItem { id: string; file: string; kind: "image" | "gif" | "video"; moods: string[]; /** where a linked file is on this computer ("" for a copy kept by the app) */ link?: string }
 export type GalleryMode = "fixed" | "random" | "mood";
 
 export interface Character {
@@ -78,7 +78,7 @@ export interface Character {
   outfit_paths?: { id: string; name: string; path: string }[];
   /** More pictures of the character, where each is (by id), and how they are used in a chat. */
   gallery?: GalleryItem[];
-  gallery_paths?: { id: string; path: string }[];
+  gallery_paths?: { id: string; path: string; missing?: boolean }[];
   gallery_mode?: GalleryMode | "";
   /** How the picture is framed so a face is never cut off. */
   frame?: Frame | null;
@@ -192,6 +192,10 @@ export interface Settings {
   user_description: string;
   /** The persona being played (an id), or "" for the plain name and description. */
   active_persona: string;
+  /** The order the person put the Gallery's folders in (`char:<id>` / `disk:<id>` keys). */
+  gallery_order: string[];
+  /** Show characters' folders and the person's other folders together instead of in separate sections. */
+  gallery_merge: boolean;
   context_tokens: number;
   max_tokens: number;
   temperature: number;
@@ -259,7 +263,7 @@ export interface ProviderHealth { state: "local" | "ok" | "warn" | "down" | "non
 /** A comment the person wrote under a picture in the Gallery (kept on this device only). `parent_id` is the comment it answers. */
 export interface GalleryComment { id: string; pic_key: string; parent_id: string | null; author: string; body: string; created_at: number; edited_at: number | null }
 /** A folder on the computer added to the Gallery, only to look at. */
-export interface ViewFolder { id: string; path: string; name: string; exists: boolean }
+export interface ViewFolder { id: string; path: string; name: string; exists: boolean; own: boolean }
 export interface ViewPic { name: string; path: string; kind: "image" | "gif" | "video"; size: number }
 export interface ViewDir { name: string; files: ViewPic[]; dirs: ViewDir[]; total: number }
 export interface CustomDeco {
@@ -351,6 +355,9 @@ export const api = {
   /** Sends a WAV recording to the voice server from Settings → Voice and returns what was said. */
   transcribe: (wav: Uint8Array) => bin("transcribe_audio", wav, {}) as Promise<string>,
   testVoice: () => invoke<string>("test_voice"),
+  linkGalleryFile: (id: string, path: string) => invoke<Character>("link_gallery_file", { id, path }),
+  relocateGalleryLink: (id: string, itemId: string, path: string) => invoke<{ character: Character; also: number }>("relocate_gallery_link", { id, itemId, path }),
+  relocateViewFolder: (id: string, path: string) => invoke<ViewFolder>("relocate_view_folder", { id, path }),
   async addGalleryImage(id: string, file: File): Promise<Character> {
     return bin("add_gallery_image", new Uint8Array(await file.arrayBuffer()), { "x-char-id": id, "x-file-name": enc(file.name) });
   },
@@ -495,6 +502,14 @@ export const api = {
   listViewFolders: () => invoke<ViewFolder[]>("list_view_folders"),
   addViewFolder: (path: string) => invoke<ViewFolder>("add_view_folder", { path }),
   removeViewFolder: (id: string) => invoke<void>("remove_view_folder", { id }),
+  createGalleryFolder: (name: string) => invoke<ViewFolder>("create_gallery_folder", { name }),
+  addFolderPicture: async (folderId: string, file: File) => bin("add_folder_picture", new Uint8Array(await file.arrayBuffer()), { "x-folder-id": folderId, "x-file-name": encodeURIComponent(file.name) }) as Promise<string>,
+  removeFolderPicture: (id: string, path: string) => invoke<void>("remove_folder_picture", { id, path }),
+  /** The small picture (kept on this device) for a picture inside a Gallery folder; the Gallery shows these in its grids instead of full-size photos. */
+  viewThumb: (path: string) => invoke<string>("view_thumb", { path }),
+  /** One turn of a chat with a character about the picture or video on screen. */
+  galleryChat: (characterId: string, messages: { role: string; text: string; attached: number; images: string[] }[], pic: { key: string; title: string; note: string; kind: string; at: number | null; length: number | null }, show: boolean) =>
+    invoke<{ reply: string; saw: boolean }>("gallery_chat", { characterId, messages, pic, show }),
   scanViewFolder: (id: string) => invoke<{ root: ViewDir; truncated: boolean }>("scan_view_folder", { id }),
   listCustomDeco: () => invoke<CustomDeco[]>("list_custom_deco"),
   saveCustomDeco: (items: CustomDeco[]) => invoke<string[]>("save_custom_deco", { items }),
