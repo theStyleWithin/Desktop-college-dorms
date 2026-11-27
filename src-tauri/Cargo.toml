@@ -22,6 +22,7 @@ dorms-core = { path = "../crates/dorms-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
+image = { version = "0.25", default-features = false, features = ["png", "gif", "jpeg", "webp"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json", "multipart"] }
 tokio = { version = "1", features = ["sync", "time", "process", "fs", "io-util", "macros", "net"] }
 futures-util = "0.3"

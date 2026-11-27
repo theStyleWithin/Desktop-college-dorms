@@ -919,6 +919,7 @@ dependencies = [
  "flate2",
  "fs4",
  "futures-util",
+ "image",
  "keyring",
  "qrcode",
  "rand_core 0.6.4",
