@@ -2317,6 +2317,10 @@ try:
         eb = d.find_element(By.CSS_SELECTOR, ".stage [aria-label='Open big viewer']")
         d.execute_script("arguments[0].scrollIntoView({block:'center'})", eb); time.sleep(0.3)
         ActionChains(d).move_to_element(eb).click().perform(); time.sleep(1.5)
+        # the big viewer takes a moment to open on a slow machine: wait for its message bar instead of looking after a fixed pause
+        for _ in range(60):
+            if d.execute_script("return !!document.querySelector('.vrm-big .talkbar')"): break
+            time.sleep(0.5)
         check("the big viewer has a see-through message bar", d.execute_script("const b=document.querySelector('.vrm-big .talkbar');if(!b)return false;const c=getComputedStyle(b).backgroundColor;const m=c.match(/[\\d.]+/g)||[];return m.length>=4&&parseFloat(m[3])<0.8"))
         check("the mic button is in the bar too", d.execute_script("return !!document.querySelector('.vrm-big .talkbar button.mic')"))
         inp = d.find_element(By.CSS_SELECTOR, ".vrm-big .talkbar input")
