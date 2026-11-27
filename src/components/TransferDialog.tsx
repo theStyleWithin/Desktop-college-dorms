@@ -10,6 +10,12 @@ const randomCode = () => { const a = new Uint32Array(8); crypto.getRandomValues(
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const SEND_ACTIVE = ["waiting", "connected", "sending"];
 
+/** The name to suggest for a profile that arrived: its own name (a guest space has no name of its own, so the display name is used), with "-2" if that is taken. */
+export function suggestName(p: Pick<ImportPreview, "handle" | "display_name" | "guest" | "handle_taken">): string {
+  const base = p.guest ? (p.display_name.trim() || "My profile") : p.handle;
+  return p.handle_taken && !p.guest ? `${base}-2` : base;
+}
+
 /** The QR text is `DCD1|<address>|<code>`; the code is everything after the second bar. */
 export function parsePairing(text: string): { addr: string; code: string } | null {
   if (!text.startsWith("DCD1|")) return null;
@@ -50,7 +56,7 @@ export default function TransferDialog({ profileName, hasPasscode, onClose }: { 
   // a profile arrived: look inside it (the same preview an imported file gets)
   useEffect(() => {
     if (recv?.phase === "arrived" && recv.token && !preview) {
-      api.inspectStaged(recv.token).then((p) => { setPreview(p); setHandle(p.handle_taken ? `${p.handle}-2` : p.handle); }).catch((e) => toast(errText(e), "err"));
+      api.inspectStaged(recv.token).then((p) => { setPreview(p); setHandle(suggestName(p)); }).catch((e) => toast(errText(e), "err"));
     }
   }, [recv?.phase, recv?.token]); // eslint-disable-line react-hooks/exhaustive-deps
   // closing the dialog closes the sending device: it only listens while this screen is open
