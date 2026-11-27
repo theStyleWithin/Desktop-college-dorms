@@ -14,6 +14,25 @@ const titleOf = (n: Pick<Note, "title" | "body">) => n.title.trim() || n.body.tr
 export default function Notes() {
   const toast = useToast();
   const list = useListWidth("dorms.panel.notes", 300, "Resize the notes list");
+  // the writing area's height: it fills the page until you drag the bar under it (the height is kept on this device; double-click puts it back)
+  const HKEY = "dorms.notes.height";
+  const [bodyH, setBodyH] = useState<number | null>(() => { try { const v = Number(localStorage.getItem(HKEY)); return v >= 120 && v <= 2000 ? v : null; } catch { return null; } });
+  const keepH = (n: number | null) => { try { if (n === null) localStorage.removeItem(HKEY); else localStorage.setItem(HKEY, String(n)); } catch { /* storage unavailable */ } };
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const startDrag = (e: React.PointerEvent) => {
+    const el = bodyRef.current; if (!el) return;
+    e.preventDefault();
+    const y0 = e.clientY, h0 = el.getBoundingClientRect().height; let h = h0;
+    const move = (ev: PointerEvent) => { h = Math.min(2000, Math.max(120, h0 + ev.clientY - y0)); setBodyH(h); };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); keepH(h); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
+  const nudge = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    const h = Math.min(2000, Math.max(120, (bodyH ?? bodyRef.current?.getBoundingClientRect().height ?? 300) + (e.key === "ArrowDown" ? 40 : -40)));
+    setBodyH(h); keepH(h);
+  };
   const [notes, setNotes] = useState<Note[] | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -92,7 +111,9 @@ export default function Notes() {
               <button className={`btn sm ${draft.pinned ? "primary" : ""}`} aria-pressed={draft.pinned} onClick={() => edit({ pinned: !draft.pinned })} title="Keep at the top">📌</button>
               <button className="btn sm danger" onClick={() => void remove()} aria-label="Delete note">🗑</button>
             </div>
-            <textarea className="note-body" placeholder="Write anything. There is no length limit." value={draft.body} onChange={(e) => edit({ body: e.target.value })} aria-label="Note text" spellCheck />
+            <textarea ref={bodyRef} className="note-body" style={bodyH ? { flex: "none", height: bodyH } : undefined} placeholder="Write anything. There is no length limit." value={draft.body} onChange={(e) => edit({ body: e.target.value })} aria-label="Note text" spellCheck />
+            <div className="note-grip" role="separator" aria-orientation="horizontal" aria-label="Resize the writing area (drag, or use the up and down arrow keys; double-click puts it back)" tabIndex={0} data-testid="note-grip"
+              onPointerDown={startDrag} onKeyDown={nudge} onDoubleClick={() => { setBodyH(null); keepH(null); }} />
             <div className="tok" style={{ marginTop: 6 }}>
               {draft.body.length.toLocaleString()} characters · {words(draft.body).toLocaleString()} words · {state === "saved" ? "Saved" : state === "saving" ? "Saving…" : "Unsaved…"}
             </div>

@@ -163,7 +163,7 @@ Also new: **emoji and stickers** (everywhere or per room, and the characters use
   Library cards are bigger too.
 - **Lorebooks**: a Lorebooks library (import SillyTavern world info or a card's book), attached to any number of characters, working
   together with the book inside a card. **More initial messages** sit in the main editor, and you pick which one opens a new chat.
-- **Notes**: a page for writing with no length limit, like a card's creator notes but always a click away. Saves by itself; search and pin.
+- **Notes**: a page for writing with no length limit, like a card's creator notes but always a click away. Saves by itself; search and pin. Drag the edge of the list to change its width, and drag the bar under the writing area to change its height (arrow keys work on the bar; double-click puts it back). Both are remembered on this device.
 - **Chub-style character editor**: tagline, in-chat name, tags, description, first message, scenario, example dialogs,
   live token counts, alternate greetings (as swipes), system prompt, post-history instructions, character's note with depth,
   and an embedded lorebook (keyword / regex triggers). Everything stays editable after creation.
