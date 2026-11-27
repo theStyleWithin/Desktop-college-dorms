@@ -450,6 +450,14 @@ async fn run_receive(st: crate::Shared, gen: u64, addr: SocketAddr, code: String
     }
 }
 
+/// Forgets what the receiving side was showing (an item that arrived has been added or thrown away).
+pub fn clear_receive(st: &crate::AppState) {
+    let mut t = st.transfer.lock().unwrap();
+    let g = slot(&mut t, RECV);
+    g.gen += 1;
+    g.status = TransferStatus::default();
+}
+
 /// Where a transfer is (`role` is `send` or `receive`); the screen asks every second or so.
 #[tauri::command]
 pub fn transfer_status(state: tauri::State<'_, crate::Shared>, role: String) -> TransferStatus {

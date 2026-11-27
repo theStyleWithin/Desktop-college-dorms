@@ -49,7 +49,7 @@ export default function TransferDialog({ profileName, hasPasscode, onClose, item
   // pick up where a transfer already is (the dialog may have been closed and opened again)
   useEffect(() => {
     void api.transferStatus("send").then((s) => { setSend(s); if (SEND_ACTIVE.includes(s.phase)) { setMode("send"); setCode(s.code); } }).catch(() => {});
-    void api.transferStatus("receive").then((s) => { setRecv(s); if (s.phase === "arrived" || s.phase === "receiving") setMode("receive"); }).catch(() => {});
+    void api.transferStatus("receive").then((s) => { setRecv(s); if (!item && (s.phase === "arrived" || s.phase === "receiving")) setMode("receive"); }).catch(() => {});
   }, []);
   useEffect(() => {
     if (mode === "choose") return;

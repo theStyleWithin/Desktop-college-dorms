@@ -91,6 +91,7 @@ pub fn add_staged_item(state: tauri::State<'_, crate::Shared>, token: String, ki
     let bytes = crate::accounts::staged_bytes(&state, &token)?;
     let info = add(&state, &kind, &bytes)?;
     *state.staged.lock().unwrap() = None;
+    crate::transfer::clear_receive(&state);
     Ok(info)
 }
 
