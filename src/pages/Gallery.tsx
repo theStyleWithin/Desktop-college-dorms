@@ -6,6 +6,7 @@ import { useStore } from "../store";
 import { errText } from "../lib/util";
 import { useToast } from "../components/ui";
 import PictureComments from "../components/PictureComments";
+import PictureLinkBox, { pastedPicture } from "../components/PictureLinkBox";
 
 /**
  * Gallery: a quick look at pictures, for when you just want to look at the art and not chat. Every character is an art folder holding
@@ -42,7 +43,7 @@ function Pic({ t, fit = "cover", big }: { t: Tile; fit?: "cover" | "contain"; bi
 type Where = { kind: "char"; id: string; sub: boolean } | { kind: "disk"; id: string; path: string[] } | null;
 
 export default function Gallery() {
-  const { characters, go, info, me } = useStore();
+  const { characters, go, info, me, refresh } = useStore();
   const toast = useToast();
   const [q, setQ] = useState("");
   const [onlyGalleries, setOnlyGalleries] = useState(false);
@@ -61,6 +62,12 @@ export default function Gallery() {
   const shown = sorted.filter((c) => (!onlyGalleries || (c.gallery?.length ?? 0) > 0)
     && (!q.trim() || `${displayName(c)} ${c.card.tags.join(" ")}`.toLowerCase().includes(q.trim().toLowerCase())));
   const total = characters.reduce((n, c) => n + picCount(c), 0);
+
+  /** Adds a picture (from a link or the clipboard) to a character's own gallery, the same as adding it in the character's editor. */
+  const addToGallery = async (c: Character, f: File) => {
+    try { await api.addGalleryImage(c.id, f); await refresh(); toast(`Added to ${displayName(c)}'s gallery.`, "ok"); }
+    catch (e) { toast(`${f.name}: ${errText(e)}`, "err"); }
+  };
 
   const scan = useCallback(async (f: ViewFolder) => {
     if (!f.exists) { setScans((s) => ({ ...s, [f.id]: "error" })); return; }
@@ -153,7 +160,7 @@ export default function Gallery() {
   if (at?.kind === "char" && who) {
     const prof = profileTile(who), gal = galleryTiles(who);
     return (
-      <div className="page" data-testid="gallery-folder">
+      <div className="page" data-testid="gallery-folder" onPaste={(e) => { if ((e.target as HTMLElement).closest("input, textarea")) return; const f = pastedPicture(e); if (f) { e.preventDefault(); void addToGallery(who, f); } }}>
         <div className="page-head">
           <div>
             {crumbs([{ label: "🖼️ Gallery", go: () => setAt(null) }, at.sub ? { label: `📁 ${displayName(who)}`, go: () => setAt({ ...at, sub: false }) } : { label: `📁 ${displayName(who)}` }, ...(at.sub ? [{ label: "Gallery" }] : [])])}
@@ -161,6 +168,9 @@ export default function Gallery() {
             <div className="sub">{at.sub ? `${gal.length} in their gallery` : plural(picCount(who), "picture")}</div>
           </div>
           <div className="row"><button className="btn" onClick={() => go({ page: "editor", id: who.id })}>Open character</button></div>
+        </div>
+        <div style={{ maxWidth: 520, marginBottom: 14 }} data-testid="gallery-add-here">
+          <PictureLinkBox testid="gallery-folder-link" onFile={(f) => addToGallery(who, f)} placeholder="Add a picture to their gallery: paste a link (https://…)" />
         </div>
         {at.sub ? tileGrid(gal) : (
           <>
