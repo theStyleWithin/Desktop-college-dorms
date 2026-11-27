@@ -1,7 +1,13 @@
 // Dev-only harness (not part of the production build): the Decorations tab, the side bar's profile button and the characters list with sample data and no backend.
 // Usage: /deco-dev.html?plate=bubbletea&bg=boba&wreath=bobacup
+const svgOf = (w: number, h: number, body: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}">${body}</svg>`;
+/** Two of "my decorations", so the picker can be seen with some (what the app keeps when someone adds their own). */
+const SAMPLE_CUSTOM = [
+  { did: "cp_a7508af2b5", dkind: "plate", mode: "svg", name: "Candy bar", blurb: "", art: svgOf(960, 176, '<rect width="960" height="176" fill="#f4a"/>'), still: "", moves: false, author: "", license: "", pack: "", cols: 0, rows: 0, frames: 0, dur: 0, src: "" },
+  { did: "cw_9dd18e09d4", dkind: "wreath", mode: "svg", name: "Gold ring", blurb: "", art: svgOf(576, 576, '<circle cx="288" cy="288" r="262" fill="none" stroke="gold" stroke-width="26"/>'), still: "", moves: false, author: "", license: "", pack: "", cols: 0, rows: 0, frames: 0, dur: 0, src: "" },
+];
 (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
-  invoke: async (cmd: string) => (cmd === "list_char_deco" ? [] : cmd === "list_statuses" ? [] : cmd === "provider_health" ? { state: "ok", detail: "", model: "demo", checked_at: Date.now() } : null),
+  invoke: async (cmd: string) => (cmd === "list_custom_deco" ? SAMPLE_CUSTOM : cmd === "list_char_deco" ? [] : cmd === "list_statuses" ? [] : cmd === "provider_health" ? { state: "ok", detail: "", model: "demo", checked_at: Date.now() } : null),
   convertFileSrc: (p: string) => p,
 };
 import { useState } from "react";
@@ -14,6 +20,7 @@ import DecoTab from "../components/DecoTab";
 import { MembersList } from "../components/MembersPanel";
 import { TagChip, Wreathed, plateProps, setDecoMotion } from "../lib/deco";
 import { ProfileAvatar } from "../components/ProfileForms";
+import { reloadCustomDeco } from "../lib/decoCustom";
 import { P, portrait } from "./portraits";
 
 const q = new URLSearchParams(location.search);
@@ -42,4 +49,5 @@ function App() {
     </StoreCtx.Provider></ToastProvider>
   );
 }
+void reloadCustomDeco();
 createRoot(document.getElementById("root")!).render(<App />);

@@ -1585,17 +1585,17 @@ try:
     check("the art is drawn by the page (one moving set, one still set)", d.execute_script("const s=document.getElementById('deco-art');return !!s && s.textContent.includes('data-wreath=\"bobacup\"') && s.textContent.includes('data-deco-anim=\"off\"')"))
     # the person's own decorations: a .asdeco pack goes in, is drawn, can be worn, deleted, and is not added twice
     svg_ = lambda w, h, body: f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}">{body}</svg>'
-    pack_ = {"format": "anti-social-decorations", "v": 1, "name": "E2E pack", "author": "Tester", "license": "CC0", "items": [
+    decopk_ = {"format": "anti-social-decorations", "v": 1, "name": "E2E pack", "author": "Tester", "license": "CC0", "items": [
         {"kind": "plate", "name": "Candy bar", "art": svg_(960, 176, '<rect width="960" height="176" fill="#f4a"><animate attributeName="opacity" values="1;.6;1" dur="2s" repeatCount="indefinite"/></rect>')},
         {"kind": "wreath", "name": "Gold ring", "art": svg_(576, 576, '<circle cx="288" cy="288" r="260" fill="none" stroke="gold" stroke-width="30"/>')},
         {"kind": "banner", "name": "Sky", "art": svg_(2400, 400, '<rect width="2400" height="400" fill="#38f"/>')},
         {"kind": "plate", "name": "Wrong shape", "art": svg_(100, 100, '<rect width="100" height="100"/>')}]}
-    pack_path = os.path.join(WORK, "e2e-pack.asdeco"); open(pack_path, "w").write(json.dumps(pack_))
-    def import_pack():
+    decopk_path = os.path.join(WORK, "e2e-pack.asdeco"); open(decopk_path, "w").write(json.dumps(decopk_))
+    def import_decopk():
         inp_ = d.find_element(By.CSS_SELECTOR, "[data-testid=deco-import-input]")
         d.execute_script("arguments[0].hidden=false;arguments[0].style.display='block';", inp_)
-        inp_.send_keys(pack_path); wait(20).until(lambda x: x.find_elements(By.CSS_SELECTOR, "[data-testid=deco-import]")); time.sleep(0.5)
-    import_pack()
+        inp_.send_keys(decopk_path); wait(20).until(lambda x: x.find_elements(By.CSS_SELECTOR, "[data-testid=deco-import]")); time.sleep(0.5)
+    import_decopk()
     check("a pack shows what is in it, and says what it could not use", d.execute_script("return document.querySelectorAll('[data-testid=deco-import] [data-deco-item]').length") == 3 and "Wrong shape" in d.find_element(By.CSS_SELECTOR, "[data-testid=deco-import]").text and "not added" in d.find_element(By.CSS_SELECTOR, "[data-testid=deco-import]").text)
     d.find_element(By.CSS_SELECTOR, "[data-testid=deco-import-add]").click(); time.sleep(1.2)
     mine_ = invoke("list_custom_deco")
@@ -1605,7 +1605,7 @@ try:
     d.execute_script("document.querySelector('[data-plate-pick=\"%s\"]').click()" % plate_["did"]); time.sleep(1.0)
     check("one of them can be worn like any other, and it is kept", invoke("get_settings")["deco"]["plate"] == plate_["did"])
     d.execute_script("document.querySelector('[data-testid=deco-import-input]').value=''")
-    import_pack()
+    import_decopk()
     check("adding the same pack again does not add them twice", d.execute_script("return [...document.querySelectorAll('[data-testid=deco-import] [data-deco-item]')].every(r => r.classList.contains('dim'))") and d.find_element(By.CSS_SELECTOR, "[data-testid=deco-import-add]").get_attribute("disabled") is not None)
     d.execute_script("[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Cancel').click()"); time.sleep(0.4)
     d.execute_script("document.querySelector('[data-testid=deco-manage-open]').click()"); time.sleep(0.6)
