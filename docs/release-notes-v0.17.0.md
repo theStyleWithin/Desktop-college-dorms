@@ -50,11 +50,9 @@ These used to be shared by everyone on the device and now belong to the profile 
 The release now includes **`desktop-college-dorms-packaging-0.17.0.tar.gz`**: the Flatpak manifest and the two AUR packages with this version and the Linux tarball's checksum already filled in, a `.SRCINFO` for the AUR `-bin` package, and a `HANDOFF.md` that walks someone through trying the package and submitting it. The developer doesn't submit to Flathub or the AUR; **anyone is welcome to** (the app is MIT licensed and the owner has given full consent, no need to ask). The Linux tarball now also carries the desktop entry, metadata and icons so these packages need nothing else.
 
 ### ⚠️ A warning about what is and isn't tested
-The developer builds and tests this app on Linux. **These are built by the project's automated builds but have never been run by the developer on real devices:**
+The developer tests this app on **Linux (the AppImage)** and on **Android**. **These are built by the project's automated builds but the developer does not test them:**
 - the **Windows** installer and the portable `.exe`,
-- the **Linux AppImage** on machines other than the test one (and on Steam Deck),
-- the **Android** app (Mobile College Dorms), including its new built-in engine and profile export,
-- and the **Flatpak and AUR packages**, which nobody has built yet (they come as a hand-off bundle).
+- the **Flatpak and AUR packages**, which nobody has built yet (they come as a hand-off bundle).
 
 If something doesn't work for you on one of these, that is probably a real problem nobody has seen yet. Please say so on the project's issues page.
 
