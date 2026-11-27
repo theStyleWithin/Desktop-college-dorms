@@ -6,14 +6,12 @@
 use serde::Serialize;
 use tauri::{ipc::Request, State};
 
-use crate::commands::{e, header, media_kind, owner, raw_body, uid};
+use crate::commands::{e, header, owner, raw_body, uid};
 use crate::db::{self, EmojiItem, MAX_EMOJI, MAX_STICKERS};
 use crate::Shared;
 
 type R<T> = Result<T, String>;
 
-const MAX_EMOJI_BYTES: usize = 512 * 1024;
-const MAX_STICKER_BYTES: usize = 3 * 1024 * 1024;
 
 #[derive(Serialize)]
 pub struct EmojiOut {
@@ -54,26 +52,24 @@ pub fn list_emoji(state: State<'_, Shared>) -> R<Vec<EmojiOut>> {
 }
 
 /// Add one: the picture comes as the body, the rest in headers (`x-kind`, `x-name`, `x-meaning`, `x-room-id`, `x-file-name`).
+/// The picture can be any size of PNG, JPG, WebP or GIF: it is made into an emoji (or sticker) here (see `emojiconv.rs`), off the main thread
+/// because a big animation takes a moment.
 #[tauri::command]
-pub fn add_emoji(request: Request<'_>, state: State<'_, Shared>) -> R<EmojiOut> {
+pub async fn add_emoji(request: Request<'_>, state: State<'_, Shared>) -> R<EmojiOut> {
     let kind = header(&request, "x-kind");
     let file_name = header(&request, "x-file-name");
     let room_raw = header(&request, "x-room-id");
-    let bytes = raw_body(&request)?;
+    let (name_raw, meaning_raw) = (header(&request, "x-name"), header(&request, "x-meaning"));
+    let bytes: Vec<u8> = raw_body(&request)?.to_vec();   // a copy, because the request can't be held across the wait below
     let o = owner(&state)?;
     if kind != "emoji" && kind != "sticker" {
         return Err("Choose emoji or sticker.".into());
     }
-    let (mk, ext) = media_kind(&file_name)?;
-    if mk != "image" && mk != "gif" {
-        return Err("Emoji and stickers are pictures: PNG, JPG, WebP or GIF.".into());
-    }
-    let (limit, max_bytes, what) = if kind == "emoji" { (MAX_EMOJI, MAX_EMOJI_BYTES, "emoji") } else { (MAX_STICKERS, MAX_STICKER_BYTES, "stickers") };
-    if bytes.is_empty() || bytes.len() > max_bytes {
-        return Err(format!("That picture is too big for {what} ({} KB at most).", max_bytes / 1024));
-    }
+    let (limit, what) = if kind == "emoji" { (MAX_EMOJI, "emoji") } else { (MAX_STICKERS, "stickers") };
+    let (kind_c, bytes_c) = (kind.clone(), bytes);
+    let (bytes, ext) = tauri::async_runtime::spawn_blocking(move || crate::emojiconv::to_emoji(&bytes_c, &kind_c)).await.map_err(e)??;
     let stem = std::path::Path::new(&file_name).file_stem().and_then(|x| x.to_str()).unwrap_or("").to_string();
-    let wanted = { let n = header(&request, "x-name"); if n.trim().is_empty() { stem } else { n } };
+    let wanted = if name_raw.trim().is_empty() { stem } else { name_raw };
     let name = clean_name(&wanted).ok_or("Give it a name of 2 to 24 letters or numbers.")?;
     let room_id = if room_raw.trim().is_empty() { None } else { Some(room_raw.trim().parse::<i64>().map_err(|_| "That room doesn't exist any more.")?) };
     let db = state.db.lock().unwrap();
@@ -87,7 +83,7 @@ pub fn add_emoji(request: Request<'_>, state: State<'_, Shared>) -> R<EmojiOut> 
     let id = uid();
     let rel = format!("media/emoji-{id}.{ext}");
     std::fs::write(state.data_dir.join(&rel), bytes).map_err(e)?;
-    let item = EmojiItem { id, kind, name, meaning: clean_meaning(&header(&request, "x-meaning")), file: rel, room_id, created_at: db::now() };
+    let item = EmojiItem { id, kind, name, meaning: clean_meaning(&meaning_raw), file: rel, room_id, created_at: db::now() };
     db::save_emoji(&db, &item, &o).map_err(e)?;
     Ok(out(&state, item))
 }
