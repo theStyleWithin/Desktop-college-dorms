@@ -201,6 +201,18 @@ pub struct World {
     /// Ids of the lorebooks attached to it.
     #[serde(default)]
     pub lorebooks: Vec<String>,
+    /// A persona (its id) that stands in for the person's own while a chat is in this world. "" for none.
+    #[serde(default)]
+    pub persona: String,
+    /// A playbook (its id) the chats here use when neither the chat nor its characters choose one. "" for none.
+    #[serde(default)]
+    pub playbook: String,
+    /// Standing instructions for every chat in this world, placed after the characters' own instructions (which win if they disagree).
+    #[serde(default)]
+    pub instructions: String,
+    /// Saved prompts (their ids) that sit first in the Prompts menu while the person is in a chat in this world.
+    #[serde(default)]
+    pub prompts: Vec<String>,
     #[serde(default)]
     pub created_at: i64,
 }
@@ -434,6 +446,9 @@ pub struct Chat {
     /// The room the story has moved into (a pathway taken). Without one, the chat is in its dorm's room.
     #[serde(default)]
     pub room_id: Option<i64>,
+    /// True when the person chose, for this chat only, to play as their own persona even though its world brings one.
+    #[serde(default)]
+    pub world_persona_off: bool,
 }
 
 fn default_style() -> String {
@@ -685,6 +700,8 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
         "CREATE TABLE IF NOT EXISTS worlds(id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id TEXT, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS world_lorebooks(world_id INTEGER NOT NULL, book_id TEXT NOT NULL, PRIMARY KEY(world_id, book_id));",
     )?;
+    for col in ["persona", "playbook", "instructions"] { ensure_column(&conn, "worlds", col, "TEXT NOT NULL DEFAULT ''")?; }
+    ensure_column(&conn, "worlds", "prompts", "TEXT NOT NULL DEFAULT '[]'")?;
     ensure_column(&conn, "worlds", "lore", "TEXT NOT NULL DEFAULT ''")?; // after the table exists (worlds made before this had no lore)
     ensure_column(&conn, "rooms", "deco_plate", "TEXT NOT NULL DEFAULT 'none'")?;
     ensure_column(&conn, "rooms", "deco_bg", "TEXT NOT NULL DEFAULT ''")?;
@@ -693,6 +710,7 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
     ensure_column(&conn, "rooms", "deco_tag_color", "TEXT NOT NULL DEFAULT '#5865f2'")?;
     ensure_column(&conn, "rooms", "deco_tag_glyph", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "chats", "room_id", "INTEGER")?;
+    ensure_column(&conn, "chats", "world_persona_off", "INTEGER NOT NULL DEFAULT 0")?;
     conn.execute_batch("CREATE TABLE IF NOT EXISTS room_links(a INTEGER NOT NULL, b INTEGER NOT NULL, PRIMARY KEY(a,b));")?;
     for t in ["rooms", "mechanics", "notes", "folders", "lorebooks", "personas"] {
         conn.execute_batch(&format!("CREATE INDEX IF NOT EXISTS idx_{t}_profile ON {t}(profile_id);"))?;
@@ -881,9 +899,9 @@ fn world_books(c: &Connection, id: i64) -> Vec<String> {
 }
 
 pub fn list_worlds(c: &Connection, owner: &Owner) -> R<Vec<World>> {
-    let mut s = c.prepare("SELECT id,name,description,lore,created_at FROM worlds WHERE profile_id IS ?1 ORDER BY id")?;
-    let rows: Vec<(i64, String, String, String, i64)> = s.query_map([owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?.filter_map(|r| r.ok()).collect();
-    Ok(rows.into_iter().map(|(id, name, description, lore, created_at)| World { id, name, description, lore, lorebooks: world_books(c, id), created_at }).collect())
+    let mut s = c.prepare("SELECT id,name,description,lore,created_at,persona,playbook,instructions,prompts FROM worlds WHERE profile_id IS ?1 ORDER BY id")?;
+    let rows: Vec<(i64, String, String, String, i64, String, String, String, String)> = s.query_map([owner], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)))?.filter_map(|r| r.ok()).collect();
+    Ok(rows.into_iter().map(|(id, name, description, lore, created_at, persona, playbook, instructions, prompts)| World { id, name, description, lore, lorebooks: world_books(c, id), persona, playbook, instructions, prompts: serde_json::from_str(&prompts).unwrap_or_default(), created_at }).collect())
 }
 
 pub fn get_world(c: &Connection, id: i64, owner: &Owner) -> R<Option<World>> {
@@ -904,6 +922,15 @@ pub fn update_world(c: &Connection, id: i64, name: &str, description: &str, lore
     for b in lorebooks.iter().filter(|b| mine.contains(b)) {
         c.execute("INSERT OR IGNORE INTO world_lorebooks(world_id,book_id) VALUES(?1,?2)", params![id, b])?;
     }
+    Ok(())
+}
+
+/// Sets what a world brings along: a persona and a playbook (ids; the caller has checked they are the owner's) and standing instructions.
+pub fn set_world_setup(c: &Connection, id: i64, persona: &str, playbook: &str, instructions: &str, prompts: &[String], owner: &Owner) -> R<()> {
+    let mine: Vec<String> = list_prompts(c, owner)?.into_iter().map(|p| p.id).collect();
+    let mut keep: Vec<&String> = Vec::new();
+    for p in prompts.iter().filter(|p| mine.contains(p)) { if !keep.contains(&p) && keep.len() < 30 { keep.push(p); } }
+    c.execute("UPDATE worlds SET persona=?2, playbook=?3, instructions=?4, prompts=?6 WHERE id=?1 AND profile_id IS ?5", params![id, persona, playbook, instructions, owner, serde_json::to_string(&keep).unwrap_or_else(|_| "[]".into())])?;
     Ok(())
 }
 
@@ -1553,10 +1580,11 @@ fn row_chat(r: &rusqlite::Row) -> R<Chat> {
         updated_at: r.get(10)?,
         style: r.get(11)?,
         room_id: r.get(12)?,
+        world_persona_off: r.get::<_, i64>(13)? != 0,
     })
 }
 
-const CHAT_COLS: &str = "id,dorm_id,name,kind,character_ids,auto_chat,auto_interval_s,turn_mode,max_auto_turns,created_at,updated_at,style,room_id";
+const CHAT_COLS: &str = "id,dorm_id,name,kind,character_ids,auto_chat,auto_interval_s,turn_mode,max_auto_turns,created_at,updated_at,style,room_id,world_persona_off";
 
 pub fn list_chats(c: &Connection, owner: &Owner) -> R<Vec<Chat>> {
     let sql = format!("SELECT {CHAT_COLS} FROM chats WHERE profile_id IS ?1 ORDER BY updated_at DESC");
@@ -1601,12 +1629,13 @@ pub fn set_chat_room(c: &Connection, id: i64, room_id: Option<i64>, owner: &Owne
 pub fn update_chat(c: &Connection, ch: &Chat, owner: &Owner) -> R<()> {
     c.execute(
         "UPDATE chats SET dorm_id=?2,name=?3,kind=?4,character_ids=?5,auto_chat=?6,auto_interval_s=?7,
-         turn_mode=?8,max_auto_turns=?9,updated_at=?10,style=?12 WHERE id=?1 AND profile_id IS ?11",
+         turn_mode=?8,max_auto_turns=?9,updated_at=?10,style=?12,world_persona_off=?13 WHERE id=?1 AND profile_id IS ?11",
         params![
             ch.id, ch.dorm_id, ch.name, ch.kind,
             serde_json::to_string(&ch.character_ids).unwrap_or_default(),
             ch.auto_chat as i64, ch.auto_interval_s.max(5), ch.turn_mode, ch.max_auto_turns.max(1), now(), owner,
-            if ch.style == "phone" { "phone" } else { "chat" }
+            if ch.style == "phone" { "phone" } else { "chat" },
+            ch.world_persona_off as i64
         ],
     )?;
     Ok(())

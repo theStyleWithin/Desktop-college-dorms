@@ -47,7 +47,7 @@ export default function PlaybookPanel({ chatId, onClose }: { chatId: number; onC
         <p className="sub">A playbook keeps this chat's story: values the characters are told about, and rules that change them as you talk. One runs at a time.</p>
         <label className="field"><span>Which playbook</span>
           <select aria-label="Playbook for this chat" data-testid="pb-pick" value={choice} onChange={(e) => void pick(e.target.value)}>
-            <option value="inherit">The character's own{data.from_character ? "" : " (none)"}</option>
+            <option value="inherit">{data.from_world ? "The world's" : "The character's own"}{data.from_character ? "" : " (none)"}</option>
             <option value="none">None for this chat</option>
             {mine.map((p) => <option key={p.id} value={`set:${p.id}`}>{p.name}</option>)}
           </select></label>

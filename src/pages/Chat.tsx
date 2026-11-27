@@ -1,10 +1,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api, displayName, mediaUrl, musicUrl, onAutoStopped, onGen, tagline, type Character, type Chat, type ChatKind, type Message, type TurnMode,
-  galleryUrl, onNovel, type MediaKind, type NovelStatus,
+  galleryUrl, onNovel, type MediaKind, type NovelStatus, type Playbook,
 } from "../api";
 import Art from "../components/Art";
 import MicButton from "../components/MicButton";
+import { DRAG_PERSON } from "../components/MembersPanel";
 import MechanicsPanel from "../components/MechanicsPanel";
 import PlaybookPanel from "../components/PlaybookPanel";
 import NovelDialog from "../components/NovelDialog";
@@ -12,6 +13,7 @@ import PhoneView from "../components/PhoneView";
 import MusicPlayer from "../components/MusicPlayer";
 import MusicField from "../components/MusicField";
 import { PROMPT_DRAG } from "../components/PromptsMenu";
+import { setWorldShelf } from "../lib/worldShelf";
 import { detectMood, pickGalleryItem } from "../lib/mood";
 import { useTextScale, setTextScaleAnchored, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
 import { TagChip, Wreathed, useAway, useCharDeco } from "../lib/deco";
@@ -23,6 +25,8 @@ import type { Speech } from "../components/SpeechBubble";
 import { Modal, useToast } from "../components/ui";
 import { errText, timeAgo } from "../lib/util";
 import { useStore } from "../store";
+
+const MAX_PEOPLE = 8;
 
 interface Live { rid: string; characterId: string; text: string; phase: "loading" | "start" | "streaming"; /** set when extending an existing message */ continueOf: number | null }
 
@@ -74,6 +78,24 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
     if (moved) return moved;
     const d = dorms.find((x) => x.id === chat?.dorm_id); return d?.room_id != null ? rooms.find((r) => r.id === d.room_id) ?? null : null;
   }, [chat, dorms, rooms]);
+  /** What the world this chat is in brings along (shown as one line under the title). */
+  const chatWorld = useMemo(() => (room?.world_id != null ? worlds.find((w) => w.id === room.world_id) : undefined), [room, worlds]);
+  const [worldPbs, setWorldPbs] = useState<Playbook[]>([]);
+  useEffect(() => { if (chatWorld?.playbook) api.listPlaybooks().then(setWorldPbs).catch(() => {}); }, [chatWorld?.playbook]);
+  useEffect(() => {
+    setWorldShelf(chatWorld && chatWorld.prompts.length ? { world: chatWorld.name, ids: chatWorld.prompts } : null);
+    return () => setWorldShelf(null);
+  }, [chatWorld]);
+  const worldBrings = useMemo(() => {
+    if (!chatWorld) return "";
+    const bits: string[] = [];
+    const pe = personas.find((x) => x.id === chatWorld.persona); if (pe) bits.push(`you play ${pe.name}`);
+    const pb = worldPbs.find((x) => x.id === chatWorld.playbook); if (pb) bits.push(`playbook ${pb.name}`);
+    if (chatWorld.lorebooks.length) bits.push(`${chatWorld.lorebooks.length} lorebook${chatWorld.lorebooks.length === 1 ? "" : "s"}`);
+    if (chatWorld.instructions.trim()) bits.push("standing instructions");
+    if (chatWorld.prompts.length) bits.push(`${chatWorld.prompts.length} prompt${chatWorld.prompts.length === 1 ? "" : "s"} on the shelf`);
+    return bits.length ? `From this world (${chatWorld.name}): ${bits.join(", ")}` : "";
+  }, [chatWorld, personas, worldPbs]);
   // a moving (GIF) backdrop moves only here, in the chat in front, and only while the app is in front and animation is on
   const awayNow = useAway();
   const roomBg = roomBackground(room, !awayNow && settings.deco?.animate !== false);
@@ -227,6 +249,25 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
   };
   const stop = () => live && api.cancelGeneration(live.rid);
 
+  const [dropOver, setDropOver] = useState(false);
+  const [askGroup, setAskGroup] = useState<string | null>(null);
+  const isPerson = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes(DRAG_PERSON);
+  /** Brings a character into this chat (dragged in, or added with the button): no one twice, a cap on the size, and a one-to-one chat asks before it becomes a group. */
+  const addPerson = async (id: string) => {
+    if (!chat) return;
+    if (chat.character_ids.includes(id)) return toast("They're already in this chat.", "info");
+    if (chat.character_ids.length >= MAX_PEOPLE) return toast(`A chat can have up to ${MAX_PEOPLE} characters here.`, "info");
+    if (chat.kind === "dm" && chat.character_ids.length >= 1) { setAskGroup(id); return; }
+    await patchChat({ character_ids: [...chat.character_ids, id] });
+  };
+  const makeGroup = async () => {
+    if (!chat || !askGroup) return;
+    const id = askGroup;
+    setAskGroup(null);
+    await patchChat({ kind: "group", character_ids: [...chat.character_ids, id] });
+    toast("It's a group chat now.", "ok");
+  };
+
   const patchChat = async (patch: Partial<Chat>) => {
     if (!chat) return;
     await api.updateChat({ ...chat, ...patch });
@@ -355,13 +396,21 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                   </select>
                 </>
               )}
-              {personas.length > 0 && (
+              {chatWorld && personas.some((x) => x.id === chatWorld.persona) && !chat.world_persona_off ? (
+                <span className="row" style={{ gap: 6 }}>
+                  <span className="chip" data-testid="world-persona-note" title="This world brings a persona, so it stands in for yours while you are in this world">Playing as {personas.find((x) => x.id === chatWorld.persona)?.name} (from this world)</span>
+                  <button className="btn sm" data-testid="world-persona-off" onClick={() => patchChat({ world_persona_off: true })} title="Use your own persona in this chat only">Use mine here</button>
+                </span>
+              ) : (<>
+                {chatWorld && chat.world_persona_off && personas.some((x) => x.id === chatWorld.persona) && <button className="btn sm" data-testid="world-persona-on" onClick={() => patchChat({ world_persona_off: false })} title="Go back to the world's persona in this chat">Use the world's</button>}
+                {personas.length > 0 && (
                 <select style={{ width: "auto" }} aria-label="Playing as" title="Who you are in this roleplay" value={settings.active_persona}
                   onChange={(e) => { void api.setActivePersona(e.target.value || null).then(refresh).catch((er) => toast(errText(er), "err")); }}>
                   <option value="">Playing as {settings.user_name}</option>
                   {personas.map((p) => <option key={p.id} value={p.id}>Playing as {p.name}</option>)}
                 </select>
-              )}
+                )}
+              </>)}
               <button className={`btn sm ${phone ? "primary" : ""}`} aria-pressed={phone} onClick={() => patchChat({ style: phone ? "chat" : "phone" })} title="Switch between the normal chat and a texting view">📱 Phone</button>
               <button className="btn sm" onClick={() => setModal({ type: "mech" })} title="Optional story layers: affection, status, and more">🧩 Mechanics</button>
               <button className="btn sm" onClick={() => setModal({ type: "playbook" })} title="The story's values and rules" data-testid="pb-open">🎲 Playbook</button>
@@ -369,6 +418,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               <button className="btn sm" onClick={async () => { if (window.confirm("Clear every message in this chat?")) { await api.clearChat(chat.id); setMsgs([]); } }}>Clear</button>
               <button className="btn sm danger" onClick={deleteChat}>Delete</button>
               </div>
+              {worldBrings && <div className="hint" data-testid="world-brings" style={{ flexBasis: "100%" }}>🌍 {worldBrings}</div>}
             </header>
 
             {phone ? (
@@ -490,7 +540,10 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
         )}
       </section>
 
-      <aside className="side-panel">
+      <aside className={`side-panel${dropOver ? " drop-over" : ""}`} data-testid="side-panel"
+        onDragOver={(e) => { if (chat && isPerson(e)) { e.preventDefault(); setDropOver(true); } }}
+        onDragLeave={(e) => { if (e.currentTarget === e.target) setDropOver(false); }}
+        onDrop={(e) => { setDropOver(false); if (!chat || !isPerson(e)) return; e.preventDefault(); try { const ids: string[] = JSON.parse(e.dataTransfer.getData(DRAG_PERSON)); if (ids[0]) void addPerson(ids[0]); } catch { /* not ours */ } }}>
         {stageChar ? (
           <>
             <div className="stage"><Art key={stageChar.id + (stageChar.media?.file ?? "") + (stageArt?.url ?? "")} kind={stageArt?.kind ?? stageChar.media?.kind ?? null} url={stageArt?.url ?? mediaUrl(stageChar)} name={displayName(stageChar)} frame={stageArt ? stageArt.frame : stageChar.frame} mode="full" scene={roomScene(room)} attentive={busy || listening || text.trim().length > 0}
@@ -513,7 +566,8 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               </div>
             )}
           </>
-        ) : <div className="hint">Characters in this chat show up here.</div>}
+        ) : <div className="hint" data-testid="side-panel-empty">Characters in this chat show up here. Drag one in from the list on the right, or press Add a character.</div>}
+        {chat && <button className="btn sm" style={{ marginTop: 10 }} data-testid="add-person" onClick={() => setModal({ type: "who" })}>＋ Add a character</button>}
       </aside>
 
       {modal?.type === "novel" && chat && <NovelDialog chatId={chat.id} onClose={() => setModal(null)} onStarted={() => { readingAbove.current = false; setAway(false); loadNovel(); }} />}
@@ -524,6 +578,14 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
       {modal?.type === "chat" && (
         <NewChat dormId={modal.dormId} onClose={() => setModal(null)}
           onCreated={async (c) => { await refresh(); setSelected(c.id); setModal(null); }} />
+      )}
+      {askGroup && chat && (
+        <Modal title="Make this a group chat?" onClose={() => setAskGroup(null)}>
+          <div data-testid="group-ask">
+            <p>This chat is one-to-one with <b>{byId.get(chat.character_ids[0])?.card.name ?? "a character"}</b>. Adding <b>{byId.get(askGroup)?.card.name ?? "them"}</b> makes it a group chat: each message is labelled with who said it, and the characters can talk to each other too. Messages already written stay as they are.</p>
+            <div className="row"><button className="btn primary" data-testid="group-ask-yes" onClick={() => void makeGroup()}>Make it a group chat</button><button className="btn" onClick={() => setAskGroup(null)}>Cancel</button></div>
+          </div>
+        </Modal>
       )}
       {modal?.type === "who" && chat && (
         <Modal title="Who's in this chat" onClose={() => setModal(null)}>

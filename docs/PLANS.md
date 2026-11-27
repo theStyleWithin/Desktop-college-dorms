@@ -20,7 +20,7 @@ No more USB cable. Optional, off by default, direct between the two devices, enc
 - **Likely snags:** Windows firewall, Android camera and local-network permission, routers that isolate devices.
 - **Optional extra:** a short run of flashing QR codes for tiny text-only items.
 
-## 3. Worlds that carry more
+## 3. Worlds that carry more (built)
 A world already carries lorebooks. Plan: also a **persona**, a default **playbook** and **prompts**.
 - **The rule: a world adds things and never replaces a character's own.**
 - Persona: the world's persona replaces your active persona only while the chat is in that world, then yours returns; a switch ignores it for one chat; old messages keep their names.

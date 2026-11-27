@@ -19,9 +19,26 @@ Every picture in the big viewer has its own comment section, like a forum thread
 - **Galleries**: the same link box adds pictures to a character's own gallery, in the character editor and inside a character's folder in the Gallery.
 - The app fetches the link itself (web addresses only, 40 MB at most), decides what the file is by the file itself rather than the server's label, and tells you plainly when a link is a web page, not a picture. A fetch starts only when you press Use link.
 
+### 🌍 Worlds can bring their own set-up
+A world can now carry more than lorebooks, so a place arrives ready to play. A world only ever **adds**: a character's own playbook and instructions come first.
+
+- **A persona** that stands in for yours only while a chat is in that world (your own comes back everywhere else). In the chat it says "Playing as Kai (from this world)", with **Use mine here** to play as yourself in that one chat.
+- **A playbook** used when neither the chat nor its characters choose one.
+- **Standing instructions** told to the characters in every chat there, after their own instructions (which win if they disagree).
+- **A prompt shelf**: saved prompts that sit first in the Prompts menu, under "From <world>", while you are in a chat in that world.
+- The chat shows one line saying what its world brings ("From this world (Harbour): you play Kai, playbook …, standing instructions"). Backups and Wi-Fi transfers carry all of it.
+
+### 🧲 Drag a character into a chat
+Drag a character from the list on the right onto the panel beside a chat to bring them in: an empty chat starts with them, and a second character on a one-to-one chat asks "Make this a group chat?" first. A character can't be added twice, a chat holds up to 8, and an **Add a character** button does the same without dragging (for touch and keyboards).
+
+### ✂️ And a few smaller things
+- **Notes**: the writing area has a bar under it that you can drag (or move with the arrow keys) to make it taller or shorter, remembered on this device; double-click puts it back.
+- **Tokenator** now sits at the top of the character editor, under the title.
+- **Wi-Fi transfer**: a received guest space is suggested the profile's own name instead of a blank.
+
 ### Not yet
 - Thumbnails (big photos are loaded at full size, lazily), a slideshow, and comments on a picture that carry their own pictures or formatting.
 - The comments of a picture from a folder on your computer are tied to where the file is; if the file is moved, they no longer find it.
 
 ### What has not been tried
-These were tested with the app's own tests and rendered pictures. Not tried: the real folder chooser, Windows folder paths, a very long comment thread, the comment panel on a phone-sized screen, video clips in the viewer, and pasting a copied picture straight from a browser. The Android in-app model and Wi-Fi transfer between real devices are still untested on hardware, as before.
+These were tested with the app's own tests and rendered pictures. Not tried: dragging with a real mouse or touch screen (the tests send the drop themselves), the worlds' persona, playbook and instructions with a real model, the real folder chooser, Windows folder paths, a very long comment thread, the comment panel on a phone-sized screen, video clips in the viewer, and pasting a copied picture straight from a browser. The Android in-app model and Wi-Fi transfer between real devices are still untested on hardware, as before.

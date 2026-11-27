@@ -127,6 +127,7 @@ Also new: **emoji and stickers** (everywhere or per room, and the characters use
   apply to every chat in any of its rooms. Rooms, "part of" links and exits never cross from one world into another. Each world also has room for its **background lore**,
   written to be read: its **📖 Read about this world** page shows the lore, its rooms (start a dorm in any of them) and the lorebooks that apply, so you can read up before diving in.
   Rooms also have a **gallery**, like characters do: up to 24 pictures with captions that show what the place looks like. Captions are told to the characters as details of the room, and any picture can become the backdrop.
+  A world can also bring a **persona** (it stands in for yours only while a chat is in that world), a **playbook** (used when neither the chat nor its characters choose one) and **standing instructions** (told to the characters after their own instructions, which win if they disagree). The chat shows a line saying what its world brings. It only ever adds to what a character has. A world can also have a **prompt shelf**: saved prompts that sit first in the Prompts menu while you are in a chat in that world. In a chat you can press **Use mine here** to play as your own persona instead of the world's, for that chat only.
 - **Profile decorations**: dress your profile and your characters. A **nameplate** (an animated strip behind a name), an animated **profile background** and an
   **avatar wreath** (a frame drawn around a picture), filed by collection (Classic, Kawaii Boba Tea, Lunar New Year, Anime) with filters and one-click themes, plus a
   2 to 4 letter **name tag** with a colour and a symbol. Your own show at the bottom left of the side bar, where your profile sits, and on your profile card
@@ -162,7 +163,7 @@ Also new: **emoji and stickers** (everywhere or per room, and the characters use
   Library cards are bigger too.
 - **Lorebooks**: a Lorebooks library (import SillyTavern world info or a card's book), attached to any number of characters, working
   together with the book inside a card. **More initial messages** sit in the main editor, and you pick which one opens a new chat.
-- **Notes**: a page for writing with no length limit, like a card's creator notes but always a click away. Saves by itself; search and pin.
+- **Notes**: a page for writing with no length limit, like a card's creator notes but always a click away. Saves by itself; search and pin. Drag the edge of the list to change its width, and drag the bar under the writing area to change its height (arrow keys work on the bar; double-click puts it back). Both are remembered on this device.
 - **Chub-style character editor**: tagline, in-chat name, tags, description, first message, scenario, example dialogs,
   live token counts, alternate greetings (as swipes), system prompt, post-history instructions, character's note with depth,
   and an embedded lorebook (keyword / regex triggers). Everything stays editable after creation.
@@ -193,8 +194,6 @@ Also new: **emoji and stickers** (everywhere or per room, and the characters use
 Ideas that are planned but **not built yet**. These are plans, not promises, and have no dates; the details are in [SPEC.md](SPEC.md).
 
 - **More ways to move things over Wi-Fi.** Stage 1 (a whole profile, below) is built. Still to come: sending single items (a character, lorebook, playbook, persona, prompt, note or world, with a QR code tab and a Scan button on the phone) and a "refresh my phone" that sends only what changed. Two-way sync is not planned.
-- **Worlds that come with their own set-up.** Give a world its own persona, a default playbook and prompts, so a place can arrive ready to play. A world adds to a character's own lorebooks, playbook and prompts and never replaces them (the persona is the one thing a world takes over, and only while you are in that world).
-- **Drag a character into a chat.** In a new room with nobody in it, drag a character from the characters list onto the panel beside the chat to start talking, and drag in another to make a group chat. There will be an "Add a character" button too, for touch screens.
 
 - **A built-in model on recent Android phones.** Download a small model (such as Llama 3.2 3B) and chat fully offline on the phone. The app checks your phone's memory, processor and free space first, and only offers models it can run (a phone that is too weak gets no download button, just an explanation). It will be slower than a cloud model, and has not been built or tested yet. **Started:** Settings → Models on an Android phone now says what that phone could run (its memory, free storage and processor against what each model needs) and why not if it can't; a phone that can't run one gets only that explanation. There is still no engine for phones, so nothing can be downloaded yet.
 
