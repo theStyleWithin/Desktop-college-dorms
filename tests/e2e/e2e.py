@@ -2703,9 +2703,9 @@ try:
     check("eject removes both decoration files from the device", len([f for f in os.listdir(media_dir) if f.startswith("decor-")]) == n_glb - 2)
     invoke_file("import_profile", xp, {"x-mode": "import", "x-handle": "Roomer3", "x-passcode": ""})
     back = invoke("list_decor")
-    back_rt_ = next((c_ for c_ in invoke("list_characters") if c_["card"]["name"] == rt["card"]["name"] and c_["id"] != rt["id"]), None)
+    back_rt_ = next((c_ for c_ in invoke("list_characters") if c_["card"]["name"] == rt["card"]["name"]), None)   # (the profile was ejected first, so it may even have the same id)
     back_cm_ = invoke("gallery_comments", {"picKey": f"char:{back_rt_['id']}:{rt_items[0]}"}) if back_rt_ else []
-    check("comments under a character's pictures come back with a backup, answers still under their comments", len(back_cm_) == 2 and [c_["body"] for c_ in back_cm_] == ["A comment that travels.", "And its answer."] and back_cm_[1]["parent_id"] == back_cm_[0]["id"], str(back_cm_)[:300])
+    check("comments under a character's pictures come back with a backup, answers still under their comments", len(back_cm_) == 2 and [c_["body"] for c_ in back_cm_] == ["A comment that travels.", "And its answer."] and back_cm_[1]["parent_id"] == back_cm_[0]["id"], str((back_rt_ and back_rt_["id"], rt["id"], back_cm_))[:400])
     check("a person's own decorations come back with a backup", any(x["did"] == "cw_0a1b2c3d4e" and x["name"] == "Backup ring" for x in invoke("list_custom_deco")), str(invoke("list_custom_deco"))[:200])
     gt = [c_ for c_ in invoke("list_characters") if c_["card"]["name"] == "Gallery Trip"]
     check("a character's gallery comes back with a backup (pictures, moods and mode)", len(gt) == 1 and len(gt[0]["gallery"]) == 2 and gt[0]["gallery"][0]["moods"] == ["happy", "smug"] and gt[0]["gallery_mode"] == "mood" and all(os.path.exists(x["path"]) for x in gt[0]["gallery_paths"]), str(gt)[:300])
