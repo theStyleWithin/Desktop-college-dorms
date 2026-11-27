@@ -5,6 +5,7 @@ mod extras;
 mod gallerycomments;
 mod guide;
 mod handoff;
+mod itemxfer;
 mod llama;
 mod llm;
 mod netpic;
@@ -263,6 +264,8 @@ pub fn run() {
             steam::steam_status,
             steam::steam_add,
             steam::steam_remove,
+            itemxfer::inspect_staged_item,
+            itemxfer::add_staged_item,
             netpic::fetch_picture,
             deco::list_char_deco,
             deco::list_custom_deco,

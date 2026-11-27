@@ -220,7 +220,10 @@ export interface Settings {
 }
 
 export interface Preset { id: string; label: string; blurb: string; file: string; url: string; size_gb: number; min_ram_gb: number }
-export interface TransferStatus { phase: "idle" | "waiting" | "connected" | "sending" | "receiving" | "arrived" | "done" | "failed" | "cancelled" | ""; role: string; message: string; done: number; total: number; addr: string; code: string; qr_svg: string; expires_in: number; token: string | null; name: string }
+export interface TransferStatus { phase: "idle" | "waiting" | "connected" | "sending" | "receiving" | "arrived" | "done" | "failed" | "cancelled" | ""; role: string; message: string; done: number; total: number; addr: string; code: string; qr_svg: string; expires_in: number; token: string | null; name: string; kind: string }
+/** One thing sent on its own over Wi-Fi: a character, persona, lorebook, note or saved prompt. */
+export interface SendItem { kind: "character" | "persona" | "lorebook" | "note" | "prompt"; id: string }
+export interface ArrivedItem { kind: string; name: string; detail: string }
 export interface SteamStatus { supported: boolean; found: boolean; running: boolean | null; users: { id: string; name: string; added: boolean }[]; exe: string }
 export interface PhoneOption { id: string; label: string; size_gb: number; min_ram_gb: number; fits: boolean; note: string | null }
 export interface PhoneCheck { is_android: boolean; arm64: boolean; ram_gb: number; free_gb: number | null; options: PhoneOption[]; can_run_any: boolean; engine_ready: boolean; download_allowed: boolean; summary: string }
@@ -327,7 +330,9 @@ export const api = {
   steamAdd: (user: string) => invoke<string>("steam_add", { user }),
   steamRemove: (user: string) => invoke<string>("steam_remove", { user }),
   phoneCheck: () => invoke<PhoneCheck>("phone_check"),
-  transferSendStart: (code: string, passcode: string | null) => invoke<TransferStatus>("transfer_send_start", { code, passcode }),
+  transferSendStart: (code: string, passcode: string | null, item: SendItem | null = null) => invoke<TransferStatus>("transfer_send_start", { code, passcode, item }),
+  inspectStagedItem: (token: string, kind: string) => invoke<ArrivedItem>("inspect_staged_item", { token, kind }),
+  addStagedItem: (token: string, kind: string) => invoke<ArrivedItem>("add_staged_item", { token, kind }),
   transferReceiveStart: (addr: string, code: string) => invoke<TransferStatus>("transfer_receive_start", { addr, code }),
   transferStatus: (role: "send" | "receive") => invoke<TransferStatus>("transfer_status", { role }),
   transferCancel: (role: "send" | "receive") => invoke<void>("transfer_cancel", { role }),
