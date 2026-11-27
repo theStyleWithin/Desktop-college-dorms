@@ -823,3 +823,33 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .dcp-wr { position: relative; display: block; width: 44px; height: 44px; margin: 8px; } .dcp-wr .avatar { width: 44px; height: 44px; font-size: 18px; border: 0; }
 .dcp-over { position: absolute; inset: -22%; width: 144%; height: 144%; pointer-events: none; background: no-repeat; }
 .dcp-skip { margin: 8px 0; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--text) 7%, transparent); font-size: .85rem; } .dcp-skip ul { margin: 4px 0 0; padding-left: 18px; }
+
+/* ---- Gallery (pages/Gallery.tsx) ---- */
+.gal-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
+.gal-folder { display: grid; gap: 6px; text-align: left; padding: 10px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; color: inherit; font: inherit; }
+.gal-folder:hover, .gal-folder:focus-visible { border-color: var(--accent); background: var(--panel2); outline: none; }
+.gal-folder small { color: var(--muted); }
+.gal-cover { display: block; aspect-ratio: 3 / 4; border-radius: 10px; overflow: hidden; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 35%, var(--bg)), color-mix(in srgb, var(--accent2) 35%, var(--bg))); }
+.gal-cover img, .gal-cover video, .gal-tile img, .gal-tile video, .gal-stack img { width: 100%; height: 100%; display: block; }
+.gal-none { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; font-size: 3rem; color: rgba(255,255,255,.75); }
+.gal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.gal-tile { position: relative; aspect-ratio: 3 / 4; padding: 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: var(--panel); cursor: zoom-in; }
+.gal-tile:hover, .gal-tile:focus-visible { border-color: var(--accent); outline: none; }
+.gal-badge { position: absolute; right: 8px; top: 8px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,.6); color: #fff; font-size: .72rem; }
+.gal-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 10px 8px; background: linear-gradient(transparent, rgba(0,0,0,.7)); color: #fff; font-size: .85rem; text-align: left; }
+.gal-folder.sub { align-content: start; }
+.gal-stack { position: relative; display: block; aspect-ratio: 3 / 4; }
+.gal-stack > span { position: absolute; inset: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--panel2); }
+.gal-stack > span:nth-child(1) { transform: rotate(-5deg) translate(-6%, 2%); } .gal-stack > span:nth-child(2) { transform: rotate(3deg) translate(5%, 0); } .gal-stack > span:nth-child(3) { transform: none; }
+.gal-crumbs { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; color: var(--muted); }
+.gal-viewer { position: fixed; inset: 0; z-index: 90; display: flex; flex-direction: column; background: rgba(8,8,14,.94); }
+.gal-vbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 16px; color: #fff; }
+.gal-vmain { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 8px 16px; }
+.gal-vpic { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; justify-content: center; }
+.gal-vpic img, .gal-vpic video { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+.gal-nav { flex: 0 0 auto; width: 48px; height: 96px; border-radius: 12px; border: 0; background: rgba(255,255,255,.1); color: #fff; font-size: 2rem; cursor: pointer; }
+.gal-nav:hover, .gal-nav:focus-visible { background: rgba(255,255,255,.22); outline: none; }
+@media (max-width: 700px) { .gal-folders, .gal-grid { grid-template-columns: repeat(2, 1fr); } .gal-nav { width: 36px; } }
+.gal-folder-wrap { position: relative; } .gal-folder-wrap > .gal-folder { width: 100%; } .gal-folder:disabled { opacity: .55; cursor: default; }
+.gal-remove { position: absolute; right: 8px; top: 8px; background: rgba(0,0,0,.55); color: #fff; border-radius: 999px; }
+.gal-remove:hover, .gal-remove:focus-visible { background: rgba(190,40,40,.85); }

@@ -4,6 +4,7 @@ import type { AppInfo, Character, Chat, Dorm, Folder, Frame, Persona, Room, Sess
 export type Route =
   | { page: "home" }
   | { page: "library" }
+  | { page: "gallery" }
   | { page: "rooms"; edit?: number | "new"; /** the world a new room is made in, or the world being looked at */ world?: number | null }
   | { page: "notes" }
   | { page: "tokenator" }

@@ -11,6 +11,7 @@ import { reloadCustomDeco } from "./lib/decoCustom";
 import Welcome from "./pages/Welcome";
 import Home from "./pages/Home";
 import Library from "./pages/Library";
+import Gallery from "./pages/Gallery";
 import Rooms from "./pages/Rooms";
 import Notes from "./pages/Notes";
 import Lorebooks from "./pages/Lorebooks";
@@ -45,6 +46,7 @@ const NAV: { page: Route["page"]; label: string; icon: string }[] = [
   { page: "tokenator", label: "Tokenator", icon: "✂️" },
   { page: "home", label: "Home", icon: "🏠" },
   { page: "library", label: "Characters", icon: "🧑‍🎤" },
+  { page: "gallery", label: "Gallery", icon: "🖼️" },
   { page: "rooms", label: "Rooms", icon: "🛋️" },
   { page: "decor", label: "Decorations", icon: "🪴" },
   { page: "chat", label: "Dorms", icon: "💬" },
@@ -56,6 +58,8 @@ const NAV: { page: Route["page"]; label: string; icon: string }[] = [
 
 /** Pages added in a later version that show at the TOP for people who already have an order of their own, so they are noticed. They are ordinary items from then on: drag one and the new place is remembered. */
 const NEW_AT_TOP: Route["page"][] = ["tokenator"];
+/** Pages added later that go right after a page people already have, so they are found next to the thing they belong with (the Gallery sits after Characters). */
+const NEW_AFTER: Partial<Record<Route["page"], Route["page"]>> = { gallery: "library" };
 
 /** The side bar's order as the user left it (this device): unknown or missing pages are dealt with, so a new page just appears at the end (or at the top, for the ones in `NEW_AT_TOP`). */
 function loadNavOrder(): Route["page"][] {
@@ -65,7 +69,9 @@ function loadNavOrder(): Route["page"][] {
     if (Array.isArray(a)) {
       const kept = a.filter((p, i) => known.includes(p) && a.indexOf(p) === i) as Route["page"][];
       const added = known.filter((p) => !kept.includes(p));
-      return [...added.filter((p) => NEW_AT_TOP.includes(p)), ...kept, ...added.filter((p) => !NEW_AT_TOP.includes(p))];
+      const rest = added.filter((p) => !NEW_AT_TOP.includes(p)), out = [...added.filter((p) => NEW_AT_TOP.includes(p)), ...kept];
+      for (const p of rest) { const at = NEW_AFTER[p] ? out.indexOf(NEW_AFTER[p]!) : -1; if (at >= 0) out.splice(at + 1, 0, p); else out.push(p); }
+      return out;
     }
   } catch { /* storage unavailable or damaged: the normal order */ }
   return known;
@@ -301,6 +307,7 @@ function Shell({ session, setSession, onHidden }: { session: SessionState; setSe
             <>
               {route.page === "home" && <Home />}
               {route.page === "library" && <Library />}
+              {route.page === "gallery" && <Gallery />}
               {route.page === "notes" && <Notes />}
               {route.page === "tokenator" && <TokenatorChat />}
               {route.page === "decor" && <Decor />}
