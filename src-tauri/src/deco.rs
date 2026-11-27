@@ -47,14 +47,88 @@ fn has(list: &[Item], id: &str) -> bool {
     list.iter().any(|x| x.id == id)
 }
 
+/// The id of a decoration the person brought in: `cp_` (nameplate), `cb_` (profile background) or `cw_` (wreath) and ten hex digits.
+/// Whether it is really in the library is the page's business (a missing one is simply not drawn); here only its shape is checked.
+pub fn custom_id(prefix: &str, id: &str) -> bool {
+    id.len() == 13 && id.starts_with(prefix) && id[3..].bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
 /// A nameplate, background and wreath that are all known ones (anything else becomes "none"/empty).
 pub fn clean_look(plate: &str, bg: &str, wreath: &str) -> (String, String, String) {
     let d = data();
     (
-        if plate != "none" && has(&d.plates, plate) { plate.into() } else { "none".into() },
-        if bg != "none" && has(&d.backgrounds, bg) { bg.into() } else { String::new() },
-        if wreath != "none" && has(&d.wreaths, wreath) { wreath.into() } else { String::new() },
+        if plate != "none" && (has(&d.plates, plate) || custom_id("cp_", plate)) { plate.into() } else { "none".into() },
+        if bg != "none" && (has(&d.backgrounds, bg) || custom_id("cb_", bg)) { bg.into() } else { String::new() },
+        if wreath != "none" && (has(&d.wreaths, wreath) || custom_id("cw_", wreath)) { wreath.into() } else { String::new() },
     )
+}
+
+/// What one of the person's own decorations is allowed to hold. `None` if it can't be kept at all.
+pub fn clean_custom(mut c: db::CustomDeco) -> Option<db::CustomDeco> {
+    let tidy = |s: &str, n: usize| s.chars().map(|ch| if ch.is_control() || ch == '<' || ch == '>' { ' ' } else { ch }).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ").chars().take(n).collect::<String>();
+    let prefix = match c.dkind.as_str() { "plate" => "cp_", "banner" => "cb_", "wreath" => "cw_", _ => return None };
+    if !custom_id(prefix, &c.did) || !["svg", "image", "sprite"].contains(&c.mode.as_str()) {
+        return None;
+    }
+    let is_svg = c.mode == "svg";
+    // the art is only ever drawn as a picture; it has to look like one, and not be huge
+    if c.art.is_empty() || c.art.len() > 10_000_000 || c.still.len() > 2_000_000 || c.src.len() > 5_000_000 {
+        return None;
+    }
+    if is_svg != c.art.trim_start().starts_with("<svg") || (!is_svg && !c.art.starts_with("data:image/")) {
+        return None;
+    }
+    if !c.still.is_empty() && !(if is_svg { c.still.trim_start().starts_with("<svg") } else { c.still.starts_with("data:image/") }) {
+        c.still.clear();
+    }
+    if !c.src.is_empty() && !c.src.starts_with("data:video/") {
+        c.src.clear();
+    }
+    c.name = tidy(&c.name, 40);
+    if c.name.is_empty() { c.name = "Mine".into(); }
+    c.blurb = tidy(&c.blurb, 100);
+    c.author = tidy(&c.author, 60);
+    c.license = tidy(&c.license, 60);
+    c.pack = tidy(&c.pack, 40);
+    if c.mode == "sprite" {
+        if !(1..=16).contains(&c.cols) || !(1..=16).contains(&c.rows) || c.frames < 1 || c.frames > c.cols * c.rows || !(0.5..=12.0).contains(&c.dur) {
+            return None;
+        }
+    } else {
+        (c.cols, c.rows, c.frames, c.dur) = (0, 0, 0, 0.0);
+    }
+    Some(c)
+}
+
+#[tauri::command]
+pub fn list_custom_deco(state: State<'_, Shared>) -> R<Vec<db::CustomDeco>> {
+    let o = owner(&state)?;
+    db::list_custom_deco(&state.db.lock().unwrap(), &o).map_err(e)
+}
+
+/// Adds decorations to the person's own library (one already there is replaced by the same one). Returns the ids that were kept.
+#[tauri::command]
+pub fn save_custom_deco(state: State<'_, Shared>, items: Vec<db::CustomDeco>) -> R<Vec<String>> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut have: Vec<String> = db::list_custom_deco(&db, &o).map_err(e)?.into_iter().map(|d| d.did).collect();
+    let mut kept = Vec::new();
+    for it in items {
+        let Some(it) = clean_custom(it) else { continue };
+        if !have.contains(&it.did) {
+            if have.len() >= db::MAX_CUSTOM_DECO { break; }
+            have.push(it.did.clone());
+        }
+        db::save_custom_deco(&db, &it, &o).map_err(e)?;
+        kept.push(it.did);
+    }
+    Ok(kept)
+}
+
+#[tauri::command]
+pub fn delete_custom_deco(state: State<'_, Shared>, did: String) -> R<()> {
+    let o = owner(&state)?;
+    db::delete_custom_deco(&state.db.lock().unwrap(), &did, &o).map_err(e)
 }
 
 /// A tag is 2 to 4 letters or numbers, in capitals.
@@ -247,6 +321,55 @@ mod tests {
         assert_eq!(parse_choice(r#"{"plate":"made-up","wreath":"lotus"}"#), Some(("none".into(), String::new(), "lotus".into())), "unknown kinds are dropped, known ones kept");
         assert_eq!(parse_choice("I would choose Embers"), None);
         assert_eq!(parse_choice("}{"), None);
+    }
+
+    fn svg_item(did: &str, kind: &str) -> db::CustomDeco {
+        db::CustomDeco { did: did.into(), dkind: kind.into(), mode: "svg".into(), name: "  Candy <b>bar</b> ".into(), art: "<svg viewBox=\"0 0 960 176\"></svg>".into(), ..Default::default() }
+    }
+
+    #[test]
+    fn a_custom_decoration_keeps_its_shape_or_is_refused() {
+        assert!(custom_id("cp_", "cp_0123456789") && !custom_id("cp_", "cb_0123456789") && !custom_id("cp_", "cp_012345678") && !custom_id("cp_", "cp_01234567zz") && !custom_id("cp_", "cp_0123456789a"));
+        let ok = clean_custom(svg_item("cp_0123456789", "plate")).unwrap();
+        assert_eq!(ok.name, "Candy b bar /b", "text is tidied");
+        assert!(clean_custom(svg_item("cb_0123456789", "plate")).is_none(), "the id has to say the same kind");
+        assert!(clean_custom(svg_item("cp_0123456789", "sticker")).is_none());
+        let mut bad = svg_item("cp_0123456789", "plate"); bad.art = "<html>".into();
+        assert!(clean_custom(bad).is_none(), "svg art has to be an svg");
+        let mut img = svg_item("cw_0123456789", "wreath"); img.mode = "image".into(); img.art = "data:image/png;base64,AAAA".into();
+        assert!(clean_custom(img.clone()).is_some());
+        img.art = "https://example.com/x.png".into();
+        assert!(clean_custom(img).is_none(), "a picture has to be a data: picture, never a link");
+        let mut sprite = svg_item("cb_0123456789", "banner"); sprite.mode = "sprite".into(); sprite.art = "data:image/png;base64,AAAA".into();
+        assert!(clean_custom(sprite.clone()).is_none(), "a sprite needs its grid");
+        (sprite.cols, sprite.rows, sprite.frames, sprite.dur) = (4, 3, 12, 2.0);
+        assert!(clean_custom(sprite).is_some());
+        let mut big = svg_item("cp_0123456789", "plate"); big.art = format!("<svg>{}</svg>", "x".repeat(10_000_001));
+        assert!(clean_custom(big).is_none(), "far too big is refused");
+    }
+
+    #[test]
+    fn a_look_may_name_a_custom_decoration_in_the_right_place_only() {
+        assert_eq!(clean_look("cp_0123456789", "cb_0123456789", "cw_0123456789"), ("cp_0123456789".to_string(), "cb_0123456789".to_string(), "cw_0123456789".to_string()));
+        assert_eq!(clean_look("cw_0123456789", "cp_0123456789", "cb_0123456789"), ("none".to_string(), String::new(), String::new()), "a wreath is not a nameplate");
+    }
+
+    #[test]
+    fn custom_decorations_belong_to_their_owner_and_are_limited() {
+        let c = db::open(std::path::Path::new(":memory:")).unwrap();
+        let (a, b): (db::Owner, db::Owner) = (Some("a".into()), Some("b".into()));
+        let it = clean_custom(svg_item("cp_0123456789", "plate")).unwrap();
+        db::save_custom_deco(&c, &it, &a).unwrap();
+        db::save_custom_deco(&c, &it, &a).unwrap();
+        assert_eq!(db::list_custom_deco(&c, &a).unwrap(), vec![it.clone()], "saving the same one twice keeps one");
+        assert!(db::list_custom_deco(&c, &b).unwrap().is_empty(), "another profile sees none of them");
+        db::delete_custom_deco(&c, &it.did, &b).unwrap();
+        assert_eq!(db::list_custom_deco(&c, &a).unwrap().len(), 1, "another profile can't remove them");
+        db::save_custom_deco(&c, &it, &b).unwrap();
+        assert_eq!(db::list_custom_deco(&c, &b).unwrap().len(), 1, "two profiles can hold the same decoration");
+        db::delete_custom_deco(&c, &it.did, &a).unwrap();
+        assert!(db::list_custom_deco(&c, &a).unwrap().is_empty());
+        assert_eq!(db::MAX_CUSTOM_DECO, 120);
     }
 
     #[test]

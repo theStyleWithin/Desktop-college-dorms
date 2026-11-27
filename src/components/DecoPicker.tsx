@@ -1,12 +1,13 @@
 import { useState, type ReactNode } from "react";
 import DecoCore, { type DecoItem } from "../lib/decoCore";
 import { DecoBg, Wreathed, plateProps } from "../lib/deco";
+import { useCustomDeco } from "../lib/decoCustom";
+import { CustomDecoBar } from "./CustomDecoDialog";
 
 export interface Look { plate: string; bg: string; wreath: string }
 const VIEW_KEY = "dorms.deco.view";
 
 const byId = (list: DecoItem[]) => Object.fromEntries(list.map((x) => [x.id, x])) as Record<string, DecoItem>;
-const PL = byId(DecoCore.PLATES), BG = byId(DecoCore.BACKGROUNDS), WR = byId(DecoCore.WREATHS);
 
 const loadView = (): { series: string; kind: string } => {
   try { const v = JSON.parse(localStorage.getItem(VIEW_KEY) || "null"); if (v && typeof v === "object") return { series: String(v.series || "all"), kind: String(v.kind || "all") }; } catch { /* default */ }
@@ -22,6 +23,8 @@ export default function DecoPicker({ value, animate, onChange, avatar, name, chi
   /** the picture used in the previews */
   avatar: (size: number) => ReactNode; name: string; children?: ReactNode;
 }) {
+  const mine = useCustomDeco();   // the person's own decorations join the lists (and the pictures), so this redraws when they change
+  const PL = byId(DecoCore.PLATES), BG = byId(DecoCore.BACKGROUNDS), WR = byId(DecoCore.WREATHS);
   const [view, setViewState] = useState(loadView);
   const setView = (p: Partial<{ series: string; kind: string }>) => setViewState((v) => { const n = { ...v, ...p }; try { localStorage.setItem(VIEW_KEY, JSON.stringify(n)); } catch { /* not remembered */ } return n; });
   const cur = value;
@@ -87,7 +90,11 @@ export default function DecoPicker({ value, animate, onChange, avatar, name, chi
       </section>
     );
   };
-  const shown = DecoCore.SERIES.filter((se) => view.series === "all" || view.series === se.id).map(seriesBlock).filter(Boolean);
+  const ids = (k: string) => mine.filter((m) => m.dkind === k).map((m) => m.id);
+  const mineSeries: (typeof DecoCore.SERIES)[number] | null = mine.length ? { id: "mine", name: "My decorations", blurb: "Brought in from files. Only you have them.", groups: [{ plate: ids("plate"), bg: ids("banner"), wreath: ids("wreath") }] } : null;
+  const allSeries = mineSeries ? [mineSeries, ...DecoCore.SERIES] : DecoCore.SERIES;
+  const vs = view.series === "mine" && !mineSeries ? "all" : view.series;
+  const shown = allSeries.filter((se) => vs === "all" || vs === se.id).map(seriesBlock).filter(Boolean);
 
   return (
     <div className="dc-picker" data-testid="deco-picker">
@@ -96,10 +103,11 @@ export default function DecoPicker({ value, animate, onChange, avatar, name, chi
         {wearing.length ? <button className="btn" type="button" onClick={() => onChange({ plate: "none", bg: "", wreath: "" })}>Take it all off</button> : null}
       </div>
       {children}
+      <CustomDecoBar avatar={avatar} author={name} />
       {(() => { const nx = DecoCore.nextOpening(); return nx ? <p className="dc-next" data-testid="deco-next">{"\u2728 Next up: " + nx.name + " \u00b7 " + DecoCore.opensLabel(nx.season)}</p> : null; })()}
       <div className="dc-filters" role="group" aria-label="Collection">
-        {chip("All collections", view.series === "all", () => setView({ series: "all" }))}
-        {DecoCore.SERIES.map((se) => chip(se.name, view.series === se.id, () => setView({ series: se.id })))}
+        {chip("All collections", vs === "all", () => setView({ series: "all" }))}
+        {allSeries.map((se) => chip(se.name, vs === se.id, () => setView({ series: se.id })))}
       </div>
       <div className="dc-filters" role="group" aria-label="Kind">
         {chip("Everything", view.kind === "all", () => setView({ kind: "all" }))}

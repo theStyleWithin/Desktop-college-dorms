@@ -246,6 +246,11 @@ export interface PackageExtract {
 }
 export interface ProviderHealth { state: "local" | "ok" | "warn" | "down" | "none"; detail: string; model: string; checked_at: number }
 /** How a character (or the user) is dressed: a nameplate, an animated profile background and an avatar wreath (ids from lib/decoData.json). */
+/** A decoration the person brought in from a file (the page rebuilds the art safely before it is kept; ids look like cp_0123456789). */
+export interface CustomDeco {
+  did: string; dkind: "plate" | "banner" | "wreath"; mode: "svg" | "image" | "sprite"; name: string; blurb: string; art: string; still: string; moves: boolean;
+  author: string; license: string; pack: string; cols: number; rows: number; frames: number; dur: number; src: string;
+}
 export interface CharDeco { character_id: string; plate: string; bg: string; wreath: string; source: "ai" | "user"; updated_at: number }
 /** A world: a folder of connected rooms, kept apart from other worlds, with lorebooks attached that apply to every chat in it. */
 export interface World { id: number; name: string; description: string; /** background lore written to be read (not sent to the model) */ lore: string; lorebooks: string[]; created_at: number }
@@ -449,6 +454,9 @@ export const api = {
   setCharDeco: (characterId: string, plate: string, bg: string, wreath: string) => invoke<CharDeco | null>("set_char_deco", { characterId, plate, bg, wreath }),
   clearCharDeco: (characterId: string) => invoke<void>("clear_char_deco", { characterId }),
   /** The model never dresses a character in a holiday set that is closed today (the calendar rules live in decoCore.js). */
+  listCustomDeco: () => invoke<CustomDeco[]>("list_custom_deco"),
+  saveCustomDeco: (items: CustomDeco[]) => invoke<string[]>("save_custom_deco", { items }),
+  deleteCustomDeco: (did: string) => invoke<void>("delete_custom_deco", { did }),
   generateCharDeco: (characterId: string) => invoke<CharDeco>("generate_char_deco", { characterId, locked: Object.keys(DecoCore.LOCKS).filter((id) => DecoCore.lockedNow(id)) }),
   // saved prompts
   listPrompts: () => invoke<SavedPrompt[]>("list_prompts"),

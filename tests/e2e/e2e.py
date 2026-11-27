@@ -1583,6 +1583,38 @@ try:
     check("the nameplate and the wreath show at the bottom left of the side bar, where your profile sits", d.execute_script("const r=document.querySelector('[data-testid=me-row]');return !!r && r.dataset.plate==='bubbletea' && !!r.querySelector('.dw[data-wreath=bobacup]')"))
     check("your profile card shows the moving background", d.execute_script("return !!document.querySelector('[data-testid=profile-card] .deco-bg[data-bg=boba]')"))
     check("the art is drawn by the page (one moving set, one still set)", d.execute_script("const s=document.getElementById('deco-art');return !!s && s.textContent.includes('data-wreath=\"bobacup\"') && s.textContent.includes('data-deco-anim=\"off\"')"))
+    # the person's own decorations: a .asdeco pack goes in, is drawn, can be worn, deleted, and is not added twice
+    svg_ = lambda w, h, body: f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}">{body}</svg>'
+    decopk_ = {"format": "anti-social-decorations", "v": 1, "name": "E2E pack", "author": "Tester", "license": "CC0", "items": [
+        {"kind": "plate", "name": "Candy bar", "art": svg_(960, 176, '<rect width="960" height="176" fill="#f4a"><animate attributeName="opacity" values="1;.6;1" dur="2s" repeatCount="indefinite"/></rect>')},
+        {"kind": "wreath", "name": "Gold ring", "art": svg_(576, 576, '<circle cx="288" cy="288" r="260" fill="none" stroke="gold" stroke-width="30"/>')},
+        {"kind": "banner", "name": "Sky", "art": svg_(2400, 400, '<rect width="2400" height="400" fill="#38f"/>')},
+        {"kind": "plate", "name": "Wrong shape", "art": svg_(100, 100, '<rect width="100" height="100"/>')}]}
+    decopk_path = os.path.join(WORK, "e2e-pack.asdeco"); open(decopk_path, "w").write(json.dumps(decopk_))
+    def import_decopk():
+        inp_ = d.find_element(By.CSS_SELECTOR, "[data-testid=deco-import-input]")
+        d.execute_script("arguments[0].hidden=false;arguments[0].style.display='block';", inp_)
+        inp_.send_keys(decopk_path); wait(20).until(lambda x: x.find_elements(By.CSS_SELECTOR, "[data-testid=deco-import]")); time.sleep(0.5)
+    import_decopk()
+    check("a pack shows what is in it, and says what it could not use", d.execute_script("return document.querySelectorAll('[data-testid=deco-import] [data-deco-item]').length") == 3 and "Wrong shape" in d.find_element(By.CSS_SELECTOR, "[data-testid=deco-import]").text and "not added" in d.find_element(By.CSS_SELECTOR, "[data-testid=deco-import]").text)
+    d.find_element(By.CSS_SELECTOR, "[data-testid=deco-import-add]").click(); time.sleep(1.2)
+    mine_ = invoke("list_custom_deco")
+    check("choosing Add keeps them in the person's own library", sorted(x["dkind"] for x in mine_) == ["banner", "plate", "wreath"] and all(x["pack"] == "E2E pack" and x["author"] == "Tester" for x in mine_), str(mine_)[:300])
+    plate_ = next(x for x in mine_ if x["dkind"] == "plate")
+    check("they come in as a collection called My decorations, drawn by the page", d.execute_script("return [...document.querySelectorAll('.dc-filters .fp-chip')].some(b => b.textContent.trim()==='My decorations') && !!document.querySelector('[data-plate-pick=\"%s\"]') && document.getElementById('deco-custom').textContent.includes('data-plate=\"%s\"')" % (plate_["did"], plate_["did"])))
+    d.execute_script("document.querySelector('[data-plate-pick=\"%s\"]').click()" % plate_["did"]); time.sleep(1.0)
+    check("one of them can be worn like any other, and it is kept", invoke("get_settings")["deco"]["plate"] == plate_["did"])
+    d.execute_script("document.querySelector('[data-testid=deco-import-input]').value=''")
+    import_decopk()
+    check("adding the same pack again does not add them twice", d.execute_script("return [...document.querySelectorAll('[data-testid=deco-import] [data-deco-item]')].every(r => r.classList.contains('dim'))") and d.find_element(By.CSS_SELECTOR, "[data-testid=deco-import-add]").get_attribute("disabled") is not None)
+    d.execute_script("[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Cancel').click()"); time.sleep(0.4)
+    d.execute_script("document.querySelector('[data-testid=deco-manage-open]').click()"); time.sleep(0.6)
+    d.execute_script("const b=document.querySelector('[data-testid=deco-delete]'); b.click()"); time.sleep(0.3)
+    d.execute_script("document.querySelector('[data-testid=deco-delete]').click()"); time.sleep(1.0)
+    check("a decoration can be deleted (it asks twice)", len(invoke("list_custom_deco")) == 2)
+    d.execute_script("[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Done').click()"); time.sleep(0.3)
+    check("a decoration with a made-up id or kind is not kept", len(invoke("list_custom_deco")) == 2 and invoke("save_custom_deco", {"items": [{"did": "cp_zzzzzzzzzz", "dkind": "plate", "mode": "svg", "name": "x", "art": "<svg></svg>"}]}) == [])
+    d.execute_script("document.querySelector('[data-theme-pick=boba]').click()"); time.sleep(1.0)
     d.execute_script("[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('Name tag and banner')).click()"); time.sleep(0.7)
     tag_in_ = d.find_element(By.CSS_SELECTOR, "input[aria-label='Name tag']"); tag_in_.clear(); tag_in_.send_keys("koi!")   # (it opens holding the tag you already have)
     d.execute_script("document.querySelector('.modal [aria-label=Green]').click()"); d.execute_script("[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Save').click()"); time.sleep(1.2)
@@ -2639,6 +2671,7 @@ try:
     invoke("save_character", {"character": dict(rt, playbook=rtpb["id"])})
     rtchat = invoke("create_chat", {"dormId": None, "name": "pb round trip", "kind": "dm", "characterIds": [rt["id"]]})
     invoke("set_chat_playbook", {"chatId": rtchat["id"], "mode": "set", "playbookId": rtpb["id"], "scenario": "Friends"})
+    invoke("save_custom_deco", {"items": [{"did": "cw_0a1b2c3d4e", "dkind": "wreath", "mode": "svg", "name": "Backup ring", "art": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><circle cx="72" cy="72" r="66" fill="none" stroke="gold" stroke-width="6"/></svg>'}]})
     info = invoke("prepare_export")
     check("the export names the decoration that isn't shareable and leaves it out", info["withheld_items"] == ["Fern"], str(info))
     xp = os.path.join(WORK, "decor.dorms"); invoke("save_export", {"token": info["token"], "path": xp})
@@ -2647,6 +2680,7 @@ try:
     check("eject removes both decoration files from the device", len([f for f in os.listdir(media_dir) if f.startswith("decor-")]) == n_glb - 2)
     invoke_file("import_profile", xp, {"x-mode": "import", "x-handle": "Roomer3", "x-passcode": ""})
     back = invoke("list_decor")
+    check("a person's own decorations come back with a backup", any(x["did"] == "cw_0a1b2c3d4e" and x["name"] == "Backup ring" for x in invoke("list_custom_deco")), str(invoke("list_custom_deco"))[:200])
     gt = [c_ for c_ in invoke("list_characters") if c_["card"]["name"] == "Gallery Trip"]
     check("a character's gallery comes back with a backup (pictures, moods and mode)", len(gt) == 1 and len(gt[0]["gallery"]) == 2 and gt[0]["gallery"][0]["moods"] == ["happy", "smug"] and gt[0]["gallery_mode"] == "mood" and all(os.path.exists(x["path"]) for x in gt[0]["gallery_paths"]), str(gt)[:300])
     rp = invoke("list_prompts")
