@@ -1396,13 +1396,23 @@ try:
     width_ = lambda: d.execute_script("const e=[...document.querySelectorAll('*')].find(x=>x.scrollHeight>x.clientHeight+50&&/(auto|scroll)/.test(getComputedStyle(x).overflowY)&&x.clientWidth>300); return e ? e.offsetWidth - e.clientWidth : -1")
     check("Customization has a Wider scroll bars switch, on by default", d.execute_script("const c=document.querySelector('[data-testid=scroll-wide]');return !!c && c.checked") and d.execute_script("return document.documentElement.dataset.scrollbar") == "wide")
     d.execute_script("document.querySelector('[data-testid=scroll-wide]').click()"); time.sleep(0.5)
-    check("turning it off brings back the thinner size (and it is remembered)", d.execute_script("return document.documentElement.dataset.scrollbar") == "slim" and d.execute_script("return localStorage.getItem('dorms.scrollbar.size')") == "slim" and 0 < width_() <= 12, str(width_()))
+    check("turning it off brings back the thinner size (and it is remembered)", d.execute_script("return document.documentElement.dataset.scrollbar") == "slim" and d.execute_script("return localStorage.getItem('dorms.scrollbar.size.guest')") == "slim" and 0 < width_() <= 12, str(width_()))
     if box_:
         move_(box_["right"] - 30, box_["top"] + box_["h"] / 2); time.sleep(0.4)
         check("the handle still lights up near the pointer with the thinner bars", near_() >= 1)
         move_(box_["left"] + 60, box_["top"] + box_["h"] / 2); time.sleep(0.3)
     d.execute_script("document.querySelector('[data-testid=scroll-wide]').click()"); time.sleep(0.5)
     check("turning it back on makes them wide again", d.execute_script("return document.documentElement.dataset.scrollbar") == "wide" and width_() >= 14)
+    # the choice belongs to the profile that made it
+    d.execute_script("document.querySelector('[data-testid=scroll-wide]').click()"); time.sleep(0.4)
+    invoke("create_profile", {"handle": "Slimmer", "displayName": None, "passcode": None}); reload_ui(); time.sleep(1.2)
+    check("another profile starts with the usual (wide) scroll bars", d.execute_script("return document.documentElement.dataset.scrollbar") == "wide")
+    invoke("sign_in", {"profileId": None}); reload_ui(); time.sleep(1.2)
+    check("the guest space kept its own choice (thin)", d.execute_script("return document.documentElement.dataset.scrollbar") == "slim")
+    d.execute_script("localStorage.removeItem('dorms.scrollbar.size.guest')"); reload_ui(); time.sleep(0.8)
+    sl_id_ = [p_["id"] for p_ in invoke("session_state")["profiles"] if p_["handle"] == "Slimmer"]
+    if sl_id_:
+        invoke("sign_in", {"profileId": sl_id_[0], "passcode": None}); invoke("delete_profile", {"confirm": "slimmer"}); invoke("sign_in", {"profileId": None}); reload_ui(); time.sleep(0.8)
     # hiding an account: off the start screen, into Settings' list of hidden accounts, with a prompt to make another or use the guest space
     invoke("create_profile", {"handle": "Hider", "displayName": None, "passcode": None}); reload_ui(); time.sleep(1.0)
     ctx_me()

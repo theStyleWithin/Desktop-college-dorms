@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
+import { sdel, sget, sset } from "./scoped";
 
 /**
  * How thick scroll bars are: `wide` (the default: a wider strip that is easier to grab) or `slim` (the thinner size they used to be). Either way the bar's handle
- * still thickens and brightens when the pointer is near it. It is a preference of this device, so it is kept here and not in the profile.
+ * still thickens and brightens when the pointer is near it. It belongs to the profile (or the guest space) that chose it, kept on this device (see `lib/scoped`).
  */
 export type ScrollSize = "wide" | "slim";
 const KEY = "dorms.scrollbar.size";
 
 export function getScrollSize(): ScrollSize {
-  try { return localStorage.getItem(KEY) === "slim" ? "slim" : "wide"; } catch { return "wide"; }
+  return sget(KEY) === "slim" ? "slim" : "wide";
 }
 
 /** Put the saved size into the page (call once at start, and whenever it changes). */
@@ -17,7 +18,7 @@ export function applyScrollSize(v: ScrollSize = getScrollSize()) {
 }
 
 export function setScrollSize(v: ScrollSize) {
-  try { if (v === "wide") localStorage.removeItem(KEY); else localStorage.setItem(KEY, v); } catch { /* storage unavailable: it still applies until the app is closed */ }
+  try { if (v === "wide") sdel(KEY); else sset(KEY, v); } catch { /* storage unavailable: it still applies until the app is closed */ }
   applyScrollSize(v);
   window.dispatchEvent(new CustomEvent("dorms-scroll-size", { detail: v }));
 }

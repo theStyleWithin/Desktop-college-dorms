@@ -458,7 +458,7 @@ function SideExtras() {
   );
 }
 
-/** Wide scroll bars (easier to grab) or the thinner size they used to be. Either way the handle thickens when the pointer is near it. Kept on this device. */
+/** Wide scroll bars (easier to grab) or the thinner size they used to be. Either way the handle thickens when the pointer is near it. Kept for the profile. */
 function ScrollBarSetting() {
   const [size, set] = useScrollSize();
   return (
@@ -466,7 +466,7 @@ function ScrollBarSetting() {
       <label className="row" style={{ gap: 8, cursor: "pointer" }}>
         <input type="checkbox" style={{ width: "auto", minHeight: 0 }} checked={size === "wide"} data-testid="scroll-wide" onChange={(e) => set(e.target.checked ? "wide" : "slim")} /> Wider scroll bars
       </label>
-      <div className="hint">Makes the strip you click and drag easier to hit. Turn it off for the thinner size they used to have. Either way, a scroll bar's handle gets thicker and brighter when the pointer is on it or near it. Kept on this device.</div>
+      <div className="hint">Makes the strip you click and drag easier to hit. Turn it off for the thinner size they used to have. Either way, a scroll bar's handle gets thicker and brighter when the pointer is on it or near it. Kept for your profile.</div>
     </div>
   );
 }
