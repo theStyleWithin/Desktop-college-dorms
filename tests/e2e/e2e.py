@@ -1570,6 +1570,13 @@ try:
     check("the Decorations section starts folded away in the Profiles tab", d.execute_script("const f=document.querySelector('[data-testid=fold-deco]');return !!f && !f.open && !document.querySelector('[data-testid=deco-picker]')"))
     d.execute_script("document.querySelector('[data-testid=fold-deco] summary').click()"); time.sleep(1.0)
     check("Profiles has the Decorations picker and one profile card", d.execute_script("return !!document.querySelector('[data-testid=deco-picker]') && document.querySelectorAll('[data-testid=profile-card]').length===1"))
+    # holiday sets that are closed today are teasers that cannot be picked (which ones are closed depends on the day, so it asks the page what it shows)
+    locked = d.execute_script("return [...document.querySelectorAll('[data-theme-pick][data-locked=true]')].map(b => [b.dataset.themePick, b.disabled, b.textContent])")
+    check("a closed holiday set is shown as a teaser with its opening date and cannot be picked", len(locked) > 0 and all(x[1] and "Unlocks" in x[2] for x in locked), str(locked)[:300])
+    before = d.execute_script("return document.querySelector('[data-testid=deco-wearing]').textContent")
+    d.execute_script("const b=document.querySelector('[data-theme-pick][data-locked=true]'); b.disabled=false; b.click()"); time.sleep(0.5)
+    check("clicking a locked set changes nothing", d.execute_script("return document.querySelector('[data-testid=deco-wearing]').textContent") == before)
+    check("a locked group is inert, so nothing inside it can be picked", d.execute_script("const g=document.querySelector('.dc-group.locked .dc-kinds'); return !g || g.inert === true"))
     d.execute_script("document.querySelector('[data-theme-pick=boba]').click()"); time.sleep(1.2)
     sd_ = invoke("get_settings")["deco"]
     check("choosing a theme sets a nameplate, a background and a wreath together", (sd_["plate"], sd_["bg"], sd_["wreath"]) == ("bubbletea", "boba", "bobacup"), str(sd_))

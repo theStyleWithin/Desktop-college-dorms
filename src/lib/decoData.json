@@ -91,6 +91,126 @@
    "anim": true
   },
   {
+   "id": "pumpkinglow",
+   "name": "Pumpkin Glow",
+   "blurb": "Glossy pumpkins on a fiery orange glow.",
+   "anim": true
+  },
+  {
+   "id": "jacklantern",
+   "name": "Jack-o'-Lantern",
+   "blurb": "Three flickering jack-o'-lanterns, a moon and a bat.",
+   "anim": true
+  },
+  {
+   "id": "spiceswirl",
+   "name": "Pumpkin Spice Swirl",
+   "blurb": "Cream swirls, pumpkins and curls of steam.",
+   "anim": true
+  },
+  {
+   "id": "gobbleparade",
+   "name": "Gobble Gobble",
+   "blurb": "Three hopping turkeys and a loud little gobble.",
+   "anim": true
+  },
+  {
+   "id": "featherfan",
+   "name": "Feather Fan",
+   "blurb": "A glowing fan of jewel-coloured tail feathers.",
+   "anim": true
+  },
+  {
+   "id": "feastplaid",
+   "name": "Feast Plaid",
+   "blurb": "Buffalo plaid, a drumstick, leaves and acorns.",
+   "anim": true
+  },
+  {
+   "id": "xfireside",
+   "name": "Fireside Glow",
+   "blurb": "Garland lights over a crackling fire.",
+   "anim": true
+  },
+  {
+   "id": "xpine",
+   "name": "Pine & Berries",
+   "blurb": "A snowy pine bough with baubles and holly.",
+   "anim": true
+  },
+  {
+   "id": "xginger",
+   "name": "Gingerbread Cosy",
+   "blurb": "Dancing gingerbread folk under icing swirls.",
+   "anim": true
+  },
+  {
+   "id": "xcandystripe",
+   "name": "Candy Cane Stripe",
+   "blurb": "Moving red and white stripes, snowflakes and a candy cane.",
+   "anim": true
+  },
+  {
+   "id": "xsleighplate",
+   "name": "Sleigh Ride",
+   "blurb": "Santa's sleigh sweeps over a moonlit town.",
+   "anim": true
+  },
+  {
+   "id": "xsnowplate",
+   "name": "Snowman Party",
+   "blurb": "Three bobbing snowmen in the snow.",
+   "anim": true
+  },
+  {
+   "id": "hk1",
+   "name": "Night 1: First Light",
+   "blurb": "One candle and the shamash glow among the stars.",
+   "anim": true
+  },
+  {
+   "id": "hk2",
+   "name": "Night 2: Dreidel Spin",
+   "blurb": "Spinning dreidels (nun, gimel, hey, shin) and two bright candles.",
+   "anim": true
+  },
+  {
+   "id": "hk3",
+   "name": "Night 3: Gold Gelt",
+   "blurb": "Shining gold gelt and three candles.",
+   "anim": true
+  },
+  {
+   "id": "hk4",
+   "name": "Night 4: Latke Night",
+   "blurb": "Crispy latkes, steam and four candles.",
+   "anim": true
+  },
+  {
+   "id": "hk5",
+   "name": "Night 5: Sufganiyot Sparkle",
+   "blurb": "Powdered-sugar sufganiyot and five candles.",
+   "anim": true
+  },
+  {
+   "id": "hk6",
+   "name": "Night 6: Light in the Window",
+   "blurb": "A hanukkiah lit in the window for all to see, with six candles.",
+   "anim": true
+  },
+  {
+   "id": "hk7",
+   "name": "Night 7: A Little Oil",
+   "blurb": "One day's oil lasted eight days: seven candles.",
+   "anim": true
+  },
+  {
+   "id": "hk8",
+   "name": "Night 8: Festival of Lights",
+   "blurb": "All eight candles and the shamash: the Festival of Lights.",
+   "anim": true
+  },
+  {
    "id": "sparkleanime",
    "name": "Sparkle Streak",
    "blurb": "A violet glow with a shooting star.",
@@ -147,6 +267,126 @@
    "anim": true
   },
   {
+   "id": "pumpkinsunset",
+   "name": "Pumpkin Patch Sunset",
+   "blurb": "A magenta-orange sunset over a field of glossy pumpkins.",
+   "anim": true
+  },
+  {
+   "id": "jacknight",
+   "name": "Jack-o'-Lantern Night",
+   "blurb": "A big moon, bats, mist and glowing carved pumpkins.",
+   "anim": true
+  },
+  {
+   "id": "vinegarden",
+   "name": "Pumpkin Vine Garden",
+   "blurb": "Lush vines, swaying leaves and pumpkins in golden light.",
+   "anim": true
+  },
+  {
+   "id": "turkeyparade",
+   "name": "Turkey Parade",
+   "blurb": "Six turkeys march past, gobbling under a blue sky.",
+   "anim": true
+  },
+  {
+   "id": "featherburst",
+   "name": "Feather Burst",
+   "blurb": "A sunburst of tail feathers around a cheeky turkey.",
+   "anim": true
+  },
+  {
+   "id": "feasttable",
+   "name": "Thankful Feast",
+   "blurb": "A roast turkey, pie, candles and a leaf garland.",
+   "anim": true
+  },
+  {
+   "id": "xvillage",
+   "name": "Snowy Village Night",
+   "blurb": "Glowing windows, smoking chimneys and falling snow.",
+   "anim": true
+  },
+  {
+   "id": "xtree",
+   "name": "Christmas Tree Glow",
+   "blurb": "A twinkling tree, a snowy window and a pile of gifts.",
+   "anim": true
+  },
+  {
+   "id": "xmantel",
+   "name": "Fireplace & Stockings",
+   "blurb": "A roaring fire, stockings, candles and a holly garland.",
+   "anim": true
+  },
+  {
+   "id": "xsleighflight",
+   "name": "Santa's Sleigh Flight",
+   "blurb": "A sleigh crosses the moon over snowy rooftops.",
+   "anim": true
+  },
+  {
+   "id": "xcandyland",
+   "name": "Candy Land",
+   "blurb": "Lollipops, giant candy canes and dancing gingerbread.",
+   "anim": true
+  },
+  {
+   "id": "xsnowhill",
+   "name": "Snowman Hill",
+   "blurb": "Snowmen on a hill under the northern lights.",
+   "anim": true
+  },
+  {
+   "id": "hk1",
+   "name": "Night 1: First Light",
+   "blurb": "One candle and the shamash glow among the stars.",
+   "anim": true
+  },
+  {
+   "id": "hk2",
+   "name": "Night 2: Dreidel Spin",
+   "blurb": "Spinning dreidels (nun, gimel, hey, shin) and two bright candles.",
+   "anim": true
+  },
+  {
+   "id": "hk3",
+   "name": "Night 3: Gold Gelt",
+   "blurb": "Shining gold gelt and three candles.",
+   "anim": true
+  },
+  {
+   "id": "hk4",
+   "name": "Night 4: Latke Night",
+   "blurb": "Crispy latkes, steam and four candles.",
+   "anim": true
+  },
+  {
+   "id": "hk5",
+   "name": "Night 5: Sufganiyot Sparkle",
+   "blurb": "Powdered-sugar sufganiyot and five candles.",
+   "anim": true
+  },
+  {
+   "id": "hk6",
+   "name": "Night 6: Light in the Window",
+   "blurb": "A hanukkiah lit in the window for all to see, with six candles.",
+   "anim": true
+  },
+  {
+   "id": "hk7",
+   "name": "Night 7: A Little Oil",
+   "blurb": "One day's oil lasted eight days: seven candles.",
+   "anim": true
+  },
+  {
+   "id": "hk8",
+   "name": "Night 8: Festival of Lights",
+   "blurb": "All eight candles and the shamash: the Festival of Lights.",
+   "anim": true
+  },
+  {
    "id": "cometnight",
    "name": "Comet Night",
    "blurb": "A blue night with a comet sweeping past.",
@@ -170,6 +410,126 @@
    "id": "bobacup",
    "name": "Boba Cup",
    "blurb": "Your picture in a bubble tea dome, with a straw.",
+   "anim": true
+  },
+  {
+   "id": "pumpkinring",
+   "name": "Glossy Pumpkin Ring",
+   "blurb": "Five glossy pumpkins on a leafy vine, with sparkles.",
+   "anim": true
+  },
+  {
+   "id": "jackcrown",
+   "name": "Jack-o'-Lantern Crown",
+   "blurb": "A glowing jack-o'-lantern on top, bats and candy corn.",
+   "anim": true
+  },
+  {
+   "id": "candycorn",
+   "name": "Candy Corn Ring",
+   "blurb": "A slowly turning ring of candy corn and sparkles.",
+   "anim": true
+  },
+  {
+   "id": "turkeyfan",
+   "name": "Turkey Tail Fan",
+   "blurb": "A fan of tail feathers and a cute turkey face.",
+   "anim": true
+  },
+  {
+   "id": "feathermandala",
+   "name": "Feather Mandala",
+   "blurb": "A turning ring of eighteen jewel-coloured feathers.",
+   "anim": true
+  },
+  {
+   "id": "acorngarland",
+   "name": "Acorn Garland",
+   "blurb": "Acorns, maple leaves and cranberries on a twig ring.",
+   "anim": true
+  },
+  {
+   "id": "xhollywreath",
+   "name": "Holly Wreath",
+   "blurb": "Holly and berries around a red bow.",
+   "anim": true
+  },
+  {
+   "id": "xbaubles",
+   "name": "Bauble Ring",
+   "blurb": "Ten swaying baubles on a golden string.",
+   "anim": true
+  },
+  {
+   "id": "xgingerring",
+   "name": "Gingerbread Ring",
+   "blurb": "Gingerbread folk and candy canes, slowly turning.",
+   "anim": true
+  },
+  {
+   "id": "xcaneRing",
+   "name": "Candy Cane Ring",
+   "blurb": "A turning ring of twelve candy canes.",
+   "anim": true
+  },
+  {
+   "id": "xreindeer",
+   "name": "Reindeer Antlers",
+   "blurb": "Antlers, bells and a glowing red nose.",
+   "anim": true
+  },
+  {
+   "id": "xcrystal",
+   "name": "Snowflake Crystal Ring",
+   "blurb": "Eight icy snowflakes turning around you.",
+   "anim": true
+  },
+  {
+   "id": "hk1",
+   "name": "Night 1: First Light",
+   "blurb": "One candle and the shamash glow among the stars.",
+   "anim": true
+  },
+  {
+   "id": "hk2",
+   "name": "Night 2: Dreidel Spin",
+   "blurb": "Spinning dreidels (nun, gimel, hey, shin) and two bright candles.",
+   "anim": true
+  },
+  {
+   "id": "hk3",
+   "name": "Night 3: Gold Gelt",
+   "blurb": "Shining gold gelt and three candles.",
+   "anim": true
+  },
+  {
+   "id": "hk4",
+   "name": "Night 4: Latke Night",
+   "blurb": "Crispy latkes, steam and four candles.",
+   "anim": true
+  },
+  {
+   "id": "hk5",
+   "name": "Night 5: Sufganiyot Sparkle",
+   "blurb": "Powdered-sugar sufganiyot and five candles.",
+   "anim": true
+  },
+  {
+   "id": "hk6",
+   "name": "Night 6: Light in the Window",
+   "blurb": "A hanukkiah lit in the window for all to see, with six candles.",
+   "anim": true
+  },
+  {
+   "id": "hk7",
+   "name": "Night 7: A Little Oil",
+   "blurb": "One day's oil lasted eight days: seven candles.",
+   "anim": true
+  },
+  {
+   "id": "hk8",
+   "name": "Night 8: Festival of Lights",
+   "blurb": "All eight candles and the shamash: the Festival of Lights.",
    "anim": true
   },
   {
@@ -349,6 +709,114 @@
  ],
  "themes": [
   {
+   "id": "vibrantpumpkin",
+   "name": "Vibrant Pumpkin",
+   "blurb": "Glossy glowing pumpkins, a pumpkin sunset and a ring of pumpkins.",
+   "season": "thanksgiving",
+   "plate": "pumpkinglow",
+   "bg": "pumpkinsunset",
+   "wreath": "pumpkinring"
+  },
+  {
+   "id": "gobblegobble",
+   "name": "Gobble Gobble Turkey",
+   "blurb": "A parade of turkeys, a tail-feather fan and lots of gobbling.",
+   "season": "thanksgiving",
+   "plate": "gobbleparade",
+   "bg": "turkeyparade",
+   "wreath": "turkeyfan"
+  },
+  {
+   "id": "cosychristmas",
+   "name": "Cosy Christmas",
+   "blurb": "Fireside glow, a snowy village and a holly wreath.",
+   "season": "christmas",
+   "plate": "xfireside",
+   "bg": "xvillage",
+   "wreath": "xhollywreath"
+  },
+  {
+   "id": "santasparkle",
+   "name": "Santa & Sparkle",
+   "blurb": "A sleigh over the moon and a ring of candy canes.",
+   "season": "christmas",
+   "plate": "xsleighplate",
+   "bg": "xsleighflight",
+   "wreath": "xcaneRing"
+  },
+  {
+   "id": "hanukkah1",
+   "name": "Hanukkah, Night 1",
+   "blurb": "One candle and the shamash glow among the stars.",
+   "season": "hanukkah:1",
+   "plate": "hk1",
+   "bg": "hk1",
+   "wreath": "hk1"
+  },
+  {
+   "id": "hanukkah2",
+   "name": "Hanukkah, Night 2",
+   "blurb": "Spinning dreidels (nun, gimel, hey, shin) and two bright candles.",
+   "season": "hanukkah:2",
+   "plate": "hk2",
+   "bg": "hk2",
+   "wreath": "hk2"
+  },
+  {
+   "id": "hanukkah3",
+   "name": "Hanukkah, Night 3",
+   "blurb": "Shining gold gelt and three candles.",
+   "season": "hanukkah:3",
+   "plate": "hk3",
+   "bg": "hk3",
+   "wreath": "hk3"
+  },
+  {
+   "id": "hanukkah4",
+   "name": "Hanukkah, Night 4",
+   "blurb": "Crispy latkes, steam and four candles.",
+   "season": "hanukkah:4",
+   "plate": "hk4",
+   "bg": "hk4",
+   "wreath": "hk4"
+  },
+  {
+   "id": "hanukkah5",
+   "name": "Hanukkah, Night 5",
+   "blurb": "Powdered-sugar sufganiyot and five candles.",
+   "season": "hanukkah:5",
+   "plate": "hk5",
+   "bg": "hk5",
+   "wreath": "hk5"
+  },
+  {
+   "id": "hanukkah6",
+   "name": "Hanukkah, Night 6",
+   "blurb": "A hanukkiah lit in the window for all to see, with six candles.",
+   "season": "hanukkah:6",
+   "plate": "hk6",
+   "bg": "hk6",
+   "wreath": "hk6"
+  },
+  {
+   "id": "hanukkah7",
+   "name": "Hanukkah, Night 7",
+   "blurb": "One day's oil lasted eight days: seven candles.",
+   "season": "hanukkah:7",
+   "plate": "hk7",
+   "bg": "hk7",
+   "wreath": "hk7"
+  },
+  {
+   "id": "hanukkah8",
+   "name": "Hanukkah, Night 8",
+   "blurb": "All eight candles and the shamash: the Festival of Lights.",
+   "season": "hanukkah:8",
+   "plate": "hk8",
+   "bg": "hk8",
+   "wreath": "hk8"
+  },
+  {
    "id": "boba",
    "name": "Kawaii Boba Tea",
    "blurb": "Pink milk tea, pearls and sparkles.",
@@ -407,6 +875,217 @@
       "neon",
       "slime",
       "prism"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "vibrantpumpkin",
+   "name": "Vibrant Pumpkin",
+   "blurb": "Glossy, glowing pumpkins and jack-o'-lanterns.",
+   "season": "thanksgiving",
+   "groups": [
+    {
+     "plate": [
+      "pumpkinglow",
+      "jacklantern",
+      "spiceswirl"
+     ],
+     "bg": [
+      "pumpkinsunset",
+      "jacknight",
+      "vinegarden"
+     ],
+     "wreath": [
+      "pumpkinring",
+      "jackcrown",
+      "candycorn"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "gobblegobble",
+   "name": "Gobble Gobble Turkey",
+   "blurb": "Cute turkeys, jewel-bright tail feathers and a feast.",
+   "season": "thanksgiving",
+   "groups": [
+    {
+     "plate": [
+      "gobbleparade",
+      "featherfan",
+      "feastplaid"
+     ],
+     "bg": [
+      "turkeyparade",
+      "featherburst",
+      "feasttable"
+     ],
+     "wreath": [
+      "turkeyfan",
+      "feathermandala",
+      "acorngarland"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cosychristmas",
+   "name": "Cosy Christmas",
+   "blurb": "Fireside warmth, snowy villages and holly.",
+   "season": "christmas",
+   "groups": [
+    {
+     "plate": [
+      "xfireside",
+      "xpine",
+      "xginger"
+     ],
+     "bg": [
+      "xvillage",
+      "xtree",
+      "xmantel"
+     ],
+     "wreath": [
+      "xhollywreath",
+      "xbaubles",
+      "xgingerring"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "santasparkle",
+   "name": "Santa & Sparkle",
+   "blurb": "Sleighs, candy canes, snowmen and sparkle.",
+   "season": "christmas",
+   "groups": [
+    {
+     "plate": [
+      "xcandystripe",
+      "xsleighplate",
+      "xsnowplate"
+     ],
+     "bg": [
+      "xsleighflight",
+      "xcandyland",
+      "xsnowhill"
+     ],
+     "wreath": [
+      "xcaneRing",
+      "xreindeer",
+      "xcrystal"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "hanukkah",
+   "name": "Hanukkah",
+   "blurb": "Eight nights of light: each night has its own set, with that night's candles lit.",
+   "groups": [
+    {
+     "name": "Night 1: First Light",
+     "season": "hanukkah:1",
+     "plate": [
+      "hk1"
+     ],
+     "bg": [
+      "hk1"
+     ],
+     "wreath": [
+      "hk1"
+     ]
+    },
+    {
+     "name": "Night 2: Dreidel Spin",
+     "season": "hanukkah:2",
+     "plate": [
+      "hk2"
+     ],
+     "bg": [
+      "hk2"
+     ],
+     "wreath": [
+      "hk2"
+     ]
+    },
+    {
+     "name": "Night 3: Gold Gelt",
+     "season": "hanukkah:3",
+     "plate": [
+      "hk3"
+     ],
+     "bg": [
+      "hk3"
+     ],
+     "wreath": [
+      "hk3"
+     ]
+    },
+    {
+     "name": "Night 4: Latke Night",
+     "season": "hanukkah:4",
+     "plate": [
+      "hk4"
+     ],
+     "bg": [
+      "hk4"
+     ],
+     "wreath": [
+      "hk4"
+     ]
+    },
+    {
+     "name": "Night 5: Sufganiyot Sparkle",
+     "season": "hanukkah:5",
+     "plate": [
+      "hk5"
+     ],
+     "bg": [
+      "hk5"
+     ],
+     "wreath": [
+      "hk5"
+     ]
+    },
+    {
+     "name": "Night 6: Light in the Window",
+     "season": "hanukkah:6",
+     "plate": [
+      "hk6"
+     ],
+     "bg": [
+      "hk6"
+     ],
+     "wreath": [
+      "hk6"
+     ]
+    },
+    {
+     "name": "Night 7: A Little Oil",
+     "season": "hanukkah:7",
+     "plate": [
+      "hk7"
+     ],
+     "bg": [
+      "hk7"
+     ],
+     "wreath": [
+      "hk7"
+     ]
+    },
+    {
+     "name": "Night 8: Festival of Lights",
+     "season": "hanukkah:8",
+     "plate": [
+      "hk8"
+     ],
+     "bg": [
+      "hk8"
+     ],
+     "wreath": [
+      "hk8"
      ]
     }
    ]
@@ -522,6 +1201,18 @@
   }
  ],
  "seriesOfTheme": {
+  "vibrantpumpkin": "vibrantpumpkin",
+  "gobblegobble": "gobblegobble",
+  "cosychristmas": "cosychristmas",
+  "santasparkle": "santasparkle",
+  "hanukkah1": "hanukkah",
+  "hanukkah2": "hanukkah",
+  "hanukkah3": "hanukkah",
+  "hanukkah4": "hanukkah",
+  "hanukkah5": "hanukkah",
+  "hanukkah6": "hanukkah",
+  "hanukkah7": "hanukkah",
+  "hanukkah8": "hanukkah",
   "boba": "boba",
   "lunar": "lunar",
   "anime": "anime",

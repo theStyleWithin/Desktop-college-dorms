@@ -365,3 +365,15 @@ v0.3.0 adds a real 3D viewer for VRM / VRoid models (room, idle life, physics, h
 
 Built: everything above except battery-aware pausing and a standalone lorebook library (lorebooks are embedded in characters).
 Android builds without the local engine (the OS can't run the helper binary); it uses cloud or network models. See README for the verification status of each platform.
+
+
+## Holiday decoration sets (calendar-locked)
+
+Ported from Anti-Social: the art, the collections and the rules are the same.
+
+- **Sets**: Vibrant Pumpkin and Gobble Gobble Turkey (season `thanksgiving`), Cosy Christmas and Santa & Sparkle (`christmas`), and Hanukkah, a set per night (`hanukkah:1` to `hanukkah:8`). Each set has three nameplates, three profile backgrounds and three avatar wreaths (Hanukkah: one of each per night), and themes that wear them together.
+- **Calendar** (`src/lib/decoCore.js`, `WINDOW`): Thanksgiving from 7 days before the 4th Thursday of November to 7 days after; Christmas 18 December to 6 January; Hanukkah night N from the evening of night N (the Hebrew calendar is computed in the app) until 7 days after night 8. A set opens at midnight on the device's clock. See [docs/holiday-calendar.md](docs/holiday-calendar.md).
+- **Locked**: outside its window a set is a blurred teaser with the date it next opens (with the year when that is next year); its theme card is disabled and its parts are inert. This applies in every place decorations are picked: the profile, a character's and a room's. A "Next up" line shows when a set opens within six weeks.
+- **What stays**: what is already worn stays on when its season ends. The window only decides what can be picked. Changing the device's date reveals a set early; that only affects looks, and is not a security feature.
+- **The model**: when it chooses decorations for a character, the page passes the ids of the closed sets, which are left out of the list it is given and taken out of its answer if it names one anyway.
+- **Tested**: `node tests/deco-check.mjs` (in CI) checks that every decoration has art in a moving and a still version at the right shape, that every collection and theme points at real things, the number of lit candles on each Hanukkah night, the first night of Hanukkah for 2024 to 2030, the Hebrew calendar against the system's for 1990 to 2100, and the opening and closing days of every season; Rust unit tests check the data file against the art and that a closed set is never kept from the model; the app's tests check that a closed set cannot be picked. Not tested: real appearance on every theme and screen size beyond the pictures I looked at.
