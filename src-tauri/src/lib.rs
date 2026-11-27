@@ -251,6 +251,7 @@ pub fn run() {
             viewfolders::add_view_folder,
             viewfolders::remove_view_folder,
             viewfolders::scan_view_folder,
+            viewfolders::view_thumb,
             netpic::fetch_picture,
             deco::list_char_deco,
             deco::list_custom_deco,

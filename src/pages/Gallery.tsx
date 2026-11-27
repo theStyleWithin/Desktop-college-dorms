@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 import { api, displayName, mediaUrl, type Character, type ViewDir, type ViewFolder } from "../api";
@@ -7,6 +7,7 @@ import { errText } from "../lib/util";
 import { useToast } from "../components/ui";
 import PictureComments from "../components/PictureComments";
 import PictureLinkBox, { pastedPicture } from "../components/PictureLinkBox";
+import GalleryStage from "../components/GalleryStage";
 
 /**
  * Gallery: a quick look at pictures, for when you just want to look at the art and not chat. Every character is an art folder holding
@@ -14,7 +15,7 @@ import PictureLinkBox, { pastedPicture } from "../components/PictureLinkBox";
  * which have nothing to do with any character, only to look at. Nothing here changes anything: a folder from your computer is never
  * copied, changed or deleted (taking it off the list only forgets it).
  */
-type Tile = { id: string; key: string; url: string; kind: "image" | "gif" | "video"; title: string; note?: string; who?: Character };
+type Tile = { id: string; key: string; url: string; kind: "image" | "gif" | "video"; title: string; note?: string; who?: Character; path?: string };
 
 const profileTile = (c: Character): Tile | null => {
   const url = mediaUrl(c);
@@ -27,22 +28,75 @@ const galleryTiles = (c: Character): Tile[] =>
     return p ? [{ id: `${c.id}:${g.id}`, key: `char:${c.id}:${g.id}`, url: convertFileSrc(p), kind: g.kind, title: displayName(c), note: g.moods.length ? g.moods.join(", ") : "Gallery", who: c } as Tile] : [];
   });
 const picCount = (c: Character) => (profileTile(c) ? 1 : 0) + galleryTiles(c).length;
-const diskTiles = (d: ViewDir): Tile[] => d.files.map((f) => ({ id: f.path, key: `disk:${f.path}`, url: convertFileSrc(f.path), kind: f.kind, title: f.name, note: d.name }));
+const diskTiles = (d: ViewDir): Tile[] => d.files.map((f) => ({ id: f.path, key: `disk:${f.path}`, url: convertFileSrc(f.path), kind: f.kind, title: f.name, note: d.name, path: f.path }));
 const firstPic = (d: ViewDir): Tile | null => (d.files[0] ? diskTiles(d)[0] : d.dirs.map(firstPic).find(Boolean) ?? null);
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
-/** One picture, a picture file or a short clip (a clip shows its first frame and plays while the pointer is on it). */
-function Pic({ t, fit = "cover", big }: { t: Tile; fit?: "cover" | "contain"; big?: boolean }) {
+/**
+ * A small preview of a picture from a folder on the computer. The full file is never loaded for a tile (a folder of big photos or 4K clips
+ * would fill the memory, which is what made the Gallery look like it crashed): the app makes a small copy, a few at a time, as the tile scrolls into view.
+ */
+const thumbCache = new Map<string, string>();
+let thumbBusy = 0; const thumbWait: (() => void)[] = [];
+const thumbSlot = () => new Promise<void>((ok) => { if (thumbBusy < 3) { thumbBusy++; ok(); } else thumbWait.push(() => { thumbBusy++; ok(); }); });
+const thumbFree = () => { thumbBusy--; thumbWait.shift()?.(); };
+function DiskThumb({ t, fit }: { t: Tile; fit: "cover" | "contain" }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [src, setSrc] = useState<string | null>(t.path ? thumbCache.get(t.path) ?? null : null);
+  const [bad, setBad] = useState(false);
+  useEffect(() => {
+    if (src || bad || !t.path || t.kind === "video") return;
+    const el = ref.current; if (!el) return;
+    let dead = false;
+    const io = new IntersectionObserver((es) => {
+      if (!es.some((e) => e.isIntersecting)) return;
+      io.disconnect();
+      void (async () => {
+        await thumbSlot();
+        try {
+          if (dead) return;
+          const p = await api.viewThumb(t.path!);
+          thumbCache.set(t.path!, convertFileSrc(p));
+          if (!dead) setSrc(thumbCache.get(t.path!)!);
+        } catch { if (!dead) setBad(true); } finally { thumbFree(); }
+      })();
+    }, { rootMargin: "200px" });
+    io.observe(el);
+    return () => { dead = true; io.disconnect(); };
+  }, [src, bad, t.path, t.kind]);
+  return (
+    <span ref={ref} className="gal-thumb" data-testid="gallery-thumb" style={{ display: "block", width: "100%", height: "100%" }}>
+      {src ? <img src={src} alt={t.note ? `${t.title}: ${t.note}` : t.title} decoding="async" draggable={false} style={{ objectFit: fit }} />
+        : <span className="gal-none">{t.kind === "video" ? "▶" : bad ? "?" : "…"}</span>}
+    </span>
+  );
+}
+
+/** One picture, a picture file or a short clip (a clip from the computer is a plain tile, so a folder of big videos never loads at once). */
+function Pic({ t, fit = "cover" }: { t: Tile; fit?: "cover" | "contain" }) {
+  if (t.path) return <DiskThumb t={t} fit={fit} />;
   if (t.kind === "video") {
-    return <video src={t.url} muted={!big} loop playsInline preload="metadata" controls={big} autoPlay={big} style={{ objectFit: fit }}
-      onMouseEnter={(e) => { if (!big) void e.currentTarget.play().catch(() => {}); }} onMouseLeave={(e) => { if (!big) { e.currentTarget.pause(); e.currentTarget.currentTime = 0; } }} />;
+    return <video src={t.url} muted loop playsInline preload="none" style={{ objectFit: fit }}
+      onMouseEnter={(e) => { void e.currentTarget.play().catch(() => {}); }} onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }} />;
   }
   return <img src={t.url} alt={t.note ? `${t.title}: ${t.note}` : t.title} loading="lazy" decoding="async" draggable={false} style={{ objectFit: fit }} />;
 }
 
+/** If something in the Gallery breaks, say what, instead of leaving a blank page. */
+class GalleryGuard extends Component<{ children: ReactNode }, { err: string | null }> {
+  state = { err: null as string | null };
+  static getDerivedStateFromError(e: unknown) { return { err: e instanceof Error ? e.message : String(e) }; }
+  render() {
+    return this.state.err === null ? this.props.children : (
+      <div className="page" role="alert" data-testid="gallery-error"><h2>The Gallery hit a problem</h2><p className="hint">{this.state.err}</p>
+        <button className="btn" onClick={() => this.setState({ err: null })}>Try again</button></div>
+    );
+  }
+}
+
 type Where = { kind: "char"; id: string; sub: boolean } | { kind: "disk"; id: string; path: string[] } | null;
 
-export default function Gallery() {
+function GalleryPage() {
   const { characters, go, info, me, refresh } = useStore();
   const toast = useToast();
   const [q, setQ] = useState("");
@@ -100,7 +154,8 @@ export default function Gallery() {
     const k = (e: KeyboardEvent) => {
       const v = viewRef.current; if (!v) return;
       if ((e.target as HTMLElement | null)?.closest?.("input, textarea")) return;   // typing a comment: the keys are for the text
-      if (e.key === "Escape") setView(null);
+      if (e.key === "Escape") { if (document.fullscreenElement) return; setView(null); }
+      else if (e.shiftKey) return;
       else if (e.key === "ArrowRight") setView({ ...v, at: (v.at + 1) % v.list.length });
       else if (e.key === "ArrowLeft") setView({ ...v, at: (v.at - 1 + v.list.length) % v.list.length });
     };
@@ -135,7 +190,7 @@ export default function Gallery() {
         <div className="gal-vbody">
         <div className="gal-vmain">
           {v.list.length > 1 && <button className="gal-nav left" aria-label="Previous picture" data-testid="gallery-prev" onClick={() => setView({ ...v, at: (v.at - 1 + v.list.length) % v.list.length })}>‹</button>}
-          <div className="gal-vpic" data-testid="gallery-big"><Pic key={t.id} t={t} fit="contain" big /></div>
+          <div className="gal-vpic" data-testid="gallery-big"><GalleryStage key={t.id} t={t} /></div>
           {v.list.length > 1 && <button className="gal-nav right" aria-label="Next picture" data-testid="gallery-next" onClick={() => setView({ ...v, at: (v.at + 1) % v.list.length })}>›</button>}
         </div>
         <aside className="gal-comments" aria-label="Comments on this picture"><PictureComments picKey={t.key} author={me.name} onCount={(n) => setCount(t.key, n)} /></aside>
@@ -301,3 +356,5 @@ export default function Gallery() {
     </div>
   );
 }
+
+export default function Gallery() { return <GalleryGuard><GalleryPage /></GalleryGuard>; }

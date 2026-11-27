@@ -5,6 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
+use image::ImageEncoder;
 use serde::Serialize;
 use tauri::{Manager, State};
 
@@ -123,6 +124,60 @@ pub fn scan_dir(path: &Path, depth: usize, budget: &mut usize, truncated: &mut b
     dir
 }
 
+/// The longest side of a thumbnail (a tile is about 190 pixels wide; this is sharp on a high-density screen).
+const THUMB_SIDE: u32 = 360;
+
+/// A small picture of one picture inside a folder on the list: made once, kept in `media/gallery-thumbs`, and found again by the picture's path,
+/// size and date (so a changed picture gets a new one). The Gallery shows these in its grids instead of loading every full-size photo, which is
+/// what made a folder of big photos too heavy for the window. Only a picture inside a folder on the list is read; a link that leads out is refused.
+pub fn make_thumb(data: &Path, folders: &[db::ViewFolder], path: &str) -> R<String> {
+    use sha2::{Digest, Sha256};
+    let real = Path::new(path).canonicalize().map_err(|_| "That picture isn't there any more.".to_string())?;
+    let inside = folders.iter().any(|f| Path::new(&f.path).canonicalize().map(|r| real.starts_with(r)).unwrap_or(false));
+    if !inside { return Err("That picture isn't in a Gallery folder.".into()); }
+    let name = real.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    if !matches!(kind_of(&name), Some("image") | Some("gif")) { return Err("There is no small picture for this kind of file.".into()); }
+    let meta = std::fs::metadata(&real).map_err(|e| e.to_string())?;
+    let stamp = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    let key: String = Sha256::digest(format!("{}|{}|{}", real.display(), meta.len(), stamp).as_bytes()).iter().take(12).map(|b| format!("{b:02x}")).collect();
+    let dir = data.join("media").join("gallery-thumbs");
+    for ext in ["jpg", "png"] {
+        let c = dir.join(format!("{key}.{ext}"));
+        if c.is_file() { return Ok(c.to_string_lossy().into_owned()); }
+    }
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let mut reader = image::ImageReader::open(&real).map_err(|e| e.to_string())?.with_guessed_format().map_err(|e| e.to_string())?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(16_384);
+    limits.max_image_height = Some(16_384);
+    limits.max_alloc = Some(512 * 1024 * 1024);
+    reader.limits(limits);
+    let img = reader.decode().map_err(|e| format!("That picture can't be read ({e})."))?;
+    let small = img.thumbnail(THUMB_SIDE, THUMB_SIDE).to_rgba8();
+    let see_through = small.pixels().any(|p| p[3] < 255);
+    let (file, bytes) = if see_through {
+        let mut out = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut out).write_image(small.as_raw(), small.width(), small.height(), image::ExtendedColorType::Rgba8).map_err(|e| e.to_string())?;
+        (dir.join(format!("{key}.png")), out)
+    } else {
+        let rgb = image::DynamicImage::ImageRgba8(small).to_rgb8();
+        let mut out = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 82).encode_image(&rgb).map_err(|e| e.to_string())?;
+        (dir.join(format!("{key}.jpg")), out)
+    };
+    std::fs::write(&file, bytes).map_err(|e| e.to_string())?;
+    Ok(file.to_string_lossy().into_owned())
+}
+
+/// The small picture for one picture in a folder on the list (see `make_thumb`). Done off the main thread.
+#[tauri::command]
+pub async fn view_thumb(state: State<'_, Shared>, path: String) -> R<String> {
+    let o = owner(&state)?;
+    let folders = db::list_view_folders(&state.db.lock().unwrap(), &o).map_err(e)?;
+    let data = state.data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || make_thumb(&data, &folders, &path)).await.map_err(|x| x.to_string())?
+}
+
 fn shown(id: String, path: String) -> Folder {
     let name = Path::new(&path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.clone());
     let exists = Path::new(&path).is_dir();
@@ -179,6 +234,39 @@ pub async fn scan_view_folder(state: State<'_, Shared>, id: String) -> R<Scan> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_thumbnail_is_small_kept_and_only_made_for_pictures_in_a_listed_folder() {
+        let root = scratch("thumb");
+        let (folder, data, other) = (root.join("art"), root.join("data"), root.join("elsewhere"));
+        for d in [&folder, &data, &other] { fs::create_dir_all(d).unwrap(); }
+        image::RgbaImage::from_fn(2400, 1600, |x, y| image::Rgba([(x % 255) as u8, (y % 255) as u8, 90, 255])).save(folder.join("photo.png")).unwrap();
+        image::RgbaImage::from_fn(300, 300, |x, _| image::Rgba([200, 30, 30, if x < 150 { 0 } else { 255 }])).save(folder.join("cutout.png")).unwrap();
+        image::RgbaImage::from_pixel(50, 50, image::Rgba([1, 2, 3, 255])).save(other.join("secret.png")).unwrap();
+        fs::write(folder.join("notes.txt"), b"x").unwrap();
+        fs::write(folder.join("clip.mp4"), b"x").unwrap();
+        let folders = vec![db::ViewFolder { id: "f".into(), path: folder.to_string_lossy().into_owned(), added_at: 0 }];
+        let t = make_thumb(&data, &folders, &folder.join("photo.png").to_string_lossy()).unwrap();
+        assert!(t.ends_with(".jpg") && t.contains("gallery-thumbs"), "an opaque picture gets a small JPEG: {t}");
+        let im = image::open(&t).unwrap();
+        assert_eq!((im.width(), im.height()), (360, 240), "shrunk to fit 360, keeping its shape");
+        assert!(fs::metadata(&t).unwrap().len() < 100_000);
+        let again = make_thumb(&data, &folders, &folder.join("photo.png").to_string_lossy()).unwrap();
+        assert_eq!(again, t, "made once, found again");
+        let cut = make_thumb(&data, &folders, &folder.join("cutout.png").to_string_lossy()).unwrap();
+        assert!(cut.ends_with(".png"), "a picture with see-through parts keeps them");
+        assert!(make_thumb(&data, &folders, &other.join("secret.png").to_string_lossy()).is_err(), "not in a listed folder");
+        assert!(make_thumb(&data, &folders, &folder.join("../elsewhere/secret.png").to_string_lossy()).is_err(), "a path that climbs out is refused");
+        assert!(make_thumb(&data, &folders, &folder.join("notes.txt").to_string_lossy()).is_err());
+        assert!(make_thumb(&data, &folders, &folder.join("clip.mp4").to_string_lossy()).is_err(), "clips have no thumbnail");
+        assert!(make_thumb(&data, &folders, &folder.join("missing.png").to_string_lossy()).is_err());
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&other, folder.join("sneaky")).unwrap();
+            assert!(make_thumb(&data, &folders, &folder.join("sneaky/secret.png").to_string_lossy()).is_err(), "a link that leads out of the folder is refused");
+        }
+        let _ = fs::remove_dir_all(&root);
+    }
+
     use super::*;
     use std::fs;
 

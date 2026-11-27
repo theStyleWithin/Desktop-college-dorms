@@ -478,6 +478,8 @@ export const api = {
   listViewFolders: () => invoke<ViewFolder[]>("list_view_folders"),
   addViewFolder: (path: string) => invoke<ViewFolder>("add_view_folder", { path }),
   removeViewFolder: (id: string) => invoke<void>("remove_view_folder", { id }),
+  /** The small picture (kept on this device) for a picture inside a Gallery folder; the Gallery shows these in its grids instead of full-size photos. */
+  viewThumb: (path: string) => invoke<string>("view_thumb", { path }),
   scanViewFolder: (id: string) => invoke<{ root: ViewDir; truncated: boolean }>("scan_view_folder", { id }),
   listCustomDeco: () => invoke<CustomDeco[]>("list_custom_deco"),
   saveCustomDeco: (items: CustomDeco[]) => invoke<string[]>("save_custom_deco", { items }),
