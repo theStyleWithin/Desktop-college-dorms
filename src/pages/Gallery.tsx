@@ -1,3 +1,4 @@
+import { sget, sset } from "../lib/scoped";
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open as pickFolder } from "@tauri-apps/plugin-dialog";
@@ -173,8 +174,8 @@ function GalleryPage() {
     try { await api.saveSettings({ ...settings, gallery_order: o, gallery_merge: m }); await refresh(); } catch (e) { toast(errText(e), "err"); }
   };
   // the panel beside (or below) the big picture: comments, or a chat with a character about what is on screen
-  const lsGet = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
-  const lsPut = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* not remembered */ } };
+  const lsGet = (k: string) => sget(k);
+  const lsPut = (k: string, v: string) => { try { sset(k, v); } catch { /* not remembered */ } };
   const [panel, setPanelState] = useState<"comments" | "chat">(lsGet("dorms.gallery.panel") === "chat" ? "chat" : "comments");
   const [layout, setLayoutState] = useState<"side" | "below">(lsGet("dorms.gallery.layout") === "below" ? "below" : "side");
   const setPanel = (p: "comments" | "chat") => { setPanelState(p); lsPut("dorms.gallery.panel", p); };

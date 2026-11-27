@@ -2839,11 +2839,11 @@ try:
         d.find_element(By.CSS_SELECTOR, "[data-fit=%s]" % fit_).click(); time.sleep(0.2)
         check("the size mode %s applies" % fit_, d.find_element(By.CSS_SELECTOR, "[data-testid=stage-image]").get_attribute("data-fit") == fit_)
     d.find_element(By.CSS_SELECTOR, "[data-fit=fill]").click(); time.sleep(0.2)
-    check("the chosen size mode is remembered", d.execute_script("return localStorage.getItem('dorms.gallery.fit')") == "fill")
+    check("the chosen size mode is remembered", d.execute_script("return localStorage.getItem('dorms.gallery.fit.guest')") == "fill")
     d.find_element(By.CSS_SELECTOR, "[data-fit=fit]").click(); time.sleep(0.2)
     # the panel can sit below the picture, and can be a chat with a character about what is on screen
     d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-flip]").click(); time.sleep(0.3)
-    check("the panel can be flipped below the picture (and it is remembered)", d.execute_script("return document.querySelector('.gal-vbody').dataset.layout") == "below" and d.execute_script("return localStorage.getItem('dorms.gallery.layout')") == "below")
+    check("the panel can be flipped below the picture (and it is remembered)", d.execute_script("return document.querySelector('.gal-vbody').dataset.layout") == "below" and d.execute_script("return localStorage.getItem('dorms.gallery.layout.guest')") == "below")
     d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-flip]").click(); time.sleep(0.3)
     check("and flipped back beside it", d.execute_script("return document.querySelector('.gal-vbody').dataset.layout") == "side")
     d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-tab-chat]").click(); time.sleep(0.5)

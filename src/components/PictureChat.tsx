@@ -1,3 +1,4 @@
+import { sget, sset } from "../lib/scoped";
 import { useEffect, useRef, useState } from "react";
 import { api, displayName } from "../api";
 import { useStore } from "../store";
@@ -9,8 +10,8 @@ import { errText } from "../lib/util";
  */
 type Msg = { role: "user" | "assistant"; text: string; saw?: boolean };
 const CHAR_KEY = "dorms.gallery.chatChar", SEE_KEY = "dorms.gallery.chatSee";
-const get = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
-const put = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* not remembered */ } };
+const get = (k: string) => sget(k);
+const put = (k: string, v: string) => { try { sset(k, v); } catch { /* not remembered */ } };
 const histKey = (pic: string, c: string) => `dorms.gallery.chat.${pic}|${c}`;
 const load = (pic: string, c: string): Msg[] => { try { const v = JSON.parse(get(histKey(pic, c)) ?? "[]"); return Array.isArray(v) ? v.filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.text === "string").slice(-40) : []; } catch { return []; } };
 

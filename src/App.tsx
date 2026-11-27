@@ -1,3 +1,4 @@
+import { setProfileScope } from "./lib/scoped";
 import { applyTextScale } from "./lib/textScale";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type AppInfo, type Character, type Chat, type Dorm, type Folder, type Persona, type Room, type SessionState, type Settings, type World } from "./api";
@@ -78,6 +79,7 @@ function loadNavOrder(): Route["page"][] {
 }
 
 function Shell({ session, setSession, onHidden }: { session: SessionState; setSession: (s: SessionState) => void; onHidden: (name: string, others: number) => void }) {
+  setProfileScope(session.profile?.id ?? null);   // what the screens remember on this device is this profile's own (the screens are rebuilt per profile)
   const toast = useToast();
   const [route, setRoute] = useState<Route>({ page: "home" });
   // every walk to a chat (from the side bar, say) starts the chat page fresh, even when a chat is already open

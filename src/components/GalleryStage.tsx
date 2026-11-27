@@ -1,3 +1,4 @@
+import { sget, sset } from "../lib/scoped";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
 /**
@@ -8,10 +9,10 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 export type Fit = "fit" | "actual" | "fill" | "stretch";
 const FIT_KEY = "dorms.gallery.fit";
 export const loadFit = (): Fit => {
-  try { const v = localStorage.getItem(FIT_KEY); if (v === "fit" || v === "actual" || v === "fill" || v === "stretch") return v; } catch { /* not remembered */ }
+  try { const v = sget(FIT_KEY); if (v === "fit" || v === "actual" || v === "fill" || v === "stretch") return v; } catch { /* not remembered */ }
   return "fit";
 };
-const saveFit = (f: Fit) => { try { localStorage.setItem(FIT_KEY, f); } catch { /* not remembered */ } };
+const saveFit = (f: Fit) => { try { sset(FIT_KEY, f); } catch { /* not remembered */ } };
 const FITS: [Fit, string, string][] = [
   ["fit", "Fit", "Fit the whole picture on the screen"],
   ["actual", "1:1", "Actual size (drag to look around)"],
