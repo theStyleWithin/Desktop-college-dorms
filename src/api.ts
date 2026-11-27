@@ -212,6 +212,9 @@ export interface Settings {
   /** Novel writing: requests a day the model allows (0 = none set), and how many are kept for chatting. */
   novel_daily_limit: number;
   novel_reserve: number;
+  /** Desktop: keep the app running in the system tray when the window is minimized / closed. */
+  tray_minimize: boolean;
+  tray_close: boolean;
   /** The user's own profile decorations. */
   deco: UserDeco;
 }
@@ -439,6 +442,9 @@ export const api = {
   novelsRunning: () => invoke<number[]>("novels_running"),
   trayAvailable: () => invoke<boolean>("tray_available"),
   hideToTray: () => invoke<void>("hide_to_tray"),
+  /** Keep the app in the system tray when the window is minimized and/or closed. Rejects (and turns nothing on) if the desktop has no tray. */
+  setTrayMode: (minimize: boolean, close: boolean) => invoke<void>("set_tray_mode", { minimize, close }),
+  trayHideIfMinimized: () => invoke<void>("tray_hide_if_minimized"),
   quitApp: () => invoke<void>("quit_app"),
   listWorlds: () => invoke<World[]>("list_worlds"),
   createWorld: (name: string, description: string) => invoke<World>("create_world", { name, description }),
@@ -653,6 +659,8 @@ export const onMechanics = (cb: (e: { chat_id: number }) => void): Promise<Unlis
   listen("dorms://mechanics", (ev) => cb(ev.payload as { chat_id: number }));
 export const onModelProgress = (cb: (e: ModelProgress) => void): Promise<UnlistenFn> =>
   listen<ModelProgress>("dorms://model-progress", (ev) => cb(ev.payload));
+/** A page picked in the system tray's menu (Tokenator, Dorms, Characters, Gallery, Settings). */
+export const onTrayNav = (cb: (page: string) => void): Promise<UnlistenFn> => listen("dorms://tray-nav", (ev) => cb(String(ev.payload)));
 export const onAutoStopped = (cb: (e: { chat_id: number; reason: string }) => void): Promise<UnlistenFn> =>
   listen("dorms://auto-stopped", (ev) => cb(ev.payload as { chat_id: number; reason: string }));
 

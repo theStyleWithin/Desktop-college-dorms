@@ -95,6 +95,7 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
         <ChatTab s={s} patch={patchSave} />
         <h2 className="sect">Appearance</h2>
         <Look s={s} patch={patchSave} />
+        <TrayCard s={s} patch={patchSave} />
         <Fold title="Emoji & stickers" hint="your emoji and sticker packs" open={emojiOpen} onToggle={setEmojiOpen} testid="fold-emoji"><EmojiTab /></Fold>
       </>}
       {tab === "personas" && <PersonasTab />}
@@ -386,6 +387,26 @@ function VoiceTab({ s, patch, ensureSaved }: { s: Settings; patch: (p: Partial<S
         and adjust the port. Your voice then never leaves your machine. For the best experience, pair voice with a fast model (a cloud API, or a local model that fits your hardware),
         since the reply starts only after the model has read what you said.
       </p>
+    </div>
+  );
+}
+
+/** Keep the app running in the system tray (desktop): minimizing and/or closing the window puts it in the tray, whose menu opens Tokenator, the chats, the characters, the Gallery or Settings. */
+function TrayCard({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void }) {
+  const toast = useToast();
+  const [can, setCan] = useState(false);
+  useEffect(() => { void api.trayAvailable().then(setCan).catch(() => setCan(false)); }, []);
+  if (!can) return null;
+  const change = async (p: { tray_minimize?: boolean; tray_close?: boolean }) => {
+    const m = p.tray_minimize ?? s.tray_minimize, c = p.tray_close ?? s.tray_close;
+    try { await api.setTrayMode(m, c); patch(p); } catch (e) { toast(errText(e), "err"); }
+  };
+  return (
+    <div className="card" style={{ marginTop: 14 }} data-testid="tray-card">
+      <h3 style={{ marginTop: 0 }}>System tray</h3>
+      <p className="hint" style={{ marginTop: 0 }}>Keep the app running in the tray (the little icons by the clock) instead of closing it. Its icon has a menu that opens Tokenator, your chats, your characters, the Gallery or Settings, or quits; clicking the icon shows or hides the window.</p>
+      <label className="check" style={{ display: "flex", gap: 8, margin: "6px 0" }}><input type="checkbox" checked={s.tray_minimize} data-testid="tray-minimize" onChange={(e) => void change({ tray_minimize: e.target.checked })} /><span>Put the app in the tray when I minimize the window</span></label>
+      <label className="check" style={{ display: "flex", gap: 8, margin: "6px 0" }}><input type="checkbox" checked={s.tray_close} data-testid="tray-close" onChange={(e) => void change({ tray_close: e.target.checked })} /><span>Keep the app running in the tray when I close the window <small className="muted" style={{ display: "block" }}>Choose Quit in the tray menu to really stop it. Starting the app again always brings its window back.</small></span></label>
     </div>
   );
 }

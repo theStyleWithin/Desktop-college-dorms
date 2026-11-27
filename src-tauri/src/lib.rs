@@ -54,6 +54,8 @@ pub struct AppState {
     pub novels: Mutex<HashMap<i64, novel::Run>>,
     /// The window is hidden to the tray while a novel is written.
     pub hidden: std::sync::atomic::AtomicBool,
+    /// Keep the app in the system tray: bit 1 = when the window is minimized, bit 2 = when it is closed (see `tray.rs`).
+    pub tray_flags: std::sync::atomic::AtomicU8,
 }
 
 pub type Shared = Arc<AppState>;
@@ -148,6 +150,7 @@ pub fn run() {
                 staged: Default::default(),
                 novels: Default::default(),
                 hidden: Default::default(),
+                tray_flags: Default::default(),
             }));
             // backdrops that are GIFs from before they were made lighter: do it once, in the background
             {
@@ -178,6 +181,8 @@ pub fn run() {
             novel::novels_running,
             tray::tray_available,
             tray::hide_to_tray,
+            tray::set_tray_mode,
+            tray::tray_hide_if_minimized,
             handoff::import_pending_cards,
             tray::quit_app,
             accounts::stage_begin,
@@ -366,10 +371,22 @@ pub fn run() {
             commands::set_auto_chat,
         ])
         .on_window_event(|window, event| {
+            use tauri::{Emitter, Manager};
+            if window.label() != "main" { return; }
+            // the person chose to keep the app in the system tray: minimizing, or closing, puts the window away instead (see tray.rs)
+            if let tauri::WindowEvent::Resized(_) = event {
+                if tray::flags(window.app_handle()) & tray::MINIMIZE != 0 && window.is_minimized().unwrap_or(false) {
+                    tray::put_away(window.app_handle());
+                }
+            }
             // closing the window while a novel is being written: ask first (hide to the tray, or close and stop)
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                use tauri::{Emitter, Manager};
-                if window.label() == "main" {
+                if tray::flags(window.app_handle()) & tray::CLOSE != 0 && tray::has_menu_icon(window.app_handle()) {
+                    api.prevent_close();
+                    tray::put_away(window.app_handle());
+                    return;
+                }
+                {
                     if let Some(st) = window.app_handle().try_state::<Shared>() {
                         if !st.novels.lock().unwrap().is_empty() {
                             api.prevent_close();

@@ -2893,6 +2893,20 @@ try:
     check("choosing your own is remembered for that chat only", off_chat["world_persona_off"] is True and not next(c_ for c_ in invoke("list_chats") if c_["id"] == plain["id"])["world_persona_off"])
     check("and the chat offers to go back", len(d.find_elements(By.CSS_SELECTOR, "[data-testid=world-persona-on]")) == 1)
 
+    # the system tray: the choice is kept per profile, and turning it off always works (a headless test machine may have no tray, so turning it on may be refused)
+    check("the tray choices start off", invoke("get_settings").get("tray_minimize") is False and invoke("get_settings").get("tray_close") is False)
+    check("turning the tray off always works", invoke("set_tray_mode", {"minimize": False, "close": False}) is None)
+    tray_on_ = inv_err("set_tray_mode", {"minimize": True, "close": True})
+    check("turning it on either works or says why not (no tray on this desktop)", tray_on_ is None or "tray" in tray_on_.lower(), str(tray_on_))
+    invoke("set_tray_mode", {"minimize": False, "close": False})   # leave nothing behind
+    nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Customization').click()"); time.sleep(0.8)
+    check("Customization has a System tray card with the two choices", d.execute_script("return !!document.querySelector('[data-testid=tray-card] [data-testid=tray-minimize]') && !!document.querySelector('[data-testid=tray-card] [data-testid=tray-close]')"))
+    st_t = invoke("get_settings"); st_t["tray_close"] = True; invoke("save_settings", {"settings": st_t})
+    check("the choice is saved with the settings", invoke("get_settings")["tray_close"] is True)
+    st_t["tray_close"] = False; invoke("save_settings", {"settings": st_t})
+    check("and the window is still here", d.execute_script("return !document.hidden"))
+    nav("Characters"); time.sleep(0.3)
+
 finally:
     try: d.quit()
     except Exception: pass
