@@ -449,3 +449,14 @@ Built (draft). A world can carry four more things besides its description and lo
 - **Prompt shelf**: a world lists saved prompts (up to 30, the person's own, once each); while the chat page shows a chat in that world, the Prompts menu lists them first under "From <world>". Backups and transfers point the shelf at the copies that arrive.
 - **Per-chat switch**: "Use mine here" plays as the person's own persona in that one chat (and "Use the world's" undoes it). It is kept with the chat.
 - **Tested**: a unit test of the fallback order, the persona and the instructions reaching the model, and checks in the app's tests. Not tested with a real model.
+
+
+## System tray (keep the app running)
+
+Per profile, in Settings → Customization → System tray (desktop only; hidden on phones): `tray_minimize` and `tray_close`. `src-tauri/src/tray.rs`.
+
+- **The icon** (id `main`) exists while either choice is on. Its menu: Open Desktop College Dorms, then Tokenator, Dorms (chats), Characters, Gallery and Settings (each shows the window and tells the page to open that page through the `dorms://tray-nav` event; the page only accepts those five names), then Quit (stops the app, and with it a running engine and any novel being written). Left-click shows the window, or puts it away when it is already showing. The icon is made when a choice is turned on; if the system has no tray the call fails with a message and nothing is turned on.
+- **Minimize**: a resize event that finds the window minimized hides it, and the page (which keeps running while hidden) also asks, when it notices it is hidden, whether the window is minimized, so desktops that don't send the resize still work. **Close**: the close button hides the window instead of ending the app (and so also leaves a running novel going, so the "keep writing?" question isn't asked). Neither hides the window unless the icon is really there.
+- **Never stranded**: starting the app a second time (the single-instance hand-over) always shows the window again, as does the menu or the icon. A desktop that hides tray icons (for example GNOME without the AppIndicator extension) therefore can't leave the window unreachable; it is just less convenient.
+- **The novel tray** (hide while a novel is written) is unchanged and uses its own temporary icon, unless this icon is already there.
+- **Tested**: a unit test of the menu (items, ids, pages, nothing else opens a page), and the app's tests (the choices start off, turning off always works, turning on works or says "no tray", the card and its two choices, the choice saved, the window still there). **Not tested:** anything with a real tray: the menu, clicking the icon, minimizing, closing, or a second launch. That needs a real desktop.
