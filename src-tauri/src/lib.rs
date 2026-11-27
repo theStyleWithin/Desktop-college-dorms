@@ -7,6 +7,7 @@ mod guide;
 mod handoff;
 mod llama;
 mod llm;
+mod netpic;
 mod novel;
 mod phone;
 mod shelf;
@@ -249,6 +250,7 @@ pub fn run() {
             viewfolders::add_view_folder,
             viewfolders::remove_view_folder,
             viewfolders::scan_view_folder,
+            netpic::fetch_picture,
             deco::list_char_deco,
             deco::list_custom_deco,
             deco::save_custom_deco,

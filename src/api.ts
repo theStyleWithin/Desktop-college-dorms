@@ -343,6 +343,13 @@ export const api = {
   setGalleryMoods: (id: string, itemId: string, moods: string[]) => invoke<Character>("set_gallery_moods", { id, itemId, moods }),
   removeGalleryItem: (id: string, itemId: string) => invoke<Character>("remove_gallery_item", { id, itemId }),
   setGalleryMode: (id: string, mode: GalleryMode) => invoke<Character>("set_gallery_mode", { id, mode }),
+  /** Fetches a picture, GIF or short video from a web address and gives it back as a file (the same as one the person chose). */
+  async fetchPicture(url: string): Promise<File> {
+    const r = await invoke<{ name: string; mime: string; data: string }>("fetch_picture", { url });
+    const bin = atob(r.data), u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return new File([u], r.name, { type: r.mime });
+  },
   async setMedia(id: string, file: File): Promise<Character> {
     const bytes = new Uint8Array(await file.arrayBuffer());
     return bin("set_media", bytes, { "x-char-id": id, "x-file-name": enc(file.name) });
