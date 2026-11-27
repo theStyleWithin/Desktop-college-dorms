@@ -881,3 +881,10 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .side-panel.drop-over { outline: 2px dashed var(--accent, #7aa2ff); outline-offset: -6px; background: color-mix(in srgb, var(--accent, #7aa2ff) 12%, var(--bg2)); }
 .note-grip { height: 10px; margin-top: 4px; border-radius: 6px; cursor: ns-resize; touch-action: none; background: linear-gradient(var(--line), var(--line)) center / 48px 3px no-repeat; }
 .note-grip:hover, .note-grip:focus-visible { background-color: color-mix(in srgb, var(--accent2) 18%, transparent); outline: none; }
+/* Gallery folders you can rearrange */
+.gal-slot { position: relative; display: grid; align-content: start; border-radius: 12px; }
+.gal-slot > .gal-folder, .gal-slot > .gal-folder-wrap { width: 100%; }
+.gal-slot[draggable="true"] { cursor: grab; }
+.gal-slot.dragging { opacity: .45; }
+.gal-slot.over { outline: 3px dashed var(--accent); outline-offset: 2px; }
+.gal-arrange { position: absolute; left: 8px; top: 8px; display: inline-flex; gap: 4px; z-index: 2; }

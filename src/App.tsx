@@ -34,7 +34,7 @@ const DEFAULTS: Settings = {
   temperature: 0.8, top_p: 0.95, local_model: "", local_gpu: true, openai_base_url: "https://api.openai.com/v1",
   openai_model: "gpt-4o-mini", anthropic_model: "claude-haiku-5-5", use_card_system_prompt: true,
   default_system: "", theme: "dusk",
-  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true, active_persona: "", deco: DEFAULT_DECO, novel_daily_limit: 0, novel_reserve: 5,
+  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true, active_persona: "", gallery_order: [], gallery_merge: false, deco: DEFAULT_DECO, novel_daily_limit: 0, novel_reserve: 5,
 };
 
 const SIDE_DEF = 220, SIDE_MIN = 160, SIDE_MAX = 420;

@@ -25,6 +25,8 @@ pub struct Folder {
     pub name: String,
     /// False when the folder has been moved or deleted since it was added.
     pub exists: bool,
+    /// True for a gallery folder made in the app (its pictures are kept by the app), false for a folder from the computer.
+    pub own: bool,
 }
 
 #[derive(Serialize, Default)]
@@ -178,10 +180,10 @@ pub async fn view_thumb(state: State<'_, Shared>, path: String) -> R<String> {
     tauri::async_runtime::spawn_blocking(move || make_thumb(&data, &folders, &path)).await.map_err(|x| x.to_string())?
 }
 
-fn shown(id: String, path: String) -> Folder {
-    let name = Path::new(&path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.clone());
+fn shown(id: String, path: String, own_name: &str, own: bool) -> Folder {
+    let name = if own { own_name.to_string() } else { Path::new(&path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.clone()) };
     let exists = Path::new(&path).is_dir();
-    Folder { id, path, name, exists }
+    Folder { id, path, name, exists, own }
 }
 
 /// The folders on the list. Each one that is still there is made readable for the page.
@@ -190,7 +192,7 @@ pub fn list_view_folders(state: State<'_, Shared>) -> R<Vec<Folder>> {
     let o = owner(&state)?;
     let rows = db::list_view_folders(&state.db.lock().unwrap(), &o).map_err(e)?;
     let scope = state.app.asset_protocol_scope();
-    Ok(rows.into_iter().map(|f| { if Path::new(&f.path).is_dir() { let _ = scope.allow_directory(&f.path, true); } shown(f.id, f.path) }).collect())
+    Ok(rows.into_iter().map(|f| { if Path::new(&f.path).is_dir() { let _ = scope.allow_directory(&f.path, true); } let (n, o) = (f.name.clone(), f.own); shown(f.id, f.path, &n, o) }).collect())
 }
 
 /// Adds a folder to look at. It has to pass `check_folder`, and the same folder is not added twice.
@@ -206,15 +208,20 @@ pub fn add_view_folder(state: State<'_, Shared>, path: String) -> R<Folder> {
     let id = uid();
     db::add_view_folder(&db, &id, &real_s, &o).map_err(e)?;
     let _ = state.app.asset_protocol_scope().allow_directory(&real, true);
-    Ok(shown(id, real_s))
+    Ok(shown(id, real_s, "", false))
 }
 
 /// Takes a folder off the list (nothing on the computer is touched) and stops the page reading it.
 #[tauri::command]
 pub fn remove_view_folder(state: State<'_, Shared>, id: String) -> R<()> {
     let o = owner(&state)?;
+    let own = db::list_view_folders(&state.db.lock().unwrap(), &o).map_err(e)?.into_iter().find(|f| f.id == id).map(|f| f.own).unwrap_or(false);
     let path = db::remove_view_folder(&state.db.lock().unwrap(), &id, &o).map_err(e)?;
-    if let Some(p) = path { let _ = state.app.asset_protocol_scope().forbid_directory(&p, true); }
+    if let Some(p) = path {
+        let _ = state.app.asset_protocol_scope().forbid_directory(&p, true);
+        // a folder made in the app owns its pictures, so they go with it (a folder from the computer is only forgotten)
+        if own && Path::new(&p).starts_with(own_root(&state.data_dir)) { let _ = std::fs::remove_dir_all(&p); let _ = db::delete_gallery_comments_under(&state.db.lock().unwrap(), &o, &format!("disk:{p}")); }
+    }
     Ok(())
 }
 
@@ -244,7 +251,7 @@ mod tests {
         image::RgbaImage::from_pixel(50, 50, image::Rgba([1, 2, 3, 255])).save(other.join("secret.png")).unwrap();
         fs::write(folder.join("notes.txt"), b"x").unwrap();
         fs::write(folder.join("clip.mp4"), b"x").unwrap();
-        let folders = vec![db::ViewFolder { id: "f".into(), path: folder.to_string_lossy().into_owned(), added_at: 0 }];
+        let folders = vec![db::ViewFolder { id: "f".into(), path: folder.to_string_lossy().into_owned(), added_at: 0, name: String::new(), own: false }];
         let t = make_thumb(&data, &folders, &folder.join("photo.png").to_string_lossy()).unwrap();
         assert!(t.ends_with(".jpg") && t.contains("gallery-thumbs"), "an opaque picture gets a small JPEG: {t}");
         let im = image::open(&t).unwrap();
@@ -313,6 +320,19 @@ mod tests {
     }
 
     #[test]
+    fn app_folder_names_and_picture_names_are_cleaned() {
+        assert_eq!(clean_name("  Fan art \n").unwrap(), "Fan art");
+        assert!(clean_name("   ").is_err());
+        assert_eq!(clean_name(&"x".repeat(100)).unwrap().chars().count(), 60);
+        let d = scratch("names");
+        assert_eq!(pic_file_name(&d, "my cat?.jpeg", "png"), "my cat.png");
+        std::fs::write(d.join("my cat.png"), b"x").unwrap();
+        assert_eq!(pic_file_name(&d, "my cat.gif", "png"), "my cat-2.png");
+        assert!(!pic_file_name(&d, "../../etc/passwd", "png").contains('/'));
+        assert_eq!(pic_file_name(&d, "", "png"), "picture.png");
+    }
+
+    #[test]
     fn a_folder_is_read_into_pictures_and_folders_without_following_links() {
         let root = scratch("scan");
         fs::create_dir_all(root.join("sets/one")).unwrap();
@@ -338,4 +358,88 @@ mod tests {
         assert!(trunc && d.total <= 2, "a huge folder stops at the limit and says so");
         let _ = fs::remove_dir_all(&root);
     }
+}
+
+// ---- gallery folders made in the app ----
+
+/// Where the pictures of the gallery folders made in the app are kept (never inside `media`, whose unused files are cleaned up).
+pub fn own_root(data: &Path) -> PathBuf { data.join("gallery-folders") }
+
+/// The most pictures one gallery folder made in the app holds.
+const MAX_OWN_PICS: usize = 2000;
+/// The biggest picture or clip that is added to one.
+const MAX_OWN_BYTES: usize = 40 * 1024 * 1024;
+
+fn clean_name(raw: &str) -> R<String> {
+    let t: String = raw.trim().chars().filter(|c| !c.is_control()).take(60).collect();
+    let t = t.trim().to_string();
+    if t.is_empty() { Err("Give the folder a name.".into()) } else { Ok(t) }
+}
+
+fn own_folder(state: &Shared, id: &str) -> R<db::ViewFolder> {
+    let o = owner(state)?;
+    db::list_view_folders(&state.db.lock().unwrap(), &o).map_err(e)?.into_iter().find(|f| f.id == id && f.own).ok_or_else(|| "That gallery folder isn't here any more.".to_string())
+}
+
+/// Makes a new, empty gallery folder inside the app, to put pictures in (from files or from links).
+#[tauri::command]
+pub fn create_gallery_folder(state: State<'_, Shared>, name: String) -> R<Folder> {
+    let name = clean_name(&name)?;
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let have = db::list_view_folders(&db, &o).map_err(e)?;
+    if have.len() >= db::MAX_VIEW_FOLDERS { return Err(format!("The Gallery can hold {} folders. Remove one first.", db::MAX_VIEW_FOLDERS)); }
+    if have.iter().any(|f| f.own && f.name.eq_ignore_ascii_case(&name)) { return Err("You already have a gallery folder with that name.".into()); }
+    let id = uid();
+    let dir = own_root(&state.data_dir).join(&id);
+    std::fs::create_dir_all(&dir).map_err(|x| format!("I couldn't make the folder: {x}"))?;
+    let path = dir.to_string_lossy().into_owned();
+    db::add_own_folder(&db, &id, &path, &name, &o).map_err(e)?;
+    let _ = state.app.asset_protocol_scope().allow_directory(&dir, true);
+    Ok(shown(id, path, &name, true))
+}
+
+/// What a picture saved into a folder is called: letters, numbers, spaces, dashes and underscores from the name it came with, plus the right ending.
+fn pic_file_name(dir: &Path, wanted: &str, ext: &str) -> String {
+    let stem = wanted.rsplit_once('.').map_or(wanted, |(a, _)| a);
+    let mut clean: String = stem.chars().map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '-' }).take(50).collect::<String>().trim_matches(|c: char| c == '-' || c == ' ').to_string();
+    if clean.is_empty() { clean = "picture".into(); }
+    let mut n = 1;
+    let mut name = format!("{clean}.{ext}");
+    while dir.join(&name).exists() { n += 1; name = format!("{clean}-{n}.{ext}"); }
+    name
+}
+
+/// Saves a picture, GIF or short video into a gallery folder made in the app. Body: the file's bytes. Headers: `x-folder-id`, `x-file-name`.
+/// What it is comes from its first bytes, not from its name or label. Returns the saved path.
+#[tauri::command]
+pub fn add_folder_picture(request: tauri::ipc::Request<'_>, state: State<'_, Shared>) -> R<String> {
+    let id = crate::commands::header(&request, "x-folder-id");
+    let wanted = crate::commands::header(&request, "x-file-name");
+    let bytes = crate::commands::raw_body(&request)?;
+    let f = own_folder(&state, &id)?;
+    if bytes.len() > MAX_OWN_BYTES { return Err("That file is too big (40 MB at most).".into()); }
+    let (ext, _) = crate::netpic::sniff(bytes).ok_or("That isn't a picture, GIF or video this app can show (PNG, JPG, WebP, GIF, MP4 or WebM).")?;
+    let dir = PathBuf::from(&f.path);
+    if !dir.starts_with(own_root(&state.data_dir)) { return Err("That folder isn't one the app keeps.".into()); }
+    std::fs::create_dir_all(&dir).map_err(|x| x.to_string())?;
+    let have = std::fs::read_dir(&dir).map(|r| r.count()).unwrap_or(0);
+    if have >= MAX_OWN_PICS { return Err(format!("A folder holds {MAX_OWN_PICS} pictures at most.")); }
+    let name = pic_file_name(&dir, &wanted, ext);
+    let target = dir.join(&name);
+    std::fs::write(&target, bytes).map_err(|x| format!("I couldn't save it: {x}"))?;
+    Ok(target.to_string_lossy().into_owned())
+}
+
+/// Takes one picture out of a gallery folder made in the app (the file is deleted, with its comments).
+#[tauri::command]
+pub fn remove_folder_picture(state: State<'_, Shared>, id: String, path: String) -> R<()> {
+    let f = own_folder(&state, &id)?;
+    let dir = PathBuf::from(&f.path).canonicalize().map_err(|x| x.to_string())?;
+    let target = PathBuf::from(&path).canonicalize().map_err(|_| "That picture isn't here any more.".to_string())?;
+    if target.parent() != Some(dir.as_path()) || !target.is_file() { return Err("That picture isn't in this folder.".into()); }
+    std::fs::remove_file(&target).map_err(|x| x.to_string())?;
+    let o = owner(&state)?;
+    let _ = db::delete_gallery_comments_under(&state.db.lock().unwrap(), &o, &format!("disk:{}", path));
+    Ok(())
 }

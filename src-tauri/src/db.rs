@@ -552,6 +552,10 @@ pub struct Settings {
     pub stt_auto_send: bool,
     /// The persona being played (an id from `personas`); empty means the plain name and description above.
     pub active_persona: String,
+    /// The order the person put the Gallery's folders in: `char:<id>` and `disk:<id>` keys (what is not listed follows in the usual order).
+    pub gallery_order: Vec<String>,
+    /// True to show characters' folders and folders from the computer together in one place; false (the default) keeps them in separate sections.
+    pub gallery_merge: bool,
     /// The user's own profile decorations.
     pub deco: UserDeco,
     /// Novel writing: how many requests a day the model's plan allows (0 = no limit set), and how many of them are kept for chatting.
@@ -583,6 +587,8 @@ impl Default for Settings {
             stt_language: String::new(),
             stt_auto_send: true,
             active_persona: String::new(),
+            gallery_order: vec![],
+            gallery_merge: false,
             deco: UserDeco::default(),
             novel_daily_limit: 0,
             novel_reserve: 5,
@@ -678,6 +684,8 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
     crate::novel::init(&conn)?;
     crate::shelf::init(&conn)?;
     ensure_column(&conn, "profiles", "hidden", "INTEGER NOT NULL DEFAULT 0")?;
+    ensure_column(&conn, "view_folders", "name", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "view_folders", "own", "INTEGER NOT NULL DEFAULT 0")?;
     ensure_column(&conn, "folders", "parent", "TEXT")?;
     ensure_column(&conn, "folders", "cover_char", "TEXT")?;
     ensure_column(&conn, "dorms", "room_id", "INTEGER")?;
@@ -1474,19 +1482,31 @@ pub struct ViewFolder {
     pub id: String,
     pub path: String,
     pub added_at: i64,
+    /// The name of a folder made inside the app (its `own` ones); empty for a folder from the computer, which is named after its folder.
+    #[serde(default)]
+    pub name: String,
+    /// True for a gallery folder made in the app, whose pictures live in the app's own data folder (as opposed to a folder from the computer).
+    #[serde(default)]
+    pub own: bool,
 }
 
 /// The most folders one profile can add.
 pub const MAX_VIEW_FOLDERS: usize = 40;
 
 pub fn list_view_folders(c: &Connection, owner: &Owner) -> R<Vec<ViewFolder>> {
-    let mut s = c.prepare("SELECT id,path,added_at FROM view_folders WHERE profile_id IS ?1 ORDER BY added_at, rowid")?;
-    let rows = s.query_map([owner], |r| Ok(ViewFolder { id: r.get(0)?, path: r.get(1)?, added_at: r.get(2)? }))?.filter_map(|r| r.ok()).collect();
+    let mut s = c.prepare("SELECT id,path,added_at,name,own FROM view_folders WHERE profile_id IS ?1 ORDER BY added_at, rowid")?;
+    let rows = s.query_map([owner], |r| Ok(ViewFolder { id: r.get(0)?, path: r.get(1)?, added_at: r.get(2)?, name: r.get(3)?, own: r.get::<_, i64>(4)? != 0 }))?.filter_map(|r| r.ok()).collect();
     Ok(rows)
 }
 
 pub fn add_view_folder(c: &Connection, id: &str, path: &str, owner: &Owner) -> R<()> {
     c.execute("INSERT INTO view_folders(id,profile_id,path,added_at) VALUES(?1,?2,?3,?4)", params![id, owner, path, now()])?;
+    Ok(())
+}
+
+/// Adds a gallery folder made in the app: its pictures are kept in `path`, inside the app's own data folder.
+pub fn add_own_folder(c: &Connection, id: &str, path: &str, name: &str, owner: &Owner) -> R<()> {
+    c.execute("INSERT INTO view_folders(id,profile_id,path,added_at,name,own) VALUES(?1,?2,?3,?4,?5,1)", params![id, owner, path, now(), name])?;
     Ok(())
 }
 

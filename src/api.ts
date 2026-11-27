@@ -192,6 +192,10 @@ export interface Settings {
   user_description: string;
   /** The persona being played (an id), or "" for the plain name and description. */
   active_persona: string;
+  /** The order the person put the Gallery's folders in (`char:<id>` / `disk:<id>` keys). */
+  gallery_order: string[];
+  /** Show characters' folders and the person's other folders together instead of in separate sections. */
+  gallery_merge: boolean;
   context_tokens: number;
   max_tokens: number;
   temperature: number;
@@ -252,7 +256,7 @@ export interface ProviderHealth { state: "local" | "ok" | "warn" | "down" | "non
 /** A comment the person wrote under a picture in the Gallery (kept on this device only). `parent_id` is the comment it answers. */
 export interface GalleryComment { id: string; pic_key: string; parent_id: string | null; author: string; body: string; created_at: number; edited_at: number | null }
 /** A folder on the computer added to the Gallery, only to look at. */
-export interface ViewFolder { id: string; path: string; name: string; exists: boolean }
+export interface ViewFolder { id: string; path: string; name: string; exists: boolean; own: boolean }
 export interface ViewPic { name: string; path: string; kind: "image" | "gif" | "video"; size: number }
 export interface ViewDir { name: string; files: ViewPic[]; dirs: ViewDir[]; total: number }
 export interface CustomDeco {
@@ -478,6 +482,9 @@ export const api = {
   listViewFolders: () => invoke<ViewFolder[]>("list_view_folders"),
   addViewFolder: (path: string) => invoke<ViewFolder>("add_view_folder", { path }),
   removeViewFolder: (id: string) => invoke<void>("remove_view_folder", { id }),
+  createGalleryFolder: (name: string) => invoke<ViewFolder>("create_gallery_folder", { name }),
+  addFolderPicture: async (folderId: string, file: File) => bin("add_folder_picture", new Uint8Array(await file.arrayBuffer()), { "x-folder-id": folderId, "x-file-name": encodeURIComponent(file.name) }) as Promise<string>,
+  removeFolderPicture: (id: string, path: string) => invoke<void>("remove_folder_picture", { id, path }),
   /** The small picture (kept on this device) for a picture inside a Gallery folder; the Gallery shows these in its grids instead of full-size photos. */
   viewThumb: (path: string) => invoke<string>("view_thumb", { path }),
   scanViewFolder: (id: string) => invoke<{ root: ViewDir; truncated: boolean }>("scan_view_folder", { id }),
