@@ -14,6 +14,7 @@ mod phone;
 mod picchat;
 mod shelf;
 mod starters;
+mod steam;
 mod tokenator;
 mod transfer;
 mod tray;
@@ -267,6 +268,9 @@ pub fn run() {
             viewfolders::create_gallery_folder,
             viewfolders::add_folder_picture,
             viewfolders::remove_folder_picture,
+            steam::steam_status,
+            steam::steam_add,
+            steam::steam_remove,
             itemxfer::inspect_staged_item,
             itemxfer::add_staged_item,
             netpic::fetch_picture,

@@ -69,9 +69,16 @@ def connect(opts, timeout=90):
     except ImportError:  # older Selenium
         return webdriver.Remote(command_executor="http://127.0.0.1:4444", options=opts)
 
+# a pretend Steam folder for the "Add to Steam" checks: two accounts, one of them with a game of its own already in the list
+STEAM = os.path.join(WORK, "steam")
+os.makedirs(os.path.join(STEAM, "userdata", "12345", "config"), exist_ok=True); os.makedirs(os.path.join(STEAM, "userdata", "67890"), exist_ok=True); os.makedirs(os.path.join(STEAM, "config"), exist_ok=True)
+other_game_ = b"\x00shortcuts\x00\x000\x00\x02appid\x00\x05\x00\x00\x00\x01AppName\x00Other Game\x00\x01Exe\x00\"/games/other\"\x00\x00tags\x00\x08\x08\x08\x08"
+open(os.path.join(STEAM, "userdata", "12345", "config", "shortcuts.vdf"), "wb").write(other_game_)
+open(os.path.join(STEAM, "config", "loginusers.vdf"), "w").write('"users"\n{\n\t"76561197960278073"\n\t{\n\t\t"AccountName"\t\t"bob"\n\t\t"PersonaName"\t\t"Bobby"\n\t}\n}\n')
+
 env = dict(os.environ, XDG_DATA_HOME=os.path.join(WORK, "data"), XDG_CONFIG_HOME=os.path.join(WORK, "cfg"),
            XDG_CACHE_HOME=os.path.join(WORK, "cache"), GDK_BACKEND="x11", APPIMAGE_EXTRACT_AND_RUN="1",
-           WEBKIT_DISABLE_COMPOSITING_MODE="1", WEBKIT_DISABLE_DMABUF_RENDERER="1", DORMS_NO_STARTERS="1", DORMS_TRANSFER_LOOPBACK="1")
+           WEBKIT_DISABLE_COMPOSITING_MODE="1", WEBKIT_DISABLE_DMABUF_RENDERER="1", DORMS_NO_STARTERS="1", DORMS_TRANSFER_LOOPBACK="1", DORMS_STEAM_DIR=os.path.join(WORK, "steam"))
 if not os.environ.get("E2E_BUNDLED_ENGINE"):  # default: point at a dev build of the engine
     env["DORMS_LLAMA_SERVER"] = LLAMA
 os.makedirs(WORK, exist_ok=True)
@@ -1382,6 +1389,28 @@ try:
     sc_id_ = [p_["id"] for p_ in invoke("session_state")["profiles"] if p_["handle"] == "Scoped"]
     if sc_id_:
         invoke("sign_in", {"profileId": sc_id_[0], "passcode": None}); invoke("delete_profile", {"confirm": "scoped"}); invoke("sign_in", {"profileId": None}); reload_ui(); time.sleep(0.8)
+    # Add to Steam (against the pretend Steam folder)
+    sv_ = invoke("steam_status")
+    check("Steam is found, with its accounts (named when Steam knows the name)", sv_["supported"] and sv_["found"] and sv_["running"] is False and [(u_["id"], u_["name"]) for u_ in sv_["users"]] == [("12345", "Bobby"), ("67890", "")] and not any(u_["added"] for u_ in sv_["users"]), str(sv_))
+    vdf_ = os.path.join(STEAM, "userdata", "12345", "config", "shortcuts.vdf")
+    check("an account that isn't on this computer is refused", "isn't a Steam account" in (inv_err("steam_add", {"user": "99999"}) or "") and bool(inv_err("steam_add", {"user": "../12345"})))
+    check("adding puts the app in the account's library", "added" in invoke("steam_add", {"user": "12345"}).lower() and b"Desktop College Dorms" in open(vdf_, "rb").read())
+    check("the game that was already there is kept", b"Other Game" in open(vdf_, "rb").read())
+    check("the original list is backed up the first time", open(vdf_ + ".dorms-backup", "rb").read() == other_game_)
+    check("Steam's status now shows it as added", [u_["added"] for u_ in invoke("steam_status")["users"]] == [True, False])
+    check("adding again updates it, without making a second one", "updated" in invoke("steam_add", {"user": "12345"}).lower() and open(vdf_, "rb").read().count(b"Desktop College Dorms") == 1)
+    check("a second account with no shortcut list yet gets one made", "added" in invoke("steam_add", {"user": "67890"}).lower() and os.path.isfile(os.path.join(STEAM, "userdata", "67890", "config", "shortcuts.vdf")))
+    check("removing takes only the app out", "taken out" in invoke("steam_remove", {"user": "12345"}).lower() and b"Desktop College Dorms" not in open(vdf_, "rb").read() and b"Other Game" in open(vdf_, "rb").read())
+    check("removing when it isn't there says so", "wasn't" in invoke("steam_remove", {"user": "12345"}).lower())
+    open(vdf_, "wb").write(b"not a steam file")
+    check("a list that isn't understood is refused and left as it was", bool(inv_err("steam_add", {"user": "12345"})) and open(vdf_, "rb").read() == b"not a steam file")
+    open(vdf_, "wb").write(other_game_)
+    nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Customization').click()"); time.sleep(0.8)
+    check("Customization has a Steam section with an Add to Steam button", d.execute_script("const s=document.querySelector('[data-testid=steam-setting]');return !!s && !!s.querySelector('[data-testid=steam-add]') && !!s.querySelector('[data-testid=steam-user]')"))
+    d.execute_script("document.querySelector('[data-testid=steam-add]').click()"); time.sleep(1.0)
+    check("pressing it adds the app and says so", b"Desktop College Dorms" in open(vdf_, "rb").read() and d.execute_script("const n=document.querySelector('[data-testid=steam-note]');return !!n && n.textContent.includes('Added')") and d.execute_script("return document.querySelector('[data-testid=steam-add]').textContent") == "Update in Steam")
+    d.execute_script("document.querySelector('[data-testid=steam-remove]').click()"); time.sleep(1.0)
+    check("and Remove from Steam takes it out again", b"Desktop College Dorms" not in open(vdf_, "rb").read())
     # hiding an account: off the start screen, into Settings' list of hidden accounts, with a prompt to make another or use the guest space
     invoke("create_profile", {"handle": "Hider", "displayName": None, "passcode": None}); reload_ui(); time.sleep(1.0)
     ctx_me()
