@@ -7,6 +7,7 @@ import { emptyBook, readLorebook } from "../lib/lore";
 import { errText, tokens } from "../lib/util";
 import { useStore } from "../store";
 import { useListWidth } from "../lib/listWidth";
+import SendToDevice from "../components/SendToDevice";
 
 /** Lorebooks: keyword-triggered lore, kept in your library and attached to as many characters as you like. */
 export default function Lorebooks() {
@@ -80,6 +81,7 @@ export default function Lorebooks() {
             <div className="row" style={{ marginBottom: 6 }}>
               <input type="text" className="note-title grow" value={name} placeholder="Lorebook name" aria-label="Lorebook name" onChange={(e) => { setName(e.target.value); setDirty(true); }} />
               <button className="btn primary" disabled={!dirty || !name.trim()} onClick={() => void save()}>Save</button>
+              {!dirty && <SendToDevice item={{ kind: "lorebook", id: sel }} name={name} className="btn" />}
               <button className="btn danger" onClick={() => void del()} aria-label="Delete lorebook">🗑</button>
             </div>
             <div className="hint" style={{ marginBottom: 10 }}>

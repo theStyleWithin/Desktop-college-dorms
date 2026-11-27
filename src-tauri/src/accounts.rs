@@ -1649,9 +1649,10 @@ pub fn stage_chunk(state: State<'_, Shared>, token: String, data: String) -> R<u
 #[tauri::command]
 pub fn stage_clear(state: State<'_, Shared>) {
     *state.staged.lock().unwrap() = None;
+    crate::transfer::clear_receive(&state);   // what had arrived over Wi-Fi is thrown away with it
 }
 
-fn staged_bytes(st: &AppState, token: &str) -> R<Arc<Vec<u8>>> {
+pub(crate) fn staged_bytes(st: &AppState, token: &str) -> R<Arc<Vec<u8>>> {
     match &*st.staged.lock().unwrap() {
         Some((t, b)) if t == token && !b.is_empty() => Ok(b.clone()),
         _ => Err("The file isn't here any more. Choose it again.".into()),
