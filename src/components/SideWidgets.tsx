@@ -5,6 +5,11 @@ import { errText, timeAgo } from "../lib/util";
 import Art from "./Art";
 import { ProfileAvatar } from "./ProfileForms";
 import { Modal, useToast } from "./ui";
+import { profileScope, sdel, sget, sset } from "../lib/scoped";
+
+/** The profile the side bar is for (what it remembers is that profile's own; see `lib/scoped`). */
+const useSideScope = (): string => profileScope();
+const lsGet = sget, lsSet = sset, lsDel = sdel;
 
 /** Which of the side bar's extras are shown (this device). */
 export type WidgetId = "recent" | "favorites" | "usage" | "frame";
@@ -17,22 +22,24 @@ const NAMES_KEY = "dorms.side.names";
 export const DEFAULT_NAMES: Record<WidgetId, string> = { recent: "Recent chats", favorites: "Favorites", usage: "Most used", frame: "Picture frame" };
 /** The names you gave the side bar's sections (kept on this device); an empty name means the default. */
 export function useWidgetNames(): [Record<WidgetId, string>, (id: WidgetId, name: string) => void, () => void] {
+  const scopeId = useSideScope();
   const read = (): Record<WidgetId, string> => {
     let saved: Partial<Record<WidgetId, string>> = {};
-    try { saved = JSON.parse(localStorage.getItem(NAMES_KEY) || "{}") ?? {}; } catch { /* the default names */ }
+    try { saved = JSON.parse(lsGet(NAMES_KEY) || "{}") ?? {}; } catch { /* the default names */ }
     const out = { ...DEFAULT_NAMES };
     (Object.keys(DEFAULT_NAMES) as WidgetId[]).forEach((k) => { const v = typeof saved[k] === "string" ? saved[k]!.trim().slice(0, 24) : ""; if (v) out[k] = v; });
     return out;
   };
   const [names, setNames] = useState(read);
+  useEffect(() => { setNames(read()); }, [scopeId]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const f = () => setNames(read()); window.addEventListener("dorms-side-names", f); return () => window.removeEventListener("dorms-side-names", f); }, []);
   const store = (obj: Partial<Record<WidgetId, string>>) => {
-    try { if (Object.keys(obj).length) localStorage.setItem(NAMES_KEY, JSON.stringify(obj)); else localStorage.removeItem(NAMES_KEY); } catch { /* storage unavailable: it still applies until the app is closed */ }
+    try { if (Object.keys(obj).length) lsSet(NAMES_KEY, JSON.stringify(obj)); else lsDel(NAMES_KEY); } catch { /* storage unavailable: it still applies until the app is closed */ }
     window.dispatchEvent(new Event("dorms-side-names"));
   };
   const set = (id: WidgetId, name: string) => {
     let saved: Partial<Record<WidgetId, string>> = {};
-    try { saved = JSON.parse(localStorage.getItem(NAMES_KEY) || "{}") ?? {}; } catch { /* start again */ }
+    try { saved = JSON.parse(lsGet(NAMES_KEY) || "{}") ?? {}; } catch { /* start again */ }
     const clean = name.replace(/\s+/g, " ").trim().slice(0, 24);
     if (clean && clean !== DEFAULT_NAMES[id]) saved[id] = clean; else delete saved[id];
     store(saved);
@@ -41,13 +48,15 @@ export function useWidgetNames(): [Record<WidgetId, string>, (id: WidgetId, name
 }
 const FOLD_KEY = "dorms.side.folded";
 
-const load = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } };
+const load = <T,>(k: string, d: T): T => { try { const v = lsGet(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } };
 export function useWidgetPrefs(): [Record<WidgetId, boolean>, (id: WidgetId, on: boolean) => void] {
+  const scopeId = useSideScope();
   const [p, setP] = useState(() => load<Record<WidgetId, boolean>>(PREFS_KEY, { recent: true, favorites: true, usage: true, frame: true }));
   useEffect(() => { const f = () => setP(load(PREFS_KEY, { recent: true, favorites: true, usage: true, frame: true })); window.addEventListener("dorms-side-widgets", f); return () => window.removeEventListener("dorms-side-widgets", f); }, []);
+  useEffect(() => { setP(load(PREFS_KEY, { recent: true, favorites: true, usage: true, frame: true })); }, [scopeId]);
   const set = (id: WidgetId, on: boolean) => {
     const n = { ...p, [id]: on }; setP(n);
-    try { localStorage.setItem(PREFS_KEY, JSON.stringify(n)); } catch { /* storage unavailable */ }
+    try { lsSet(PREFS_KEY, JSON.stringify(n)); } catch { /* storage unavailable */ }
     window.dispatchEvent(new Event("dorms-side-widgets"));
   };
   return [p, set];
@@ -55,14 +64,14 @@ export function useWidgetPrefs(): [Record<WidgetId, boolean>, (id: WidgetId, on:
 
 /** The character the user chose to hang in the picture frame (this device); nobody chosen = whoever they talked to last. */
 const FRAME_KEY = "dorms.side.frame";
-const readFramed = (): string | null => { try { return localStorage.getItem(FRAME_KEY) || null; } catch { return null; } };
+const readFramed = (): string | null => { try { return lsGet(FRAME_KEY) || null; } catch { return null; } };
 /** Several frames can hang side by side, with arrows to flip between them; each holds its own character (null = whoever you talked to last). */
 const FRAMES_KEY = "dorms.side.frames";
 export const MAX_FRAMES = 12;
 interface FrameSet { list: (string | null)[]; at: number }
 const readFrames = (): FrameSet => {
   try {
-    const v = JSON.parse(localStorage.getItem(FRAMES_KEY) || "null");
+    const v = JSON.parse(lsGet(FRAMES_KEY) || "null");
     if (v && Array.isArray(v.list) && v.list.length) {
       const list = v.list.slice(0, MAX_FRAMES).map((x: unknown) => (typeof x === "string" && x ? x : null));
       return { list, at: Math.min(Math.max(0, Number(v.at) || 0), list.length - 1) };
@@ -71,7 +80,7 @@ const readFrames = (): FrameSet => {
   return { list: [readFramed()], at: 0 };
 };
 const writeFrames = (fs: FrameSet) => {
-  try { localStorage.setItem(FRAMES_KEY, JSON.stringify(fs)); if (fs.list.length === 1) { if (fs.list[0]) localStorage.setItem(FRAME_KEY, fs.list[0]); else localStorage.removeItem(FRAME_KEY); } } catch { /* storage unavailable */ }
+  try { lsSet(FRAMES_KEY, JSON.stringify(fs)); if (fs.list.length === 1) { if (fs.list[0]) lsSet(FRAME_KEY, fs.list[0]); else lsDel(FRAME_KEY); } } catch { /* storage unavailable */ }
   window.dispatchEvent(new Event("dorms-side-frame"));
 };
 /** Who hangs in the frame being shown. */
@@ -94,14 +103,16 @@ const stillOf = (c: Character): string | null => (c.media?.kind === "image" || c
 
 /** A small section of the side bar that can be folded away. */
 function Section({ id, title, count, action, children }: { id: WidgetId; title: string; count?: number; action?: React.ReactNode; children: React.ReactNode }) {
+  const scopeId = useSideScope();
   const [folded, setFolded] = useState(() => !!load<Record<string, boolean>>(FOLD_KEY, {})[id]);
+  useEffect(() => { setFolded(!!load<Record<string, boolean>>(FOLD_KEY, {})[id]); }, [scopeId, id]);
   const [names, setName] = useWidgetNames();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState("");
   const shown = names[id] ?? title;
   const startRename = () => { setDraft(shown); setRenaming(true); };
   const finish = (save: boolean) => { if (save) setName(id, draft); setRenaming(false); };
-  const toggle = () => { const n = !folded; setFolded(n); try { localStorage.setItem(FOLD_KEY, JSON.stringify({ ...load<Record<string, boolean>>(FOLD_KEY, {}), [id]: n })); } catch { /* storage unavailable */ } };
+  const toggle = () => { const n = !folded; setFolded(n); try { lsSet(FOLD_KEY, JSON.stringify({ ...load<Record<string, boolean>>(FOLD_KEY, {}), [id]: n })); } catch { /* storage unavailable */ } };
   return (
     <section className="sw" data-testid={`side-${id}`}>
       <div className="sw-head">
@@ -126,7 +137,9 @@ export default function SideWidgets() {
   const [picker, setPicker] = useState(false);
   const [more, setMore] = useState(false);
   const [framePicker, setFramePicker] = useState(false);
+  const scopeId = useSideScope();
   const [frames, setFrames] = useState<FrameSet>(readFrames);
+  useEffect(() => { setFrames(readFrames()); }, [scopeId]);
   const framedId = frames.list[frames.at] ?? null;
   useEffect(() => { const f = () => setFrames(readFrames()); window.addEventListener("dorms-side-frame", f); return () => window.removeEventListener("dorms-side-frame", f); }, []);
   const [, bump] = useState(0);

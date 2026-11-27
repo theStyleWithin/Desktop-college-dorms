@@ -1,3 +1,4 @@
+import { sget, sset } from "../lib/scoped";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, displayName, mediaUrl, type CharStatus, type ProviderHealth } from "../api";
 import { useStore } from "../store";
@@ -34,7 +35,7 @@ export default function MembersRail({ onCollapse }: { onCollapse: () => void }) 
   const [statuses, setStatuses] = useState<Map<string, CharStatus>>(new Map());
   const [open, setOpen] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [auto, setAuto] = useState(() => { try { return localStorage.getItem(AUTO_KEY) === "1"; } catch { return false; } });
+  const [auto, setAuto] = useState(() => { try { return sget(AUTO_KEY) === "1"; } catch { return false; } });
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [writing, setWriting] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -113,7 +114,7 @@ export default function MembersRail({ onCollapse }: { onCollapse: () => void }) 
     <div className="members-wrap" data-testid="members">
       <MembersList rows={rows} total={characters.length} presence={presence} detail={health?.detail} modelLabel={health?.model}
         expandedId={open} onToggle={(id) => { setOpen(open === id ? null : id); setWriting(null); }} query={q} onQuery={setQ}
-        autoStatus={auto} onAutoStatus={(on) => { setAuto(on); tried.current = new Set(); pausedUntil.current = 0; setNote(""); try { localStorage.setItem(AUTO_KEY, on ? "1" : "0"); } catch { /* storage unavailable */ } }}
+        autoStatus={auto} onAutoStatus={(on) => { setAuto(on); tried.current = new Set(); pausedUntil.current = 0; setNote(""); try { sset(AUTO_KEY, on ? "1" : "0"); } catch { /* storage unavailable */ } }}
         autoDeco={autoDeco} animate={settings.deco?.animate !== false}
         onAutoDeco={(on) => { triedDeco.current = new Set(); pausedUntil.current = 0; setNote(""); void setSettings({ ...settings, deco: { ...settings.deco, ai_pick: on } }).catch((e) => toast(errText(e), "err")); }}
         onCollapse={onCollapse} busyIds={busy} note={note}

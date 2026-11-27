@@ -1,4 +1,4 @@
-import { setProfileScope } from "./lib/scoped";
+import { setProfileScope, sget, sset } from "./lib/scoped";
 import { applyTextScale } from "./lib/textScale";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, onTrayNav, type AppInfo, type Character, type Chat, type Dorm, type Folder, type Persona, type Room, type SessionState, type Settings, type World } from "./api";
@@ -66,7 +66,7 @@ const NEW_AFTER: Partial<Record<Route["page"], Route["page"]>> = { gallery: "lib
 function loadNavOrder(): Route["page"][] {
   const known = NAV.map((n) => n.page);
   try {
-    const a = JSON.parse(localStorage.getItem(NAV_KEY) || "[]");
+    const a = JSON.parse(sget(NAV_KEY) || "[]");
     if (Array.isArray(a)) {
       const kept = a.filter((p, i) => known.includes(p) && a.indexOf(p) === i) as Route["page"][];
       const added = known.filter((p) => !kept.includes(p));
@@ -144,7 +144,7 @@ function Shell({ session, setSession, onHidden }: { session: SessionState; setSe
     const at = rest.indexOf(target) + (after ? 1 : 0);
     const next = [...rest.slice(0, at), page, ...rest.slice(at)];
     setNavOrder(next);
-    try { localStorage.setItem(NAV_KEY, JSON.stringify(next)); } catch { /* storage unavailable */ }
+    try { sset(NAV_KEY, JSON.stringify(next)); } catch { /* storage unavailable */ }
   };
   const [winW, setWinW] = useState(window.innerWidth);
   useEffect(() => { setDecoMotion(settings.deco?.animate !== false); }, [settings.deco?.animate]);

@@ -1,3 +1,4 @@
+import { sget, sset } from "../lib/scoped";
 import { useState, type ReactNode } from "react";
 import DecoCore, { type DecoItem } from "../lib/decoCore";
 import { DecoBg, Wreathed, plateProps } from "../lib/deco";
@@ -10,7 +11,7 @@ const VIEW_KEY = "dorms.deco.view";
 const byId = (list: DecoItem[]) => Object.fromEntries(list.map((x) => [x.id, x])) as Record<string, DecoItem>;
 
 const loadView = (): { series: string; kind: string } => {
-  try { const v = JSON.parse(localStorage.getItem(VIEW_KEY) || "null"); if (v && typeof v === "object") return { series: String(v.series || "all"), kind: String(v.kind || "all") }; } catch { /* default */ }
+  try { const v = JSON.parse(sget(VIEW_KEY) || "null"); if (v && typeof v === "object") return { series: String(v.series || "all"), kind: String(v.kind || "all") }; } catch { /* default */ }
   return { series: "all", kind: "all" };
 };
 
@@ -26,7 +27,7 @@ export default function DecoPicker({ value, animate, onChange, avatar, name, chi
   const mine = useCustomDeco();   // the person's own decorations join the lists (and the pictures), so this redraws when they change
   const PL = byId(DecoCore.PLATES), BG = byId(DecoCore.BACKGROUNDS), WR = byId(DecoCore.WREATHS);
   const [view, setViewState] = useState(loadView);
-  const setView = (p: Partial<{ series: string; kind: string }>) => setViewState((v) => { const n = { ...v, ...p }; try { localStorage.setItem(VIEW_KEY, JSON.stringify(n)); } catch { /* not remembered */ } return n; });
+  const setView = (p: Partial<{ series: string; kind: string }>) => setViewState((v) => { const n = { ...v, ...p }; try { sset(VIEW_KEY, JSON.stringify(n)); } catch { /* not remembered */ } return n; });
   const cur = value;
   const want = (k: string) => view.kind === "all" || view.kind === k;
 

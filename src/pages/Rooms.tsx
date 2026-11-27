@@ -1,3 +1,4 @@
+import { sget, sset } from "../lib/scoped";
 import TokenatorHelper from "../components/TokenatorHelper";
 import { useEffect, useRef, useState } from "react";
 import { api, displayName, type Room, type RoomKind } from "../api";
@@ -12,6 +13,7 @@ import RoomModelField, { type ModelDraft } from "../components/RoomModelField";
 import { Modal, useToast } from "../components/ui";
 import { PRESETS, ROOM_KINDS, kindLabel, roomBackground, isInside, pathName, MAX_EXITS, connectedRooms } from "../lib/rooms";
 import { errText } from "../lib/util";
+import PictureLinkBox from "../components/PictureLinkBox";
 import { useStore } from "../store";
 
 const blank = (): Omit<Room, "id" | "created_at"> => ({ name: "", kind: "living_room", description: "", owner_kind: "self", character_id: null, backdrop: "", parent_id: null, links: [], deco: { plate: "none", bg: "", wreath: "", tag: "", tag_color: "#5865f2", tag_glyph: "" } });
@@ -29,14 +31,14 @@ export default function Rooms({ edit, world }: { edit?: number | "new"; world?: 
   const { rooms: allRooms, worlds, dorms, characters, go, refresh } = useStore();
   const toast = useToast();
   const [starting, setStarting] = useState<Room | null>(null);
-  const [view, setView] = useState<"cards" | "map">(() => { try { return localStorage.getItem("dorms.rooms.view") === "map" ? "map" : "cards"; } catch { return "cards"; } });
+  const [view, setView] = useState<"cards" | "map">(() => { try { return sget("dorms.rooms.view") === "map" ? "map" : "cards"; } catch { return "cards"; } });
   // the pathways editor keeps changes as a draft until Save pathways: leaving it asks first
   const [mapDirty, setMapDirty] = useState(false);
   const leave = (fn: () => void) => { if (!mapDirty || window.confirm("You have changes in the pathways editor that aren't saved. Leave without saving them?")) fn(); };
-  const pickView = (v: "cards" | "map") => leave(() => { setView(v); try { localStorage.setItem("dorms.rooms.view", v); } catch { /* storage unavailable */ } });
+  const pickView = (v: "cards" | "map") => leave(() => { setView(v); try { sset("dorms.rooms.view", v); } catch { /* storage unavailable */ } });
   // which world is being looked at (kept for next time), and so which rooms are shown
-  const [sel, setSel] = useState<WorldSel>(() => { if (world != null) return world; try { const v = localStorage.getItem("dorms.rooms.world"); return v === "none" ? "none" : v && /^\d+$/.test(v) ? Number(v) : "all"; } catch { return "all"; } });
-  const pickWorld = (w: WorldSel) => leave(() => { setSel(w); try { localStorage.setItem("dorms.rooms.world", String(w)); } catch { /* storage unavailable */ } });
+  const [sel, setSel] = useState<WorldSel>(() => { if (world != null) return world; try { const v = sget("dorms.rooms.world"); return v === "none" ? "none" : v && /^\d+$/.test(v) ? Number(v) : "all"; } catch { return "all"; } });
+  const pickWorld = (w: WorldSel) => leave(() => { setSel(w); try { sset("dorms.rooms.world", String(w)); } catch { /* storage unavailable */ } });
   const shown: WorldSel = typeof sel === "number" && !worlds.some((w) => w.id === sel) ? "all" : sel;
   const rooms = allRooms.filter((r) => shown === "all" || (shown === "none" ? r.world_id == null : r.world_id === shown));
   if (edit !== undefined) return <RoomForm id={edit === "new" ? null : edit} world={world ?? null} />;
@@ -257,6 +259,7 @@ function RoomForm({ id, world }: { id: number | null; world: number | null }) {
           <input ref={fileRef} type="file" hidden accept="image/*" aria-label="Upload a backdrop"
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) { setPendingFile(f); setPreview(URL.createObjectURL(f)); setPick(false); } }} />
         </div>
+        <PictureLinkBox testid="room-backdrop-link" placeholder="…or paste a picture link for the backdrop (https://…)" onFile={(f) => { setPendingFile(f); setPreview(URL.createObjectURL(f)); setPick(false); }} />
         {pick && (
           <div className="preset-grid">
             {shelf.map((p) => (

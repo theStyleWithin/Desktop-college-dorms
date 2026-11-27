@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { api, roomPicUrl, type Room } from "../api";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
+import PictureLinkBox from "./PictureLinkBox";
 import { Modal, useToast } from "./ui";
 
 /** A picture shown large, with its caption. */
@@ -61,6 +62,7 @@ export default function RoomGallery({ room }: { room: Room | null }) {
         <button type="button" className="room-pic add" disabled={busy || pics.length >= 24} data-testid="room-pic-add" onClick={() => input.current?.click()}>＋ Add pictures<small>{pics.length} of 24</small></button>
       </div>
       <input ref={input} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden data-testid="room-pic-file" onChange={(e) => { void add(e.target.files); e.target.value = ""; }} />
+      <PictureLinkBox testid="room-pic-link" busy={busy || pics.length >= 24} placeholder="…or paste a picture link (https://…)" onFile={async (f) => { await run(() => api.addRoomPicture(room.id, f, "")); }} />
       <div className="hint">Pictures that show the place: its look, its mood, its corners. A caption is also told to the characters as a detail of the room, so words like "a cracked blue teapot on the sill" work as well as a good description. The pictures are copied into the app.</div>
       {open && <Lightbox room={room} picId={open} onClose={() => setOpen(null)} />}
     </div>

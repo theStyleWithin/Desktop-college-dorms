@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { api, roomPicUrl, type Lorebook, type Room, type World } from "../api";
 import { Lightbox } from "./RoomGallery";
 import { renderLore } from "../lib/loreText";
@@ -20,6 +21,7 @@ export default function WorldOverview({ world, rooms, onClose, onStart, onEdit, 
   return (
     <Modal title={`🌍 ${world.name}`} onClose={onClose}>
       <div className="world-overview" data-testid="world-overview">
+        {world.cover_path ? <img className="world-cover" data-testid="world-cover-view" src={convertFileSrc(world.cover_path)} alt={`${world.name}`} /> : null}
         {world.description.trim() && <p className="world-summary">{world.description}</p>}
         <div className="world-lore-read" data-testid="world-lore-read">
           {world.lore.trim() ? lore : <p className="hint">No lore written yet. Add some in the world's panel: its history, its places, its people.</p>}

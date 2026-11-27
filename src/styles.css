@@ -908,3 +908,4 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .gal-grip:hover, .gal-grip:focus-visible { background: var(--accent); color: #1a1426; }
 .gal-size-reset { background: rgba(0,0,0,.55); color: #fff; border-radius: 8px; }
 @media (hover: none) { .gal-size { opacity: 1; } }
+.world-cover { display: block; width: 100%; max-height: 220px; object-fit: cover; border-radius: 12px; margin-bottom: 12px; }
