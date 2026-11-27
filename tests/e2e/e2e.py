@@ -1795,6 +1795,11 @@ try:
     inp_ = d.find_element(By.CSS_SELECTOR, "[data-testid=emoji-file-emoji]"); d.execute_script("arguments[0].hidden=false;arguments[0].style.display='block';", inp_)
     n_before_ = len(invoke("list_emoji")); inp_.send_keys(mk_png("from-ui.png", (5, 200, 200))); time.sleep(2.0)
     check("emoji can be added from the tab", len(invoke("list_emoji")) == n_before_ + 1 and any(x["name"] == "from_ui" for x in invoke("list_emoji")))
+    set_value("[data-testid=emoji-link-emoji-input]", "http://127.0.0.1:18997/cat.png"); d.execute_script("document.querySelector('[data-testid=emoji-link-emoji-use]').click()"); time.sleep(3.0)
+    cat_ = [x for x in invoke("list_emoji") if x["name"] == "cat" and x["kind"] == "emoji"]
+    check("an emoji can be copied from a picture link (it is converted like an upload)", len(cat_) == 1 and os.path.isfile(cat_[0]["path"]))
+    for x_ in cat_: invoke("delete_emoji", {"id": x_["id"]})
+    n_before_ = len(invoke("list_emoji"))
     invoke("delete_room", {"id": ero_["id"]})
     freed_ = {x["name"]: x["room_id"] for x in invoke("list_emoji")}
     check("deleting a room frees what was tied to it: it works everywhere from then on (nothing is lost)", freed_.get("bow") is None and freed_.get("stove") is None, str(freed_))

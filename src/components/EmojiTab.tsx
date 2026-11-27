@@ -5,6 +5,7 @@ import { pathName } from "../lib/rooms";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
 import { useToast } from "./ui";
+import PictureLinkBox from "./PictureLinkBox";
 
 const MAX = { emoji: 50, sticker: 30 };
 
@@ -18,7 +19,7 @@ export default function EmojiTab() {
   const emojiInput = useRef<HTMLInputElement>(null), stickerInput = useRef<HTMLInputElement>(null);
   const list = (kind: "emoji" | "sticker") => all.filter((i) => i.kind === kind);
 
-  const add = async (kind: "emoji" | "sticker", files: FileList | null) => {
+  const add = async (kind: "emoji" | "sticker", files: FileList | File[] | null) => {
     if (!files?.length) return;
     setBusy(true);
     let made = 0;
@@ -46,6 +47,7 @@ export default function EmojiTab() {
             <input ref={kind === "emoji" ? emojiInput : stickerInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden data-testid={`emoji-file-${kind}`} onChange={(e) => { void add(kind, e.target.files); e.target.value = ""; }} />
             <small className="muted">Any size of PNG, JPG, WebP or GIF: it is shrunk to fit and made into {kind === "emoji" ? "an emoji" : "a sticker"} for you (animated GIFs stay animated). The file name becomes its name.</small>
           </div>
+          <PictureLinkBox testid={`emoji-link-${kind}`} busy={busy || list(kind).length >= MAX[kind]} placeholder={`…or copy ${kind === "emoji" ? "an emoji" : "a sticker"} from a picture link (https://…)`} onFile={async (f) => { await add(kind, [f]); }} />
           <div className="emoji-list">
             {list(kind).map((it) => <EmojiRow key={it.id} it={it} />)}
             {list(kind).length === 0 && <p className="fine">None yet.</p>}
