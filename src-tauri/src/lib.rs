@@ -19,6 +19,7 @@ mod playbook;
 mod presence;
 mod secrets;
 mod unitypkg;
+mod viewfolders;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -238,6 +239,10 @@ pub fn run() {
             presence::list_statuses,
             presence::set_status,
             presence::generate_status,
+            viewfolders::list_view_folders,
+            viewfolders::add_view_folder,
+            viewfolders::remove_view_folder,
+            viewfolders::scan_view_folder,
             deco::list_char_deco,
             deco::list_custom_deco,
             deco::save_custom_deco,

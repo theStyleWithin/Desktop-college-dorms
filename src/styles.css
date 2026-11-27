@@ -850,3 +850,6 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .gal-nav { flex: 0 0 auto; width: 48px; height: 96px; border-radius: 12px; border: 0; background: rgba(255,255,255,.1); color: #fff; font-size: 2rem; cursor: pointer; }
 .gal-nav:hover, .gal-nav:focus-visible { background: rgba(255,255,255,.22); outline: none; }
 @media (max-width: 700px) { .gal-folders, .gal-grid { grid-template-columns: repeat(2, 1fr); } .gal-nav { width: 36px; } }
+.gal-folder-wrap { position: relative; } .gal-folder-wrap > .gal-folder { width: 100%; } .gal-folder:disabled { opacity: .55; cursor: default; }
+.gal-remove { position: absolute; right: 8px; top: 8px; background: rgba(0,0,0,.55); color: #fff; border-radius: 999px; }
+.gal-remove:hover, .gal-remove:focus-visible { background: rgba(190,40,40,.85); }

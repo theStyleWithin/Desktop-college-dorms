@@ -640,6 +640,8 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
          CREATE TABLE IF NOT EXISTS deco_custom(
             did TEXT NOT NULL, profile_id TEXT, data TEXT NOT NULL, created_at INTEGER NOT NULL);
          CREATE INDEX IF NOT EXISTS deco_custom_owner ON deco_custom(profile_id);
+         CREATE TABLE IF NOT EXISTS view_folders(
+            id TEXT PRIMARY KEY, profile_id TEXT, path TEXT NOT NULL, added_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS lorebooks(
             id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS folders(
@@ -1354,6 +1356,34 @@ pub fn delete_custom_deco(c: &Connection, did: &str, owner: &Owner) -> R<()> {
     Ok(())
 }
 
+/// A folder on the computer that the person added to the Gallery, only to look at (nothing in it is ever copied, changed or deleted).
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+pub struct ViewFolder {
+    pub id: String,
+    pub path: String,
+    pub added_at: i64,
+}
+
+/// The most folders one profile can add.
+pub const MAX_VIEW_FOLDERS: usize = 40;
+
+pub fn list_view_folders(c: &Connection, owner: &Owner) -> R<Vec<ViewFolder>> {
+    let mut s = c.prepare("SELECT id,path,added_at FROM view_folders WHERE profile_id IS ?1 ORDER BY added_at, rowid")?;
+    let rows = s.query_map([owner], |r| Ok(ViewFolder { id: r.get(0)?, path: r.get(1)?, added_at: r.get(2)? }))?.filter_map(|r| r.ok()).collect();
+    Ok(rows)
+}
+
+pub fn add_view_folder(c: &Connection, id: &str, path: &str, owner: &Owner) -> R<()> {
+    c.execute("INSERT INTO view_folders(id,profile_id,path,added_at) VALUES(?1,?2,?3,?4)", params![id, owner, path, now()])?;
+    Ok(())
+}
+
+pub fn remove_view_folder(c: &Connection, id: &str, owner: &Owner) -> R<Option<String>> {
+    let path: Option<String> = c.query_row("SELECT path FROM view_folders WHERE id=?1 AND profile_id IS ?2", params![id, owner], |r| r.get(0)).optional()?;
+    c.execute("DELETE FROM view_folders WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
+    Ok(path)
+}
+
 pub fn delete_char_deco(c: &Connection, id: &str, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM char_deco WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     Ok(())
@@ -1744,6 +1774,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM prompts WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM char_status WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM char_deco WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM view_folders WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM deco_custom WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM emoji_items WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM playbooks WHERE profile_id IS ?1", [owner])?;
@@ -1767,7 +1798,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "deco_custom", "emoji_items", "worlds", "playbooks", "shelf_folders", "shelf_items"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "view_folders", "deco_custom", "emoji_items", "worlds", "playbooks", "shelf_folders", "shelf_items"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);
