@@ -12,6 +12,7 @@ import TokenatorPanel from "../components/TokenatorPanel";
 import { TagInput, useToast } from "../components/ui";
 import { errText, tokens } from "../lib/util";
 import { useStore } from "../store";
+import SendToDevice from "../components/SendToDevice";
 
 const kindOf = (f: File): MediaKind | null => {
   const n = f.name.toLowerCase();
@@ -205,6 +206,7 @@ export default function Editor({ id }: { id: string | null }) {
         {char && (
           <div className="row">
             <button className="btn" onClick={chat}>💬 Chat</button>
+            <SendToDevice item={{ kind: "character", id: char.id }} name={char.card.name || "this character"} className="btn" />
             <button className="btn" onClick={() => exp("png")}>Export PNG</button>
             <button className="btn" onClick={() => exp("json_v2")}>JSON V2</button>
             <button className="btn" onClick={() => exp("json_v3")}>JSON V3</button>

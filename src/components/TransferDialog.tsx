@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type ImportPreview, type TransferStatus } from "../api";
+import { api, type ArrivedItem, type ImportPreview, type SendItem, type TransferStatus } from "../api";
 import { Modal, useToast } from "./ui";
 import QrScanner from "./QrScanner";
 import { errText } from "../lib/util";
@@ -25,10 +25,13 @@ export function parsePairing(text: string): { addr: string; code: string } | nul
 }
 
 /** Moving the open profile to or from another device over the home Wi-Fi: send (a QR code and a code to type) or receive (scan or type), then look at what arrived before adding it. */
-export default function TransferDialog({ profileName, hasPasscode, onClose }: { profileName: string; hasPasscode: boolean; onClose: () => void }) {
-  const { setSession } = useStore();
+const KIND_WORD: Record<string, string> = { character: "character", persona: "persona", lorebook: "lorebook", note: "note", prompt: "saved prompt" };
+
+export default function TransferDialog({ profileName, hasPasscode, onClose, item }: { profileName: string; hasPasscode: boolean; onClose: () => void; item?: SendItem & { name: string } }) {
+  const { setSession, refresh } = useStore();
   const toast = useToast();
-  const [mode, setMode] = useState<"choose" | "send" | "receive">("choose");
+  const [mode, setMode] = useState<"choose" | "send" | "receive">(item ? "send" : "choose");
+  const [arrivedItem, setArrivedItem] = useState<ArrivedItem | null>(null);
   const [send, setSend] = useState<TransferStatus | null>(null);
   const [recv, setRecv] = useState<TransferStatus | null>(null);
   const [code, setCode] = useState(randomCode);
@@ -55,7 +58,9 @@ export default function TransferDialog({ profileName, hasPasscode, onClose }: { 
   }, [mode]);
   // a profile arrived: look inside it (the same preview an imported file gets)
   useEffect(() => {
-    if (recv?.phase === "arrived" && recv.token && !preview) {
+    if (recv?.phase === "arrived" && recv.token && recv.kind && recv.kind !== "profile" && !arrivedItem) {
+      api.inspectStagedItem(recv.token, recv.kind).then(setArrivedItem).catch((e) => toast(errText(e), "err"));
+    } else if (recv?.phase === "arrived" && recv.token && recv.kind === "profile" && !preview) {
       api.inspectStaged(recv.token).then((p) => { setPreview(p); setHandle(suggestName(p)); }).catch((e) => toast(errText(e), "err"));
     }
   }, [recv?.phase, recv?.token]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -64,10 +69,10 @@ export default function TransferDialog({ profileName, hasPasscode, onClose }: { 
 
   const start = async () => {
     setBusy(true);
-    try { setSend(await api.transferSendStart(code, hasPasscode ? pass : null)); } catch (e) { toast(errText(e), "err"); } finally { setBusy(false); }
+    try { setSend(await api.transferSendStart(code, hasPasscode ? pass : null, item ? { kind: item.kind, id: item.id } : null)); } catch (e) { toast(errText(e), "err"); } finally { setBusy(false); }
   };
   const connect = async (a = addr, c = rcode) => {
-    setBusy(true); setPreview(null);
+    setBusy(true); setPreview(null); setArrivedItem(null);
     try { setRecv(await api.transferReceiveStart(a, c)); } catch (e) { toast(errText(e), "err"); } finally { setBusy(false); }
   };
   const scanned = (text: string) => {
@@ -82,13 +87,18 @@ export default function TransferDialog({ profileName, hasPasscode, onClose }: { 
     setBusy(true);
     try { setSession(await api.importStaged(recv.token, handle, newPass)); toast("Added as a new profile.", "ok"); onClose(); } catch (e) { toast(errText(e), "err"); } finally { setBusy(false); }
   };
-  const discard = () => { void api.clearStage(); setPreview(null); setRecv(null); };
+  const addItem = async () => {
+    if (!recv?.token) return;
+    setBusy(true);
+    try { const a = await api.addStagedItem(recv.token, recv.kind); await refresh(); toast(`Added the ${KIND_WORD[a.kind] ?? "item"} "${a.name}".`, "ok"); onClose(); } catch (e) { toast(errText(e), "err"); } finally { setBusy(false); }
+  };
+  const discard = () => { void api.clearStage(); setPreview(null); setArrivedItem(null); setRecv(null); };
 
   const sendActive = !!send && SEND_ACTIVE.includes(send.phase);
   const bar = (s: TransferStatus) => s.total > 0 && <div className="bar" style={{ margin: "8px 0" }}><div style={{ width: `${Math.min(100, Math.round((s.done / s.total) * 100))}%` }} /></div>;
 
   return (
-    <Modal title="📶 Move a profile over Wi-Fi" onClose={close} wide>
+    <Modal title={item ? `📶 Send ${KIND_WORD[item.kind]} over Wi-Fi` : "📶 Move a profile over Wi-Fi"} onClose={close} wide>
       <div data-testid="transfer-dialog" style={{ display: "grid", gap: 12 }}>
         {mode === "choose" && (
           <>
@@ -106,12 +116,12 @@ export default function TransferDialog({ profileName, hasPasscode, onClose }: { 
             {send && ["done", "failed", "cancelled"].includes(send.phase) && <div className={send.phase === "done" ? "hint" : "banner"} data-testid="transfer-send-result">{send.message}</div>}
             {!sendActive ? (
               <>
-                <p className="sub" style={{ margin: 0 }}>This sends everything in <b>{profileName}</b>. This device only listens while this screen is open, for up to 5 minutes, and locks after three wrong codes.</p>
+                <p className="sub" style={{ margin: 0 }}>{item ? <>This sends the {KIND_WORD[item.kind]} <b>{item.name}</b> only.</> : <>This sends everything in <b>{profileName}</b>.</>} This device only listens while this screen is open, for up to 5 minutes, and locks after three wrong codes.</p>
                 <label className="field"><span>Code</span>
                   <input type="text" value={code} data-testid="transfer-code" aria-label="Pairing code" maxLength={200} onChange={(e) => setCode(e.target.value)} />
                   <div className="hint">Any characters you like, as short or long as you like. The other device types the same, or scans the QR code, which has it in it. Spaces count.</div></label>
-                {hasPasscode && <label className="field"><span>This profile's passcode</span><input type="password" value={pass} data-testid="transfer-passcode" aria-label="Passcode" onChange={(e) => setPass(e.target.value)} /></label>}
-                <div className="row"><button className="btn primary" disabled={busy || !code || (hasPasscode && !pass)} data-testid="transfer-start" onClick={() => void start()}>{busy ? "Getting ready…" : "Start sending"}</button><button className="btn" onClick={() => setMode("choose")}>Back</button></div>
+                {hasPasscode && !item && <label className="field"><span>This profile's passcode</span><input type="password" value={pass} data-testid="transfer-passcode" aria-label="Passcode" onChange={(e) => setPass(e.target.value)} /></label>}
+                <div className="row"><button className="btn primary" disabled={busy || !code || (hasPasscode && !item && !pass)} data-testid="transfer-start" onClick={() => void start()}>{busy ? "Getting ready…" : "Start sending"}</button>{!item && <button className="btn" onClick={() => setMode("choose")}>Back</button>}</div>
               </>
             ) : (
               <div data-testid="transfer-send-active" style={{ display: "grid", gap: 8, justifyItems: "center" }}>
@@ -131,6 +141,13 @@ export default function TransferDialog({ profileName, hasPasscode, onClose }: { 
             {recv && ["failed", "cancelled"].includes(recv.phase) && <div className="banner" data-testid="transfer-recv-result">{recv.message}</div>}
             {recv?.phase === "receiving" ? (
               <div data-testid="transfer-receiving"><div>{recv.message}</div>{bar(recv)}<button className="btn" onClick={() => void api.transferCancel("receive")}>Stop</button></div>
+            ) : recv?.phase === "arrived" && arrivedItem ? (
+              <div className="card" data-testid="transfer-arrived-item" style={{ display: "grid", gap: 8 }}>
+                <h3 style={{ margin: 0 }}>A {KIND_WORD[arrivedItem.kind] ?? "item"} arrived: {arrivedItem.name}</h3>
+                {arrivedItem.detail && <div data-testid="transfer-arrived-detail">{arrivedItem.detail}</div>}
+                <div className="hint">Nothing has been added yet. Adding it makes a new {KIND_WORD[arrivedItem.kind] ?? "item"}; it never replaces one you already have.</div>
+                <div className="row"><button className="btn primary" disabled={busy} data-testid="transfer-add-item" onClick={() => void addItem()}>Add it</button><button className="btn" data-testid="transfer-discard" onClick={discard}>Discard</button></div>
+              </div>
             ) : recv?.phase === "arrived" && preview ? (
               <div className="card" data-testid="transfer-arrived" style={{ display: "grid", gap: 8 }}>
                 <h3 style={{ margin: 0 }}>A profile arrived: {preview.display_name || preview.handle}</h3>

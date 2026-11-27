@@ -172,10 +172,11 @@ pub async fn recv_blob<S: AsyncRead + AsyncWrite + Unpin>(ch: &mut Channel<S>, m
     let f = ch.recv().await?;
     if f.first() != Some(&b'M') { return Err("The other device started in an unexpected way.".into()); }
     let meta: Meta = serde_json::from_slice(&f[1..]).map_err(|_| "The other device described the file in a way I can't read.".to_string())?;
-    if meta.v != 1 || meta.kind != "profile" {
+    if meta.v != 1 || !(meta.kind == "profile" || crate::itemxfer::is_item(&meta.kind)) {
         let _ = ch.send(b"Rthis kind of transfer isn't supported").await;
         return Err("The other device is sending something this version can't take.".into());
     }
+    let max = if meta.kind == "profile" { max } else { max.min(64 * 1024 * 1024) };
     if meta.size > max {
         let _ = ch.send(b"Rit is too big").await;
         return Err("That profile is too big to take.".into());
@@ -270,8 +271,10 @@ pub struct TransferStatus {
     pub expires_in: u64,
     /// The staging token of a profile that arrived.
     pub token: Option<String>,
-    /// The name of the profile that is being sent or arrived.
+    /// The name of the profile (or item) that is being sent or arrived.
     pub name: String,
+    /// What is being sent or arrived: `profile`, or one kind of item (`character`, `persona`, `lorebook`, `note`, `prompt`).
+    pub kind: String,
 }
 
 /// One direction of transfer. A device can be set up to send and to receive independently.
@@ -320,7 +323,7 @@ fn qr_svg(text: &str) -> String {
 
 /// Opens this device to send the open profile. It listens on the home network address, for a few minutes, until one device pairs (or three wrong codes).
 #[tauri::command]
-pub async fn transfer_send_start(state: tauri::State<'_, crate::Shared>, code: String, passcode: Option<String>) -> R<TransferStatus> {
+pub async fn transfer_send_start(state: tauri::State<'_, crate::Shared>, code: String, passcode: Option<String>, item: Option<crate::itemxfer::ItemRef>) -> R<TransferStatus> {
     let st: crate::Shared = state.inner().clone();
     if code.is_empty() { return Err("Type a code, or use the one shown.".into()); }
     if code.chars().count() > 200 { return Err("That code is too long (200 characters at most).".into()); }
@@ -334,7 +337,10 @@ pub async fn transfer_send_start(state: tauri::State<'_, crate::Shared>, code: S
         None => "Guest".to_string(),
     };
     let (st2, o2) = (st.clone(), o.clone());
-    let (bytes, _info, _file) = tauri::async_runtime::spawn_blocking(move || crate::accounts::build_export(&st2, &o2)).await.map_err(|e| e.to_string())??;
+    let (kind, name, bytes) = match item {
+        Some(it) => { let st3 = st.clone(); tauri::async_runtime::spawn_blocking(move || crate::itemxfer::pack(&st3, &it.kind, &it.id)).await.map_err(|e| e.to_string())?? }
+        None => { let (bytes, _info, _file) = tauri::async_runtime::spawn_blocking(move || crate::accounts::build_export(&st2, &o2)).await.map_err(|e| e.to_string())??; ("profile".to_string(), name, bytes) }
+    };
     let ip = pick_ip(lan_ip(), std::env::var_os("DORMS_TRANSFER_LOOPBACK").is_some())?;
     let listener = TcpListener::bind((ip, 0)).await.map_err(|e| format!("I couldn't open a connection on this device: {e}"))?;
     let addr = listener.local_addr().map_err(|e| e.to_string())?;
@@ -347,16 +353,16 @@ pub async fn transfer_send_start(state: tauri::State<'_, crate::Shared>, code: S
         g.gen += 1;
         g.cancel = Some(cancel.clone());
         g.deadline = Some(deadline);
-        g.status = TransferStatus { phase: "waiting".into(), role: "send".into(), message: "Waiting for the other device.".into(), total: bytes.len() as u64, addr: addr.to_string(), code: code.clone(), qr_svg: qr_svg(&pairing_text(&addr, &code)), expires_in: OPEN_FOR.as_secs(), name: name.clone(), ..Default::default() };
+        g.status = TransferStatus { phase: "waiting".into(), role: "send".into(), message: "Waiting for the other device.".into(), total: bytes.len() as u64, addr: addr.to_string(), code: code.clone(), qr_svg: qr_svg(&pairing_text(&addr, &code)), expires_in: OPEN_FOR.as_secs(), name: name.clone(), kind: kind.clone(), ..Default::default() };
         g.gen
     };
     let st3 = st.clone();
-    tauri::async_runtime::spawn(async move { run_send(st3, gen, listener, code, bytes, name, cancel, deadline).await });
+    tauri::async_runtime::spawn(async move { run_send(st3, gen, listener, code, bytes, kind, name, cancel, deadline).await });
     Ok(transfer_status(state, "send".into()))
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn run_send(st: crate::Shared, gen: u64, listener: TcpListener, code: String, bytes: Vec<u8>, name: String, cancel: Arc<Notify>, deadline: Instant) {
+async fn run_send(st: crate::Shared, gen: u64, listener: TcpListener, code: String, bytes: Vec<u8>, kind: String, name: String, cancel: Arc<Notify>, deadline: Instant) {
     let mut tries = 0u32;
     loop {
         let left = deadline.saturating_duration_since(Instant::now());
@@ -387,7 +393,7 @@ async fn run_send(st: crate::Shared, gen: u64, listener: TcpListener, code: Stri
         };
         update(&st, SEND, gen, |s| { s.phase = "sending".into(); s.message = "Sending…".into(); });
         let st2 = st.clone();
-        let res = send_blob(&mut ch, "profile", &name, &bytes, move |n| update(&st2, SEND, gen, |s| s.done = n)).await;
+        let res = send_blob(&mut ch, &kind, &name, &bytes, move |n| update(&st2, SEND, gen, |s| s.done = n)).await;
         match res {
             Ok(()) => finish(&st, SEND, gen, "done", "Sent. The other device will show what arrived and ask before adding it."),
             Err(e) => finish(&st, SEND, gen, "failed", &e),
@@ -437,8 +443,8 @@ async fn run_receive(st: crate::Shared, gen: u64, addr: SocketAddr, code: String
         Ok((meta, bytes)) => {
             let token = uuid::Uuid::new_v4().to_string();
             *st.staged.lock().unwrap() = Some((token.clone(), Arc::new(bytes)));
-            update(&st, RECV, gen, |s| { s.token = Some(token); s.name = meta.name.clone(); });
-            finish(&st, RECV, gen, "arrived", "A profile arrived. Nothing has been added yet.");
+            update(&st, RECV, gen, |s| { s.token = Some(token); s.name = meta.name.clone(); s.kind = meta.kind.clone(); });
+            finish(&st, RECV, gen, "arrived", if meta.kind == "profile" { "A profile arrived. Nothing has been added yet." } else { "An item arrived. Nothing has been added yet." });
         }
         Err(e) => finish(&st, RECV, gen, "failed", &e),
     }
