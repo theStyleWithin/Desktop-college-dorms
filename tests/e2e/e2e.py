@@ -1378,6 +1378,19 @@ try:
     sc_id_ = [p_["id"] for p_ in invoke("session_state")["profiles"] if p_["handle"] == "Scoped"]
     if sc_id_:
         invoke("sign_in", {"profileId": sc_id_[0], "passcode": None}); invoke("delete_profile", {"confirm": "scoped"}); invoke("sign_in", {"profileId": None}); reload_ui(); time.sleep(0.8)
+    # scroll bars: the handle thickens when the pointer is near it
+    nav("Settings"); time.sleep(1.0)
+    box_ = d.execute_script("""const c=[...document.querySelectorAll('*')].filter(e=>{const s=getComputedStyle(e);return /(auto|scroll)/.test(s.overflowY)&&e.scrollHeight>e.clientHeight+50&&e.clientWidth>300&&e.clientHeight>200});
+      c.sort((a,b)=>b.clientHeight*b.clientWidth-a.clientHeight*a.clientWidth); const e=c[0]; if(!e) return null; const r=e.getBoundingClientRect(); return {right:r.right,top:r.top,left:r.left,h:r.height};""")
+    check("there is a long page to scroll", box_ is not None)
+    if box_:
+        move_ = lambda x, y: d.execute_script("window.dispatchEvent(new MouseEvent('mousemove',{clientX:arguments[0],clientY:arguments[1],bubbles:true}))", x, y)
+        near_ = lambda: d.execute_script("return document.querySelectorAll('.sb-near').length")
+        move_(box_["right"] - 30, box_["top"] + box_["h"] / 2); time.sleep(0.4)
+        check("moving the pointer near a scroll bar marks it so its handle can thicken", near_() == 1)
+        move_(box_["left"] + 60, box_["top"] + box_["h"] / 2); time.sleep(0.4)
+        check("and moving away unmarks it", near_() == 0)
+        check("the scroll bar strip is wide enough to hit (about 16 px)", 14 <= d.execute_script("const e=[...document.querySelectorAll('*')].find(x=>x.scrollHeight>x.clientHeight+50&&/(auto|scroll)/.test(getComputedStyle(x).overflowY)&&x.clientWidth>300); return e ? e.offsetWidth - e.clientWidth : -1") <= 24)
     # hiding an account: off the start screen, into Settings' list of hidden accounts, with a prompt to make another or use the guest space
     invoke("create_profile", {"handle": "Hider", "displayName": None, "passcode": None}); reload_ui(); time.sleep(1.0)
     ctx_me()
