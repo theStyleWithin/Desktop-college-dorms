@@ -704,8 +704,22 @@ pub fn set_room_links(state: State<'_, Shared>, id: i64, links: Vec<i64>) -> R<R
 
 /// Worlds: folders of connected rooms, kept apart from each other, with lorebooks attached that apply to every chat in them.
 #[tauri::command]
-pub fn list_worlds(state: State<'_, Shared>) -> R<Vec<db::World>> {
-    db::list_worlds(&state.db.lock().unwrap(), &owner(&state)?).map_err(e)
+pub fn list_worlds(state: State<'_, Shared>) -> R<Vec<WorldOut>> {
+    let ws = db::list_worlds(&state.db.lock().unwrap(), &owner(&state)?).map_err(e)?;
+    Ok(ws.into_iter().map(|w| world_out(&state, w)).collect())
+}
+
+/// A world as the screens get it: the world itself and where its cover picture is (to show it).
+#[derive(serde::Serialize)]
+pub struct WorldOut {
+    #[serde(flatten)]
+    pub world: db::World,
+    pub cover_path: Option<String>,
+}
+
+fn world_out(st: &AppState, world: db::World) -> WorldOut {
+    let cover_path = Some(world.cover.as_str()).filter(|c| !c.is_empty()).map(|c| st.data_dir.join(c).to_string_lossy().to_string());
+    WorldOut { world, cover_path }
 }
 
 fn clean_world_text(name: &str, description: &str) -> R<(String, String)> {
@@ -717,13 +731,14 @@ fn clean_world_text(name: &str, description: &str) -> R<(String, String)> {
 }
 
 #[tauri::command]
-pub fn create_world(state: State<'_, Shared>, name: String, description: String) -> R<db::World> {
+pub fn create_world(state: State<'_, Shared>, name: String, description: String) -> R<WorldOut> {
     let (name, description) = clean_world_text(&name, &description)?;
-    db::create_world(&state.db.lock().unwrap(), &name, &description, &owner(&state)?).map_err(e)
+    let w = db::create_world(&state.db.lock().unwrap(), &name, &description, &owner(&state)?).map_err(e)?;
+    Ok(world_out(&state, w))
 }
 
 #[tauri::command]
-pub fn update_world(state: State<'_, Shared>, id: i64, name: String, description: String, lore: String, lorebooks: Vec<String>) -> R<db::World> {
+pub fn update_world(state: State<'_, Shared>, id: i64, name: String, description: String, lore: String, lorebooks: Vec<String>) -> R<WorldOut> {
     let (name, description) = clean_world_text(&name, &description)?;
     let o = owner(&state)?;
     let db = state.db.lock().unwrap();
@@ -733,13 +748,13 @@ pub fn update_world(state: State<'_, Shared>, id: i64, name: String, description
     // the lore is for reading, so it may be long (and keeps its paragraphs)
     let lore: String = lore.replace('\r', "").trim().chars().take(20_000).collect();
     db::update_world(&db, id, &name, &description, &lore, &lorebooks, &o).map_err(e)?;
-    Ok(db::get_world(&db, id, &o).map_err(e)?.ok_or("That world doesn't exist any more.")?)
+    Ok(world_out(&state, db::get_world(&db, id, &o).map_err(e)?.ok_or("That world doesn't exist any more.")?))
 }
 
 /// Deleting a world never deletes its rooms: they are just not in a world any more.
 /// What a world brings along. A persona or playbook that isn't the person's own is ignored.
 #[tauri::command]
-pub fn set_world_setup(state: State<'_, Shared>, id: i64, persona: String, playbook: String, instructions: String, prompts: Vec<String>) -> R<db::World> {
+pub fn set_world_setup(state: State<'_, Shared>, id: i64, persona: String, playbook: String, instructions: String, prompts: Vec<String>) -> R<WorldOut> {
     let o = owner(&state)?;
     let db = state.db.lock().unwrap();
     if db::get_world(&db, id, &o).map_err(e)?.is_none() {
@@ -749,12 +764,49 @@ pub fn set_world_setup(state: State<'_, Shared>, id: i64, persona: String, playb
     let playbook = if crate::playbook::get(&db, &playbook, &o).is_some() { playbook } else { String::new() };
     let instructions: String = instructions.replace('\r', "").trim().chars().take(4000).collect();
     db::set_world_setup(&db, id, &persona, &playbook, &instructions, &prompts, &o).map_err(e)?;
-    Ok(db::get_world(&db, id, &o).map_err(e)?.ok_or("That world doesn't exist any more.")?)
+    Ok(world_out(&state, db::get_world(&db, id, &o).map_err(e)?.ok_or("That world doesn't exist any more.")?))
 }
 
 #[tauri::command]
 pub fn delete_world(state: State<'_, Shared>, id: i64) -> R<()> {
-    db::delete_world(&state.db.lock().unwrap(), id, &owner(&state)?).map_err(e)
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let cover = db::get_world(&db, id, &o).map_err(e)?.map(|w| w.cover).unwrap_or_default();
+    db::delete_world(&db, id, &o).map_err(e)?;
+    if !cover.is_empty() { remove_backdrop_files(&state.data_dir, &cover); }
+    Ok(())
+}
+
+/// Sets a world's cover picture. Body: the image. Headers: `x-world-id`, `x-file-name`. It is kept as a copy in the app's own data, like a room's backdrop.
+#[tauri::command]
+pub fn set_world_cover(request: Request<'_>, state: State<'_, Shared>) -> R<WorldOut> {
+    let id: i64 = header(&request, "x-world-id").parse().map_err(|_| "That world doesn't exist any more.")?;
+    let name = header(&request, "x-file-name");
+    let bytes = raw_body(&request)?;
+    if bytes.len() > MAX_BACKDROP_BYTES { return Err("That image is too large (40 MB at most).".into()); }
+    let ext = std::path::Path::new(&name).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+    if !["png", "jpg", "jpeg", "webp", "gif", "avif", "bmp"].contains(&ext.as_str()) {
+        return Err("A cover has to be an image (JPG, PNG, WebP or GIF).".into());
+    }
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let w = db::get_world(&db, id, &o).map_err(e)?.ok_or("That world doesn't exist any more.")?;
+    let rel = format!("media/world-{}-{}.{ext}", w.id, db::now());
+    store_backdrop(&state.data_dir, &rel, bytes.to_vec())?;
+    if !w.cover.is_empty() { remove_backdrop_files(&state.data_dir, &w.cover); }
+    db::set_world_cover(&db, id, &rel, &o).map_err(e)?;
+    Ok(world_out(&state, db::get_world(&db, id, &o).map_err(e)?.ok_or("That world doesn't exist any more.")?))
+}
+
+/// Takes a world's cover picture away (the file is deleted).
+#[tauri::command]
+pub fn clear_world_cover(state: State<'_, Shared>, id: i64) -> R<WorldOut> {
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let w = db::get_world(&db, id, &o).map_err(e)?.ok_or("That world doesn't exist any more.")?;
+    if !w.cover.is_empty() { remove_backdrop_files(&state.data_dir, &w.cover); }
+    db::set_world_cover(&db, id, "", &o).map_err(e)?;
+    Ok(world_out(&state, db::get_world(&db, id, &o).map_err(e)?.ok_or("That world doesn't exist any more.")?))
 }
 
 /// Put rooms in a world (empty = none). Links that would join two different worlds are dropped.
