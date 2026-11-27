@@ -1,0 +1,43 @@
+## v0.17.0: The Gallery Plus Update 🖼️
+
+The Gallery grows up, the app can live in your system tray, one character or note can be sent to your phone on its own, and the phone finally has a built-in model engine.
+
+### 🖼️ Gallery
+- **A big viewer that zooms.** Scroll or press **+ / −** to zoom a picture or GIF, drag to move it, double-click to zoom in and out, **0** to reset. Choose how it is sized: **Fit**, **1:1** (actual size), **Fill** or **Stretch** (remembered).
+- **A real video player.** Play, seek, volume, speed (0.5× to 2×), loop, full screen and the video's size (with a "4K" tag), plus **Space**, **M**, **F** and **Shift+arrows**. Videos zoom and drag like pictures. How well 4K plays depends on your computer's video codecs; if a file can't be played the viewer says so (some 4K files use HEVC or AV1).
+- **No more freezing on the second folder.** Pictures from your computer now show as small copies (made a few at a time as you scroll) instead of loading every full-size file, and videos in a folder don't load until you open them. If anything else in the Gallery goes wrong it now shows the error and a **Try again** button instead of a blank page.
+- **Add folder** (top right) opens a menu: **Pick from desktop**, **Copy from a link…** (the app copies a picture, GIF or short video from a web address into one of your folders, or a new one) and **New gallery folder…**. A folder you make in the app is kept by the app (🗂️): add pictures from links or files, delete single pictures, or delete the whole folder (it asks first). These work on the phone too.
+- **Arrange it your way.** Drag folder cards into any order (or use **↔ Arrange**, which shows ◀ ▶ on each card and also works on a touch screen, or **Alt + arrow**). A switch, **All folders in one place**, puts character folders and your own folders in one grid instead of two sections.
+- **Resizable cards.** Every folder card has a ⤡ corner: drag it to make the card wider and taller (or hold **Shift** and press the arrow keys). ↺, or a double-click on the corner, puts it back.
+- **The side panel can sit below the picture** (a much wider box to type in), and it can switch between **Comments** and **Talk to a character**.
+- **Talk to a character about what you're looking at.** Pick any of your characters and chat with them about the picture or video on screen. They're told what it is and, for a picture, they can really see it if your model can see pictures (a smaller copy goes to the model you already chose, nothing anywhere else; untick **Let them see this picture** to keep it private). For a video they only know its name and how far in you are, never its frames. These chats stay on your device, per picture and character.
+
+### 🪟 System tray (desktop)
+Settings → Customization → **System tray**: put the app in the tray when you minimize the window, and/or keep it running when you close it. The icon's menu has **Open**, **Tokenator**, **Dorms (chats)**, **Characters**, **Gallery**, **Settings** and **Quit**, and clicking the icon shows or hides the window. Starting the app again always brings the window back, so a desktop that hides tray icons can't strand it. If your desktop has no tray, the setting says so and nothing is turned on (on GNOME, tray icons need the AppIndicator extension). Not on phones.
+
+### 📶 Send one thing over Wi-Fi
+A **📶 Send** button on a character (in its editor), a persona, a lorebook and a note sends just that one item to your other device, the same encrypted way as a whole profile and only on your home network. The other device opens **Settings → Profiles → Wi-Fi transfer… → Receive**, scans the code, sees what arrived and chooses **Add it** or **Discard**. It is always added as a new item and never replaces one you have. A persona's picture isn't sent, only its words, and a note arrives unpinned.
+
+### 🔗 Copy from a link, in more places
+Wherever you can upload a picture you can now paste a picture link and the app makes its own copy:
+- **Rooms**: the backdrop (while making or editing a room) and the room gallery.
+- **Worlds**: a world now has a **cover picture**, from a file or a link, chosen while making the world or later in its panel. It shows at the top of the world's overview, travels with backups and is deleted with the world.
+- **Emoji and stickers**: copy one from a picture link; it is converted like an upload.
+
+### 😀 Emoji from any picture
+Any size of PNG, JPG, WebP or GIF becomes an emoji or sticker: shrunk to fit and never stretched (animated GIFs stay animated).
+
+### 📱 Phone
+- **A built-in model engine.** The Android app now carries the llama.cpp engine, so the phone can download and run a model without anything else installed. It runs on the processor only, so how fast it is depends on your phone (probably a few words a second on a good one). Phones that can't run a model still don't get a download button.
+- **Exporting a profile on the phone is fixed.** The file the phone saved wasn't readable (even to the phone's own import). It is now written and checked byte by byte, and a file the phone saved can be imported again.
+
+### 👤 What belongs to a profile now stays with it
+These used to be shared by everyone on the device and now belong to the profile (or the guest space) that set them: your chats with **Tokenator**, the names, layout and picture frames of the **side bar** (Recent chats, Favorites, Most used), the order of the side bar's pages, room and shelf views, outfits you hid, decoration filters, and the Gallery's viewer choices and chats with characters. The old shared settings go to the first profile that opens the app after the update, once (so check your Tokenator history if you use more than one profile).
+
+### Not yet
+- A **Send** button for saved prompts (the app can send them, there is just no button yet), sending playbooks and worlds over Wi-Fi, and "refresh my phone" (send only what changed).
+- Gallery folders you make in the app, and the pictures in them, are **not** part of profile backups yet.
+- A faster phone engine build.
+
+### What has not been tried
+These were tested with the app's own tests, not by hand: the system tray on a real desktop, dragging and resizing with a real mouse or touch screen (the tests send the events themselves), 4K and HEVC video on real hardware, a character really seeing a picture with a model that can see pictures, Wi-Fi sending between two real devices, and the built-in phone engine and phone export on a real phone.
