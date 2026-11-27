@@ -1,10 +1,11 @@
+import { sget, sset } from "../lib/scoped";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, type Shelf, type ShelfFolder, type ShelfKind } from "../api";
 import { errText } from "../lib/util";
 import { useToast } from "./ui";
 
 const FOLD_KEY = "dorms.shelf.folded";
-const readFolded = (): Record<string, boolean> => { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || "{}") ?? {}; } catch { return {}; } };
+const readFolded = (): Record<string, boolean> => { try { return JSON.parse(sget(FOLD_KEY) || "{}") ?? {}; } catch { return {}; } };
 
 /** The folders of lorebooks or playbooks, and what is in them. */
 export function useShelf(kind: ShelfKind) {
@@ -58,7 +59,7 @@ export default function ShelfView<T extends { id: string; name: string }>({ item
   const { shelf } = s;
   const [folded, setFolded] = useState(readFolded);
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
-  const toggle = (id: string) => setFolded((f) => { const n = { ...f, [id]: !f[id] }; try { localStorage.setItem(FOLD_KEY, JSON.stringify(n)); } catch { /* not remembered */ } return n; });
+  const toggle = (id: string) => setFolded((f) => { const n = { ...f, [id]: !f[id] }; try { sset(FOLD_KEY, JSON.stringify(n)); } catch { /* not remembered */ } return n; });
   const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
   const inFolder = (fid: string | null) => sorted.filter((i) => (shelf.items[i.id] ?? null) === fid);
   const count = (fid: string): number => inFolder(fid).length + shelf.folders.filter((f) => f.parent === fid).reduce((n, f) => n + count(f.id), 0);

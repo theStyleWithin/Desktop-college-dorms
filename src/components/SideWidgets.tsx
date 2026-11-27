@@ -5,30 +5,11 @@ import { errText, timeAgo } from "../lib/util";
 import Art from "./Art";
 import { ProfileAvatar } from "./ProfileForms";
 import { Modal, useToast } from "./ui";
+import { profileScope, sdel, sget, sset } from "../lib/scoped";
 
-/**
- * What you set up for the side bar (the names of its sections, which are shown, which are folded, the picture frames) belongs to the profile you are in,
- * so each profile (and the guest space) has its own, kept on this device. The settings from before this was so are given to the first profile that
- * opens the app afterwards (once), instead of to every profile.
- */
-let scope = "guest";
-const lsKey = (base: string) => `${base}.${scope}`;
-const lsGet = (base: string): string | null => {
-  try {
-    const k = lsKey(base); let v = localStorage.getItem(k);
-    if (v === null) { const old = localStorage.getItem(base); if (old !== null) { localStorage.setItem(k, old); localStorage.removeItem(base); v = old; } }
-    return v;
-  } catch { return null; }
-};
-const lsSet = (base: string, v: string) => localStorage.setItem(lsKey(base), v);
-const lsDel = (base: string) => localStorage.removeItem(lsKey(base));
-/** The profile the side bar is for (read first by everything below, so that what it loads is that profile's own). */
-function useSideScope(): string {
-  const { session } = useStore();
-  const id = session?.profile?.id ?? "guest";
-  scope = id;
-  return id;
-}
+/** The profile the side bar is for (what it remembers is that profile's own; see `lib/scoped`). */
+const useSideScope = (): string => profileScope();
+const lsGet = sget, lsSet = sset, lsDel = sdel;
 
 /** Which of the side bar's extras are shown (this device). */
 export type WidgetId = "recent" | "favorites" | "usage" | "frame";

@@ -1,3 +1,4 @@
+import { sdel } from "../lib/scoped";
 import { useTextScale, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
 import { DEFAULT_NAMES, WIDGETS, useWidgetNames, useWidgetPrefs } from "../components/SideWidgets";
 import { useEffect, useRef, useState } from "react";
@@ -401,7 +402,7 @@ function Look({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void
       </div>
       <h3 style={{ marginTop: 22 }}>Side bar order</h3>
       <div className="row" style={{ marginTop: 10 }}>
-        <button className="btn sm" onClick={() => { try { localStorage.removeItem("dorms.nav.order"); } catch { /* storage unavailable */ } window.dispatchEvent(new Event("dorms-nav-order")); }}>Reset the side bar order</button>
+        <button className="btn sm" onClick={() => { try { sdel("dorms.nav.order"); } catch { /* storage unavailable */ } window.dispatchEvent(new Event("dorms-nav-order")); }}>Reset the side bar order</button>
         <span className="hint">Hold a side bar item and drag it to where you want it. Prompts stays at the bottom. The order is kept on this device.</span>
       </div>
       <h3 style={{ marginTop: 22 }}>Side bar extras</h3>
