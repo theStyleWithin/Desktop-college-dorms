@@ -333,6 +333,15 @@ mod tests {
     }
 
     #[test]
+    fn a_big_video_is_taken_but_a_big_picture_is_not() {
+        assert_eq!(crate::commands::gallery_limit_mb("image"), 60);
+        assert_eq!(crate::commands::gallery_limit_mb("gif"), 60);
+        assert!(crate::commands::gallery_limit_mb("video") >= 500, "a 4K clip is easily a few hundred MB, so a 200 MB video must be accepted");
+        assert_eq!(MAX_OWN_VIDEO_MB, crate::commands::gallery_limit_mb("video"));
+        assert!(MAX_OWN_PIC_MB < MAX_OWN_VIDEO_MB);
+    }
+
+    #[test]
     fn a_folder_is_read_into_pictures_and_folders_without_following_links() {
         let root = scratch("scan");
         fs::create_dir_all(root.join("sets/one")).unwrap();
@@ -367,8 +376,9 @@ pub fn own_root(data: &Path) -> PathBuf { data.join("gallery-folders") }
 
 /// The most pictures one gallery folder made in the app holds.
 const MAX_OWN_PICS: usize = 2000;
-/// The biggest picture or clip that is added to one.
-const MAX_OWN_BYTES: usize = 40 * 1024 * 1024;
+/// The biggest picture, and the biggest video, that is added to one (a 4K clip is easily a few hundred MB).
+const MAX_OWN_PIC_MB: usize = 60;
+const MAX_OWN_VIDEO_MB: usize = crate::commands::MAX_GALLERY_VIDEO_MB;
 
 fn clean_name(raw: &str) -> R<String> {
     let t: String = raw.trim().chars().filter(|c| !c.is_control()).take(60).collect();
@@ -418,8 +428,9 @@ pub fn add_folder_picture(request: tauri::ipc::Request<'_>, state: State<'_, Sha
     let wanted = crate::commands::header(&request, "x-file-name");
     let bytes = crate::commands::raw_body(&request)?;
     let f = own_folder(&state, &id)?;
-    if bytes.len() > MAX_OWN_BYTES { return Err("That file is too big (40 MB at most).".into()); }
     let (ext, _) = crate::netpic::sniff(bytes).ok_or("That isn't a picture, GIF or video this app can show (PNG, JPG, WebP, GIF, MP4 or WebM).")?;
+    let max_mb = if matches!(ext, "mp4" | "webm") { MAX_OWN_VIDEO_MB } else { MAX_OWN_PIC_MB };
+    if bytes.len() > max_mb * 1024 * 1024 { return Err(format!("That file is too big ({max_mb} MB at most).")); }
     let dir = PathBuf::from(&f.path);
     if !dir.starts_with(own_root(&state.data_dir)) { return Err("That folder isn't one the app keeps.".into()); }
     std::fs::create_dir_all(&dir).map_err(|x| x.to_string())?;

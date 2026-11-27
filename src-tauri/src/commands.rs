@@ -18,6 +18,10 @@ type R<T> = Result<T, String>;
 
 /// Largest card file we will parse (cards are normally well under 5 MB).
 const MAX_CARD_BYTES: usize = 64 * 1024 * 1024;
+/// How many MB a gallery takes of a file of this kind (`image`, `gif` or `video`): pictures and GIFs 60, videos `MAX_GALLERY_VIDEO_MB`.
+pub(crate) fn gallery_limit_mb(kind: &str) -> usize { if kind == "video" { MAX_GALLERY_VIDEO_MB } else { 60 } }
+/// The biggest video a character's gallery takes, in MB (pictures and GIFs: 60 MB).
+pub(crate) const MAX_GALLERY_VIDEO_MB: usize = 500;
 
 pub(crate) fn e<E: std::fmt::Display>(err: E) -> String {
     err.to_string()
@@ -399,8 +403,10 @@ pub fn add_gallery_image(request: Request<'_>, state: State<'_, Shared>) -> R<Ch
     if kind == "vrm" {
         return Err("A gallery holds pictures, GIFs and videos. (A 3D model is the character's main model.)".into());
     }
-    if bytes.len() > 60 * 1024 * 1024 {
-        return Err("That file is too large for a gallery picture (60 MB at most).".into());
+    // pictures stay modest, but a video (a 4K clip is easily a few hundred MB) can be much bigger
+    let (max_mb, what) = (gallery_limit_mb(kind), if kind == "video" { "video" } else { "picture" });
+    if bytes.len() > max_mb * 1024 * 1024 {
+        return Err(format!("That file is too large for a gallery {what} ({max_mb} MB at most)."));
     }
     let item_id = uid();
     let rel = format!("media/{id}-gal-{item_id}.{ext}");
