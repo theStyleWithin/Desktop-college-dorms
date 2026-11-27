@@ -23,7 +23,7 @@ const typing = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.
 
 function FitButtons({ fit, onFit }: { fit: Fit; onFit: (f: Fit) => void }) {
   return (
-    <span className="stage-group" role="group" aria-label="How the picture is sized">
+    <span className="gstage-group" role="group" aria-label="How the picture is sized">
       {FITS.map(([id, label, tip]) => <button key={id} type="button" className={`btn sm${fit === id ? " primary" : ""}`} aria-pressed={fit === id} title={tip} data-fit={id} onClick={() => onFit(id)}>{label}</button>)}
     </span>
   );
@@ -72,7 +72,7 @@ function useZoom(resetOn: unknown[]) {
 
 function ZoomButtons({ z, zoomTo, reset }: { z: number; zoomTo: (f: (z: number) => number) => void; reset: () => void }) {
   return (
-    <span className="stage-group" role="group" aria-label="Zoom">
+    <span className="gstage-group" role="group" aria-label="Zoom">
       <button type="button" className="btn sm" aria-label="Zoom out" title="Zoom out (-)" data-testid="zoom-out" onClick={() => zoomTo((x) => x / 1.25)}>−</button>
       <button type="button" className="btn sm" title="Back to 100% (0)" data-testid="zoom-reset" onClick={reset}><span data-testid="zoom-level">{Math.round(z * 100)}%</span></button>
       <button type="button" className="btn sm" aria-label="Zoom in" title="Zoom in (+)" data-testid="zoom-in" onClick={() => zoomTo((x) => x * 1.25)}>+</button>
@@ -87,12 +87,12 @@ function ImageStage({ url, id, alt, fit, onFit }: { url: string; id: string; alt
     : fit === "fill" ? { width: "100%", height: "100%", objectFit: "cover" }
     : { width: "100%", height: "100%", objectFit: "fill" };
   return (
-    <div className="stage" data-testid="stage-image" data-fit={fit}>
-      <div ref={box} className="stage-box" style={{ cursor: "grab" }} {...handlers}>
+    <div className="gstage" data-testid="stage-image" data-fit={fit}>
+      <div ref={box} className="gstage-box" style={{ cursor: "grab" }} {...handlers}>
         <img src={url} alt={alt} draggable={false} data-testid="stage-img" decoding="async"
           style={{ ...base, transform: `translate(${v.x}px, ${v.y}px) scale(${v.z})`, transformOrigin: "center", userSelect: "none", willChange: "transform" }} />
       </div>
-      <div className="stage-bar" data-testid="stage-bar">
+      <div className="gstage-bar" data-testid="stage-bar">
         <FitButtons fit={fit} onFit={onFit} />
         <ZoomButtons z={v.z} zoomTo={zoomTo} reset={reset} />
       </div>
@@ -130,23 +130,23 @@ function VideoStage({ url, title, fit, onFit }: { url: string; title: string; fi
 
   const objectFit = fit === "fit" ? "contain" : fit === "fill" ? "cover" : fit === "stretch" ? "fill" : "none";
   return (
-    <div className="stage" ref={wrap} data-testid="stage-video" data-fit={fit}>
-      <div ref={box} className="stage-box" style={{ cursor: "grab" }} {...handlers}>
+    <div className="gstage" ref={wrap} data-testid="stage-video" data-fit={fit}>
+      <div ref={box} className="gstage-box" style={{ cursor: "grab" }} {...handlers}>
         <video ref={vid} src={url} autoPlay loop={loop} playsInline preload="auto" data-testid="stage-vid"
           style={{ width: "100%", height: "100%", objectFit, transform: `translate(${zv.x}px, ${zv.y}px) scale(${zv.z})`, transformOrigin: "center", willChange: "transform" }}
           onClick={() => { if (!wasDrag()) toggle(); }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
           onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
           onLoadedMetadata={(e) => { setDur(e.currentTarget.duration); setSize(`${e.currentTarget.videoWidth}×${e.currentTarget.videoHeight}`); setErr(""); }}
           onError={() => setErr(`This video can't be played here. The player uses your system's video codecs, and ${title} may use one that isn't installed (some 4K files use HEVC / H.265 or AV1).`)} />
-        {err ? <div className="stage-err" role="alert" data-testid="stage-video-error">{err}</div> : null}
+        {err ? <div className="gstage-err" role="alert" data-testid="stage-video-error">{err}</div> : null}
       </div>
-      <div className="stage-bar stage-video-bar" data-testid="video-bar">
+      <div className="gstage-bar" data-testid="video-bar">
         <button type="button" className="btn sm primary" aria-label={playing ? "Pause" : "Play"} title="Play / pause (Space)" data-testid="video-play" onClick={toggle}>{playing ? "⏸" : "▶"}</button>
-        <span className="stage-time" data-testid="video-time">{fmtTime(time)} / {fmtTime(dur)}</span>
-        <input type="range" className="stage-seek" min={0} max={dur || 0} step={0.05} value={Math.min(time, dur || 0)} aria-label="Seek" data-testid="video-seek"
+        <span className="gstage-time" data-testid="video-time">{fmtTime(time)} / {fmtTime(dur)}</span>
+        <input type="range" className="gstage-seek" min={0} max={dur || 0} step={0.05} value={Math.min(time, dur || 0)} aria-label="Seek" data-testid="video-seek"
           onChange={(e) => { const t = Number(e.target.value); if (vid.current) vid.current.currentTime = t; setTime(t); }} />
         <button type="button" className="btn sm" aria-label={muted ? "Unmute" : "Mute"} title="Mute (M)" data-testid="video-mute" onClick={() => setMuted((m) => !m)}>{muted || vol === 0 ? "🔇" : "🔊"}</button>
-        <input type="range" className="stage-vol" min={0} max={1} step={0.05} value={muted ? 0 : vol} aria-label="Volume" data-testid="video-volume" onChange={(e) => { const x = Number(e.target.value); setVol(x); setMuted(x === 0); }} />
+        <input type="range" className="gstage-vol" min={0} max={1} step={0.05} value={muted ? 0 : vol} aria-label="Volume" data-testid="video-volume" onChange={(e) => { const x = Number(e.target.value); setVol(x); setMuted(x === 0); }} />
         <select aria-label="Speed" title="Playback speed" data-testid="video-speed" value={rate} onChange={(e) => setRate(Number(e.target.value))}>
           {[0.5, 0.75, 1, 1.25, 1.5, 2].map((r) => <option key={r} value={r}>{r}×</option>)}
         </select>
@@ -154,7 +154,7 @@ function VideoStage({ url, title, fit, onFit }: { url: string; title: string; fi
         <FitButtons fit={fit} onFit={onFit} />
         <ZoomButtons z={zv.z} zoomTo={zoomTo} reset={reset} />
         <button type="button" className="btn sm" title="Full screen (F)" aria-label="Full screen" data-testid="video-full" onClick={() => void full()}>⛶</button>
-        {size ? <span className="stage-size" data-testid="video-size" title="The video's size in pixels">{size}{/^(\d+)×/.test(size) && Number(/^(\d+)×/.exec(size)![1]) >= 3800 ? " · 4K" : ""}</span> : null}
+        {size ? <span className="gstage-size" data-testid="video-size" title="The video's size in pixels">{size}{/^(\d+)×/.test(size) && Number(/^(\d+)×/.exec(size)![1]) >= 3800 ? " · 4K" : ""}</span> : null}
         {note ? <span className="hint" role="status">{note}</span> : null}
       </div>
     </div>

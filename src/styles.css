@@ -847,15 +847,15 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .gal-vmain { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 8px 16px; }
 .gal-vpic { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; justify-content: center; }
 .gal-vpic { position: relative; }
-.stage { position: absolute; inset: 0; display: flex; flex-direction: column; background: #000; border-radius: 8px; overflow: hidden; }
-.stage-box { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: none; }
-.stage-box img, .stage-box video { border-radius: 0; }
-.stage-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(0,0,0,.75); color: #fff; }
-.stage-group { display: inline-flex; gap: 4px; }
-.stage-seek { flex: 1; min-width: 120px; }
-.stage-vol { width: 80px; }
-.stage-time, .stage-size { font-variant-numeric: tabular-nums; font-size: .85rem; }
-.stage-err { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: #fff; background: rgba(0,0,0,.8); }
+.gstage { position: absolute; inset: 0; display: flex; flex-direction: column; background: #000; border-radius: 8px; overflow: hidden; }
+.gstage-box { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: none; }
+.gstage-box img, .gstage-box video { border-radius: 0; }
+.gstage-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(0,0,0,.75); color: #fff; }
+.gstage-group { display: inline-flex; gap: 4px; }
+.gstage-seek { flex: 1; min-width: 120px; }
+.gstage-vol { width: 80px; }
+.gstage-time, .gstage-size { font-variant-numeric: tabular-nums; font-size: .85rem; }
+.gstage-err { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: #fff; background: rgba(0,0,0,.8); }
 .gal-thumb img { width: 100%; height: 100%; display: block; }
 .gal-nav { flex: 0 0 auto; width: 48px; height: 96px; border-radius: 12px; border: 0; background: rgba(255,255,255,.1); color: #fff; font-size: 2rem; cursor: pointer; }
 .gal-nav:hover, .gal-nav:focus-visible { background: rgba(255,255,255,.22); outline: none; }
