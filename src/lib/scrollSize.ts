@@ -17,9 +17,25 @@ export function applyScrollSize(v: ScrollSize = getScrollSize()) {
   document.documentElement.dataset.scrollbar = v;
 }
 
+/**
+ * Some web views don't redraw a scroll bar that is already on screen when the style that sizes it changes (the bar keeps its old width until something else
+ * makes it redraw). Briefly hiding and showing each scrolling area's overflow makes it redraw right away. Done only when the person changes the setting.
+ */
+export function refreshScrollbars() {
+  const hit: [HTMLElement, string, string][] = [];
+  document.querySelectorAll<HTMLElement>("*").forEach((el) => {
+    const cs = getComputedStyle(el);
+    if (/(auto|scroll)/.test(cs.overflowY) || /(auto|scroll)/.test(cs.overflowX)) hit.push([el, el.style.overflowX, el.style.overflowY]);
+  });
+  for (const [el] of hit) { el.style.overflowX = "hidden"; el.style.overflowY = "hidden"; }
+  void document.body.offsetWidth;   // let the page lay out with the bars gone
+  for (const [el, x, y] of hit) { el.style.overflowX = x; el.style.overflowY = y; }
+}
+
 export function setScrollSize(v: ScrollSize) {
   try { if (v === "wide") sdel(KEY); else sset(KEY, v); } catch { /* storage unavailable: it still applies until the app is closed */ }
   applyScrollSize(v);
+  refreshScrollbars();
   window.dispatchEvent(new CustomEvent("dorms-scroll-size", { detail: v }));
 }
 
