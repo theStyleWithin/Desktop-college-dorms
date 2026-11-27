@@ -1,6 +1,6 @@
 import { applyTextScale } from "./lib/textScale";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type AppInfo, type Character, type Chat, type Dorm, type Folder, type Persona, type Room, type SessionState, type Settings, type World } from "./api";
+import { api, onTrayNav, type AppInfo, type Character, type Chat, type Dorm, type Folder, type Persona, type Room, type SessionState, type Settings, type World } from "./api";
 import { listen } from "@tauri-apps/api/event";
 import { StoreCtx, type Route, type Store } from "./store";
 import { Logo, ToastProvider, useToast } from "./components/ui";
@@ -34,7 +34,7 @@ const DEFAULTS: Settings = {
   temperature: 0.8, top_p: 0.95, local_model: "", local_gpu: true, openai_base_url: "https://api.openai.com/v1",
   openai_model: "gpt-4o-mini", anthropic_model: "claude-haiku-5-5", use_card_system_prompt: true,
   default_system: "", theme: "dusk",
-  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true, active_persona: "", deco: DEFAULT_DECO, novel_daily_limit: 0, novel_reserve: 5,
+  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true, active_persona: "", deco: DEFAULT_DECO, novel_daily_limit: 0, novel_reserve: 5, tray_minimize: false, tray_close: false,
 };
 
 const SIDE_DEF = 220, SIDE_MIN = 160, SIDE_MAX = 420;
@@ -171,6 +171,20 @@ function Shell({ session, setSession, onHidden }: { session: SessionState; setSe
       setSession(await api.signOut());
     } catch (e) { window.alert(errText(e)); }
   };
+  // the system tray (desktop): the person's choice is applied when their settings load or change, a page picked in the tray's menu is opened,
+  // and a window that turned out to be minimized is put in the tray if that is what they chose
+  useEffect(() => { if (ready) void api.setTrayMode(settings.tray_minimize, settings.tray_close).catch(() => {}); }, [ready, settings.tray_minimize, settings.tray_close]);
+  useEffect(() => {
+    const pages: Record<string, Route> = { tokenator: { page: "tokenator" }, chat: { page: "chat" }, library: { page: "library" }, gallery: { page: "gallery" }, settings: { page: "settings" } };
+    const u = onTrayNav((p) => { if (pages[p]) go(pages[p]); });
+    return () => { void u.then((f) => f()); };
+  }, [go]);
+  useEffect(() => {
+    if (!settings.tray_minimize) return;
+    const f = () => { if (document.hidden) void api.trayHideIfMinimized().catch(() => {}); };
+    document.addEventListener("visibilitychange", f);
+    return () => document.removeEventListener("visibilitychange", f);
+  }, [settings.tray_minimize]);
   // closing the window while a novel is being written would stop it: offer to keep writing from the tray
   useEffect(() => {
     const u = listen("dorms://close-while-writing", async () => {

@@ -557,6 +557,9 @@ pub struct Settings {
     /// Novel writing: how many requests a day the model's plan allows (0 = no limit set), and how many of them are kept for chatting.
     pub novel_daily_limit: usize,
     pub novel_reserve: usize,
+    /// Desktop only: keep the app running in the system tray when the window is minimized, and/or when it is closed.
+    pub tray_minimize: bool,
+    pub tray_close: bool,
 }
 
 impl Default for Settings {
@@ -586,6 +589,8 @@ impl Default for Settings {
             deco: UserDeco::default(),
             novel_daily_limit: 0,
             novel_reserve: 5,
+            tray_minimize: false,
+            tray_close: false,
         }
     }
 }
