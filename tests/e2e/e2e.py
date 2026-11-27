@@ -1340,6 +1340,25 @@ try:
     d.execute_script("document.querySelector('[data-testid=me-row]').scrollIntoView()"); ctx_me(); d.execute_script("document.querySelector('[data-testid=pm-switch]').click()"); time.sleep(1.2)
     check("Switch accounts goes back to choosing an account", "Welcome" in page_text() or d.execute_script("return !document.querySelector('[data-testid=me-row]')"), page_text()[:200])
     invoke("sign_in", {"profileId": None}); reload_ui(); time.sleep(0.8)
+    # the side bar's section names belong to the profile that set them (each profile, and the guest space, has its own)
+    def side_title(sec): return d.execute_script("const b=document.querySelector('[data-testid=side-%s] .sw-title');return b?b.textContent.replace(/[0-9]+$/,'').replace(/^[^A-Za-z]+/,'').trim():null" % sec)
+    def side_rename(sec, name):
+        d.execute_script("document.querySelector('[data-testid=side-%s-rename]').click()" % sec); time.sleep(0.3)
+        set_value("[data-testid=side-%s-name]" % sec, name); d.execute_script("document.querySelector('[data-testid=side-%s-name]').blur()" % sec); time.sleep(0.4)
+    nav("Characters"); time.sleep(1.0)
+    check("the side bar has its Recent chats section", side_title("recent") == "Recent chats", str(side_title("recent")))
+    side_rename("recent", "Guest picks")
+    check("renaming a section changes its title", side_title("recent") == "Guest picks", str(side_title("recent")))
+    invoke("create_profile", {"handle": "Scoped", "displayName": None, "passcode": None}); reload_ui(); nav("Characters"); time.sleep(1.2)
+    check("another profile does not get the guest's names", side_title("recent") == "Recent chats", str(side_title("recent")))
+    side_rename("recent", "Scoped picks")
+    check("and can name its own", side_title("recent") == "Scoped picks")
+    invoke("sign_in", {"profileId": None}); reload_ui(); nav("Characters"); time.sleep(1.2)
+    check("the guest space keeps its own name", side_title("recent") == "Guest picks", str(side_title("recent")))
+    side_rename("recent", "")
+    sc_id_ = [p_["id"] for p_ in invoke("session_state")["profiles"] if p_["handle"] == "Scoped"]
+    if sc_id_:
+        invoke("sign_in", {"profileId": sc_id_[0], "passcode": None}); invoke("delete_profile", {"confirm": "scoped"}); invoke("sign_in", {"profileId": None}); reload_ui(); time.sleep(0.8)
     # hiding an account: off the start screen, into Settings' list of hidden accounts, with a prompt to make another or use the guest space
     invoke("create_profile", {"handle": "Hider", "displayName": None, "passcode": None}); reload_ui(); time.sleep(1.0)
     ctx_me()
