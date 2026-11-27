@@ -22,6 +22,26 @@ const DecoCore = (() => {
     { id: 'hexcandy', name: 'Hex Candy', blurb: 'Pastel honeycomb with a little sparkle.', anim: true },
     { id: 'lanternglow', name: 'Lantern Glow', blurb: 'Red silk, gold waves and tiny swaying lanterns.', anim: true },
     { id: 'goldwaves', name: 'Gold Waves', blurb: 'Rolling gold waves on deep red.', anim: true },
+    { id: 'pumpkinglow', name: 'Pumpkin Glow', blurb: 'Glossy pumpkins on a fiery orange glow.', anim: true },
+    { id: 'jacklantern', name: 'Jack-o\'-Lantern', blurb: 'Three flickering jack-o\'-lanterns, a moon and a bat.', anim: true },
+    { id: 'spiceswirl', name: 'Pumpkin Spice Swirl', blurb: 'Cream swirls, pumpkins and curls of steam.', anim: true },
+    { id: 'gobbleparade', name: 'Gobble Gobble', blurb: 'Three hopping turkeys and a loud little gobble.', anim: true },
+    { id: 'featherfan', name: 'Feather Fan', blurb: 'A glowing fan of jewel-coloured tail feathers.', anim: true },
+    { id: 'feastplaid', name: 'Feast Plaid', blurb: 'Buffalo plaid, a drumstick, leaves and acorns.', anim: true },
+    { id: 'xfireside', name: 'Fireside Glow', blurb: 'Garland lights over a crackling fire.', anim: true },
+    { id: 'xpine', name: 'Pine & Berries', blurb: 'A snowy pine bough with baubles and holly.', anim: true },
+    { id: 'xginger', name: 'Gingerbread Cosy', blurb: 'Dancing gingerbread folk under icing swirls.', anim: true },
+    { id: 'xcandystripe', name: 'Candy Cane Stripe', blurb: 'Moving red and white stripes, snowflakes and a candy cane.', anim: true },
+    { id: 'xsleighplate', name: 'Sleigh Ride', blurb: 'Santa\'s sleigh sweeps over a moonlit town.', anim: true },
+    { id: 'xsnowplate', name: 'Snowman Party', blurb: 'Three bobbing snowmen in the snow.', anim: true },
+    { id: 'hk1', name: 'Night 1: First Light', blurb: 'One candle and the shamash glow among the stars.', anim: true },
+    { id: 'hk2', name: 'Night 2: Dreidel Spin', blurb: 'Spinning dreidels (nun, gimel, hey, shin) and two bright candles.', anim: true },
+    { id: 'hk3', name: 'Night 3: Gold Gelt', blurb: 'Shining gold gelt and three candles.', anim: true },
+    { id: 'hk4', name: 'Night 4: Latke Night', blurb: 'Crispy latkes, steam and four candles.', anim: true },
+    { id: 'hk5', name: 'Night 5: Sufganiyot Sparkle', blurb: 'Powdered-sugar sufganiyot and five candles.', anim: true },
+    { id: 'hk6', name: 'Night 6: Light in the Window', blurb: 'A hanukkiah lit in the window for all to see, with six candles.', anim: true },
+    { id: 'hk7', name: 'Night 7: A Little Oil', blurb: 'One day\'s oil lasted eight days: seven candles.', anim: true },
+    { id: 'hk8', name: 'Night 8: Festival of Lights', blurb: 'All eight candles and the shamash: the Festival of Lights.', anim: true },
     { id: 'sparkleanime', name: 'Sparkle Streak', blurb: 'A violet glow with a shooting star.', anim: true },
     { id: 'mangapanel', name: 'Manga Panel', blurb: 'Halftone dots, speed lines and a POW.', anim: true },
     { id: 'heartneon', name: 'Heart Neon', blurb: 'Glowing outline hearts on deep magenta.', anim: true },
@@ -51,12 +71,52 @@ const DecoCore = (() => {
     { id: 'lantern', name: 'Lantern Festival Night', blurb: 'Swaying lanterns, fireworks and golden petals.', anim: true },
     { id: 'animenight', name: 'Anime Night', blurb: 'Starry violet sky, shooting stars and drifting blossoms.', anim: true },
     { id: 'neonhearts', name: 'Neon Hearts', blurb: 'Glowing pixel hearts in pink and cyan.', anim: true },
+    { id: 'pumpkinsunset', name: 'Pumpkin Patch Sunset', blurb: 'A magenta-orange sunset over a field of glossy pumpkins.', anim: true },
+    { id: 'jacknight', name: 'Jack-o\'-Lantern Night', blurb: 'A big moon, bats, mist and glowing carved pumpkins.', anim: true },
+    { id: 'vinegarden', name: 'Pumpkin Vine Garden', blurb: 'Lush vines, swaying leaves and pumpkins in golden light.', anim: true },
+    { id: 'turkeyparade', name: 'Turkey Parade', blurb: 'Six turkeys march past, gobbling under a blue sky.', anim: true },
+    { id: 'featherburst', name: 'Feather Burst', blurb: 'A sunburst of tail feathers around a cheeky turkey.', anim: true },
+    { id: 'feasttable', name: 'Thankful Feast', blurb: 'A roast turkey, pie, candles and a leaf garland.', anim: true },
+    { id: 'xvillage', name: 'Snowy Village Night', blurb: 'Glowing windows, smoking chimneys and falling snow.', anim: true },
+    { id: 'xtree', name: 'Christmas Tree Glow', blurb: 'A twinkling tree, a snowy window and a pile of gifts.', anim: true },
+    { id: 'xmantel', name: 'Fireplace & Stockings', blurb: 'A roaring fire, stockings, candles and a holly garland.', anim: true },
+    { id: 'xsleighflight', name: 'Santa\'s Sleigh Flight', blurb: 'A sleigh crosses the moon over snowy rooftops.', anim: true },
+    { id: 'xcandyland', name: 'Candy Land', blurb: 'Lollipops, giant candy canes and dancing gingerbread.', anim: true },
+    { id: 'xsnowhill', name: 'Snowman Hill', blurb: 'Snowmen on a hill under the northern lights.', anim: true },
+    { id: 'hk1', name: 'Night 1: First Light', blurb: 'One candle and the shamash glow among the stars.', anim: true },
+    { id: 'hk2', name: 'Night 2: Dreidel Spin', blurb: 'Spinning dreidels (nun, gimel, hey, shin) and two bright candles.', anim: true },
+    { id: 'hk3', name: 'Night 3: Gold Gelt', blurb: 'Shining gold gelt and three candles.', anim: true },
+    { id: 'hk4', name: 'Night 4: Latke Night', blurb: 'Crispy latkes, steam and four candles.', anim: true },
+    { id: 'hk5', name: 'Night 5: Sufganiyot Sparkle', blurb: 'Powdered-sugar sufganiyot and five candles.', anim: true },
+    { id: 'hk6', name: 'Night 6: Light in the Window', blurb: 'A hanukkiah lit in the window for all to see, with six candles.', anim: true },
+    { id: 'hk7', name: 'Night 7: A Little Oil', blurb: 'One day\'s oil lasted eight days: seven candles.', anim: true },
+    { id: 'hk8', name: 'Night 8: Festival of Lights', blurb: 'All eight candles and the shamash: the Festival of Lights.', anim: true },
     { id: 'cometnight', name: 'Comet Night', blurb: 'A blue night with a comet sweeping past.', anim: true },
     { id: 'goldendust', name: 'Golden Dust', blurb: 'Warm light with drifting golden sparks.', anim: true },
   ];
   const WREATHS = [
     { id: 'none', name: 'None', blurb: 'Just your picture.' },
     { id: 'bobacup', name: 'Boba Cup', blurb: 'Your picture in a bubble tea dome, with a straw.', anim: true },
+    { id: 'pumpkinring', name: 'Glossy Pumpkin Ring', blurb: 'Five glossy pumpkins on a leafy vine, with sparkles.', anim: true },
+    { id: 'jackcrown', name: 'Jack-o\'-Lantern Crown', blurb: 'A glowing jack-o\'-lantern on top, bats and candy corn.', anim: true },
+    { id: 'candycorn', name: 'Candy Corn Ring', blurb: 'A slowly turning ring of candy corn and sparkles.', anim: true },
+    { id: 'turkeyfan', name: 'Turkey Tail Fan', blurb: 'A fan of tail feathers and a cute turkey face.', anim: true },
+    { id: 'feathermandala', name: 'Feather Mandala', blurb: 'A turning ring of eighteen jewel-coloured feathers.', anim: true },
+    { id: 'acorngarland', name: 'Acorn Garland', blurb: 'Acorns, maple leaves and cranberries on a twig ring.', anim: true },
+    { id: 'xhollywreath', name: 'Holly Wreath', blurb: 'Holly and berries around a red bow.', anim: true },
+    { id: 'xbaubles', name: 'Bauble Ring', blurb: 'Ten swaying baubles on a golden string.', anim: true },
+    { id: 'xgingerring', name: 'Gingerbread Ring', blurb: 'Gingerbread folk and candy canes, slowly turning.', anim: true },
+    { id: 'xcaneRing', name: 'Candy Cane Ring', blurb: 'A turning ring of twelve candy canes.', anim: true },
+    { id: 'xreindeer', name: 'Reindeer Antlers', blurb: 'Antlers, bells and a glowing red nose.', anim: true },
+    { id: 'xcrystal', name: 'Snowflake Crystal Ring', blurb: 'Eight icy snowflakes turning around you.', anim: true },
+    { id: 'hk1', name: 'Night 1: First Light', blurb: 'One candle and the shamash glow among the stars.', anim: true },
+    { id: 'hk2', name: 'Night 2: Dreidel Spin', blurb: 'Spinning dreidels (nun, gimel, hey, shin) and two bright candles.', anim: true },
+    { id: 'hk3', name: 'Night 3: Gold Gelt', blurb: 'Shining gold gelt and three candles.', anim: true },
+    { id: 'hk4', name: 'Night 4: Latke Night', blurb: 'Crispy latkes, steam and four candles.', anim: true },
+    { id: 'hk5', name: 'Night 5: Sufganiyot Sparkle', blurb: 'Powdered-sugar sufganiyot and five candles.', anim: true },
+    { id: 'hk6', name: 'Night 6: Light in the Window', blurb: 'A hanukkiah lit in the window for all to see, with six candles.', anim: true },
+    { id: 'hk7', name: 'Night 7: A Little Oil', blurb: 'One day\'s oil lasted eight days: seven candles.', anim: true },
+    { id: 'hk8', name: 'Night 8: Festival of Lights', blurb: 'All eight candles and the shamash: the Festival of Lights.', anim: true },
     { id: 'sprout', name: 'Sprout', blurb: 'A little seedling growing on top.', anim: true },
     { id: 'catphones', name: 'Cat-ear Headphones', blurb: 'Pink cat ears and a tiny microphone.', anim: true },
     { id: 'pearlring', name: 'Pearl Garland', blurb: 'Pearls and flowers, slowly turning.', anim: true },
@@ -89,6 +149,18 @@ const DecoCore = (() => {
   ];
   // a theme sets a nameplate, a background and a wreath together
   const THEMES = [
+    { id: 'vibrantpumpkin', name: 'Vibrant Pumpkin', blurb: 'Glossy glowing pumpkins, a pumpkin sunset and a ring of pumpkins.', season: 'thanksgiving', plate: 'pumpkinglow', bg: 'pumpkinsunset', wreath: 'pumpkinring' },
+    { id: 'gobblegobble', name: 'Gobble Gobble Turkey', blurb: 'A parade of turkeys, a tail-feather fan and lots of gobbling.', season: 'thanksgiving', plate: 'gobbleparade', bg: 'turkeyparade', wreath: 'turkeyfan' },
+    { id: 'cosychristmas', name: 'Cosy Christmas', blurb: 'Fireside glow, a snowy village and a holly wreath.', season: 'christmas', plate: 'xfireside', bg: 'xvillage', wreath: 'xhollywreath' },
+    { id: 'santasparkle', name: 'Santa & Sparkle', blurb: 'A sleigh over the moon and a ring of candy canes.', season: 'christmas', plate: 'xsleighplate', bg: 'xsleighflight', wreath: 'xcaneRing' },
+    { id: 'hanukkah1', name: 'Hanukkah, Night 1', blurb: 'One candle and the shamash glow among the stars.', season: 'hanukkah:1', plate: 'hk1', bg: 'hk1', wreath: 'hk1' },
+    { id: 'hanukkah2', name: 'Hanukkah, Night 2', blurb: 'Spinning dreidels (nun, gimel, hey, shin) and two bright candles.', season: 'hanukkah:2', plate: 'hk2', bg: 'hk2', wreath: 'hk2' },
+    { id: 'hanukkah3', name: 'Hanukkah, Night 3', blurb: 'Shining gold gelt and three candles.', season: 'hanukkah:3', plate: 'hk3', bg: 'hk3', wreath: 'hk3' },
+    { id: 'hanukkah4', name: 'Hanukkah, Night 4', blurb: 'Crispy latkes, steam and four candles.', season: 'hanukkah:4', plate: 'hk4', bg: 'hk4', wreath: 'hk4' },
+    { id: 'hanukkah5', name: 'Hanukkah, Night 5', blurb: 'Powdered-sugar sufganiyot and five candles.', season: 'hanukkah:5', plate: 'hk5', bg: 'hk5', wreath: 'hk5' },
+    { id: 'hanukkah6', name: 'Hanukkah, Night 6', blurb: 'A hanukkiah lit in the window for all to see, with six candles.', season: 'hanukkah:6', plate: 'hk6', bg: 'hk6', wreath: 'hk6' },
+    { id: 'hanukkah7', name: 'Hanukkah, Night 7', blurb: 'One day\'s oil lasted eight days: seven candles.', season: 'hanukkah:7', plate: 'hk7', bg: 'hk7', wreath: 'hk7' },
+    { id: 'hanukkah8', name: 'Hanukkah, Night 8', blurb: 'All eight candles and the shamash: the Festival of Lights.', season: 'hanukkah:8', plate: 'hk8', bg: 'hk8', wreath: 'hk8' },
     { id: 'boba', name: 'Kawaii Boba Tea', blurb: 'Pink milk tea, pearls and sparkles.', plate: 'bubbletea', bg: 'boba', wreath: 'bobacup' },
     { id: 'lunar', name: 'Lunar New Year', blurb: 'Red lanterns, gold waves and fireworks.', plate: 'lanternglow', bg: 'lantern', wreath: 'redlantern' },
     { id: 'anime', name: 'Anime', blurb: 'Sparkles, shooting stars and magical ribbons.', plate: 'sparkleanime', bg: 'animenight', wreath: 'magicgirl' },
@@ -406,11 +478,400 @@ const DecoCore = (() => {
       + `<g transform="translate(176 12)"><g>${bob(2, 1.6)}<circle r="7" fill="#fff" stroke="${INK}" stroke-width="1.4"/><rect x="-1.2" y="-4" width="2.4" height="5.4" rx="1" fill="${INK}"/><circle cy="3.8" r="1.3" fill="${INK}"/></g></g>`
       + `<g stroke="#ff5a4a" stroke-width="2.4" stroke-linecap="round"><path d="M4 8V36">${anim('stroke-opacity', '1;.2;1', .8)}</path><path d="M10 12V32">${anim('stroke-opacity', '.2;1;.2', .8)}</path></g>`,
       `<linearGradient id="ab" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3b0a0a"/><stop offset=".7" stop-color="#8e1414"/><stop offset="1" stop-color="#c81e1e"/></linearGradient>`);
+
+    /* ----- Thanksgiving, in two sets: Vibrant Pumpkin and Gobble Gobble Turkey (all original) ----- */
+    const MAPLE = 'M0 -10L2.2 -5.5L6 -7L5 -2.5L9.5 -3.5L6.5 .5L8.5 3L4 3.5L4.2 6L.8 4.6L.8 10L-.8 10L-.8 4.6L-4.2 6L-4 3.5L-8.5 3L-6.5 .5L-9.5 -3.5L-5 -2.5L-6 -7L-2.2 -5.5Z';
+    const maple = (x, y, k, rot, c, o = {}) => `<g transform="translate(${f1(x)} ${f1(y)}) rotate(${rot}) scale(${k})"><g>${o.sway ? move('rotate', `-${o.sway};${o.sway};-${o.sway}`, o.dur || 3, o.begin || 0) : ''}<path d="${MAPLE}" fill="${c}"/><path d="M0 -6V10" stroke="#00000033" stroke-width=".8" fill="none"/></g></g>`;
+    // a leaf that drifts down and sideways, fading in and out (in the still version it simply sits where it starts)
+    const fall = (x, y0, y1, dx, k, c, dur, begin) => `<g>${move('translate', `0 0;${dx} ${y1 - y0}`, dur, begin)}${anim('opacity', '0;1;1;0', dur, begin, 'keyTimes="0;.12;.8;1"')}${maple(x, y0, k, 0, c, { sway: 45, dur: dur / 2.4, begin })}</g>`;
+    const quad = (p0, c, p1, t) => [0, 1].map(i => f1((1 - t) * (1 - t) * p0[i] + 2 * (1 - t) * t * c[i] + t * t * p1[i]));
+    const flicker = (dur, begin = 0) => anim('opacity', '1;.72;1;.86;1', dur, begin);
+    const sparkle = (x, y, s, c, dur, begin = 0) => `<path d="M${x} ${f1(y - s)}Q${x} ${y} ${f1(x + s)} ${y}Q${x} ${y} ${x} ${f1(y + s)}Q${x} ${y} ${f1(x - s)} ${y}Q${x} ${y} ${x} ${f1(y - s)}Z" fill="${c}">${twinkle(dur, begin, .1)}</path>`;
+    const fireflies = (n, w, h0, h1, seed = 1) => Array.from({ length: n }, (_, i) => { const x = (i * 197 * seed + 60) % w, y = h0 + (i * 53 * seed) % (h1 - h0), r = 1.4 + (i % 3) * .6; return `<g><circle cx="${x}" cy="${y}" r="${r * 3}" fill="#ffe27a" fill-opacity=".18">${twinkle(2 + (i % 4) * .5, i * .43, .2)}</circle><circle cx="${x}" cy="${y}" r="${r}" fill="#fff6c8">${twinkle(2 + (i % 4) * .5, i * .43, .2)}</circle>${move('translate', `0 0;${(i % 2 ? 8 : -8)} -6;0 0`, 5 + (i % 4), i * .7)}</g>`; }).join('');
+
+    /* shared paint: glossy pumpkin orange, glowing jack-o'-lantern light, tail-feather colours and turkey brown */
+    const PGDEFS = `<radialGradient id="pg" cx=".35" cy=".3" r=".85"><stop offset="0" stop-color="#ffd36b"/><stop offset=".32" stop-color="#ff9a1f"/><stop offset=".72" stop-color="#f26a00"/><stop offset="1" stop-color="#b83d00"/></radialGradient><radialGradient id="pgd" cx=".4" cy=".35" r=".9"><stop offset="0" stop-color="#ff8a1c"/><stop offset=".6" stop-color="#d95200"/><stop offset="1" stop-color="#8f2e00"/></radialGradient><radialGradient id="pgl" cx=".4" cy=".3" r=".8"><stop offset="0" stop-color="#fff0a8"/><stop offset=".5" stop-color="#ffb02e"/><stop offset="1" stop-color="#f26a00"/></radialGradient><radialGradient id="jg"><stop offset="0" stop-color="#ffb02e" stop-opacity=".9"/><stop offset="1" stop-color="#ff7a00" stop-opacity="0"/></radialGradient>`;
+    const TFDEFS = [['1', '#6b2d0f', '#c8431f', '#ffb347'], ['2', '#7a3d12', '#e8872a', '#ffe08a'], ['3', '#0f5e5a', '#1fa89a', '#8ef0d4'], ['4', '#7a1230', '#d1294a', '#ff9aa8'], ['5', '#4a2c14', '#a8662a', '#f0c27a']].map(([n, a, b, c]) => `<linearGradient id="tf${n}" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="${a}"/><stop offset=".55" stop-color="${b}"/><stop offset="1" stop-color="${c}"/></linearGradient>`).join('') + `<radialGradient id="tb" cx=".4" cy=".3" r=".9"><stop offset="0" stop-color="#c58446"/><stop offset=".6" stop-color="#8a4a1f"/><stop offset="1" stop-color="#5a2d10"/></radialGradient><radialGradient id="tg" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffd36b" stop-opacity=".7"/><stop offset="1" stop-color="#ffd36b" stop-opacity="0"/></radialGradient>`;
+
+    // a glossy, ribbed pumpkin with a stem, leaf and curl; face:true carves a glowing jack-o'-lantern
+    const pk = (x, y, r, o = {}) => {
+      const k = v => f1(v * r), P = a => a.map(([px, py]) => k(px) + ',' + k(py)).join(' ');
+      const glow = o.face ? `<ellipse rx="${k(1.3)}" ry="${k(1.15)}" fill="url(#jg)">${flicker(1.5, o.begin || 0)}</ellipse>` : '';
+      const carve = o.face ? `<g>${flicker(1.2 + (o.fl || 0), o.begin || 0)}<polygon points="${P([[-.46, -.12], [-.26, -.42], [-.06, -.12]])}" fill="#ffe27a"/><polygon points="${P([[.06, -.12], [.26, -.42], [.46, -.12]])}" fill="#ffe27a"/><polygon points="${P([[-.07, .05], [0, -.08], [.07, .05]])}" fill="#ffe27a"/><polygon points="${P([[-.5, .16], [-.34, .34], [-.2, .22], [-.08, .4], [.04, .22], [.16, .4], [.28, .22], [.4, .34], [.52, .16], [.36, .6], [0, .68], [-.36, .6]])}" fill="#ffe27a"/></g>` : '';
+      return `<g transform="translate(${f1(x)} ${f1(y)})">${glow}<g>${o.bob ? bob(o.bob, o.dur || 3, o.begin || 0) : ''}<ellipse cx="${k(-.54)}" rx="${k(.56)}" ry="${k(.78)}" fill="url(#pgd)"/><ellipse cx="${k(.54)}" rx="${k(.56)}" ry="${k(.78)}" fill="url(#pgd)"/><ellipse cx="${k(-.27)}" rx="${k(.52)}" ry="${k(.86)}" fill="url(#pg)"/><ellipse cx="${k(.27)}" rx="${k(.52)}" ry="${k(.86)}" fill="url(#pg)"/><ellipse rx="${k(.34)}" ry="${k(.9)}" fill="url(#pgl)"/>`
+        + [-.5, -.18, .18, .5].map(v => `<path d="M${k(v)} ${k(-.8)}Q${k(v * 1.5)} 0 ${k(v)} ${k(.8)}" stroke="#8f2e00" stroke-opacity=".38" stroke-width="${f1(Math.max(.5, r * .04))}" fill="none"/>`).join('') + carve
+        + `<ellipse cx="${k(-.3)}" cy="${k(-.42)}" rx="${k(.13)}" ry="${k(.28)}" fill="#fff" fill-opacity=".42" transform="rotate(18 ${k(-.3)} ${k(-.42)})"/><circle cx="${k(-.42)}" cy="${k(-.1)}" r="${k(.05)}" fill="#fff" fill-opacity=".5"/>`
+        + `<path d="M${k(-.13)} ${k(-.82)}Q${k(-.1)} ${k(-1.22)} ${k(.12)} ${k(-1.3)}L${k(.22)} ${k(-1.12)}Q${k(.08)} ${k(-1.06)} ${k(.1)} ${k(-.82)}Z" fill="#6b4a1f"/><path d="M${k(.12)} ${k(-1.02)}q${k(.6)} ${k(-.5)} ${k(1)} ${k(-.08)}q${k(-.4)} ${k(.55)} ${k(-1)} ${k(.08)}z" fill="#58b52e"/><path d="M${k(.2)} ${k(-1.12)}q${k(.5)} ${k(.1)} ${k(.5)} ${k(.5)}q${k(-.1)} ${k(.2)} ${k(-.3)} ${k(.1)}" stroke="#58b52e" stroke-width="${f1(Math.max(.6, r * .07))}" fill="none" stroke-linecap="round"/></g></g>`;
+    };
+    const candy = (w, h) => `<path d="M${f1(-w / 2)} 0H${f1(w / 2)}L${f1(w * .34)} ${f1(-h * .42)}H${f1(-w * .34)}Z" fill="#ffd23a" stroke="#ffd23a" stroke-width="1" stroke-linejoin="round"/><path d="M${f1(-w * .34)} ${f1(-h * .42)}H${f1(w * .34)}L${f1(w * .18)} ${f1(-h * .74)}H${f1(-w * .18)}Z" fill="#ff8a1c" stroke="#ff8a1c" stroke-width="1" stroke-linejoin="round"/><path d="M${f1(-w * .18)} ${f1(-h * .74)}H${f1(w * .18)}L0 ${-h}Z" fill="#fffaf0" stroke="#fffaf0" stroke-width="1" stroke-linejoin="round"/>`;
+    // a tail feather: tapered, with a bright eye near the tip, a quill and fine barbs (r0 moves its base out from the pivot)
+    const feather = (a, cx, cy, len, wid, n, o = {}) => { const w = wid, L = len; return `<g transform="translate(${f1(cx)} ${f1(cy)}) rotate(${a})"><g>${o.wob ? move('rotate', `-${o.wob};${o.wob};-${o.wob}`, o.dur || 2.4, o.begin || 0) : ''}<g transform="translate(0 ${-(o.r0 || 0)})"><path d="M0 0C${f1(w * 1.1)} ${f1(-L * .25)} ${f1(w * 1.05)} ${f1(-L * .8)} 0 ${-L}C${f1(-w * 1.05)} ${f1(-L * .8)} ${f1(-w * 1.1)} ${f1(-L * .25)} 0 0Z" fill="url(#tf${n})"/><path d="M0 ${f1(-L * .06)}V${f1(-L * .92)}" stroke="#fff" stroke-opacity=".35" stroke-width="${f1(Math.max(.5, w * .12))}" stroke-linecap="round"/><ellipse cy="${f1(-L * .72)}" rx="${f1(w * .5)}" ry="${f1(L * .13)}" fill="${o.eye || '#ffe08a'}" fill-opacity=".92"/><ellipse cy="${f1(-L * .72)}" rx="${f1(w * .26)}" ry="${f1(L * .07)}" fill="${o.pupil || '#7a1230'}"/>${L > 18 ? [.3, .45, .6].map(t => `<path d="M0 ${f1(-L * t)}l${f1(w * .7)} ${f1(-L * .07)}M0 ${f1(-L * t)}l${f1(-w * .7)} ${f1(-L * .07)}" stroke="#fff" stroke-opacity=".2" stroke-width=".6"/>`).join('') : ''}</g></g></g>`; };
+    // a cute turkey: fanned tail, round body, big shiny eyes, blush, beak and wattle (s scales it; hop makes it bounce)
+    const gob = (x, y, s, o = {}) => `<g transform="translate(${f1(x)} ${f1(y)}) scale(${s})"><g>${o.hop ? bob(o.hop, o.dur || 1.2, o.begin || 0) : ''}`
+      + [-72, -48, -24, 0, 24, 48, 72].map((a, i) => feather(a, 0, -4, 36, 8.5, o.set ? o.set[i % o.set.length] : [1, 4, 3, 2, 3, 4, 1][i], { wob: 2.5, dur: 2 + (i % 3) * .3, begin: i * .25 })).join('')
+      + `<ellipse cx="-8" cy="25" rx="3" ry="1.4" fill="#e69a1f"/><ellipse cx="8" cy="25" rx="3" ry="1.4" fill="#e69a1f"/><path d="M-8 20v5M8 20v5" stroke="#e69a1f" stroke-width="2"/>`
+      + `<ellipse cx="0" cy="8" rx="19" ry="17" fill="url(#tb)"/><ellipse cx="0" cy="12" rx="11.5" ry="9.5" fill="#f0c48a" fill-opacity=".85"/><path d="M-14 4q-3 8 3 14M14 4q3 8 -3 14" stroke="#5a2d10" stroke-opacity=".5" stroke-width="2" fill="none" stroke-linecap="round"/>`
+      + `<circle cx="0" cy="-12" r="11.5" fill="url(#tb)"/><path d="M-4 -23q-1 -5 1 -6M0 -24q0 -6 2 -7M4 -23q2 -4 4 -4" stroke="#8a4a1f" stroke-width="2" stroke-linecap="round" fill="none"/>`
+      + `<circle cx="-4.8" cy="-14" r="3.6" fill="#fff"/><circle cx="4.8" cy="-14" r="3.6" fill="#fff"/><circle cx="-4.6" cy="-13.6" r="2.1" fill="#2b1608">${anim('ry', '2.1;2.1;.3;2.1', 3.6 + (o.begin || 0) % 2)}</circle><circle cx="4.6" cy="-13.6" r="2.1" fill="#2b1608"/><circle cx="-3.9" cy="-14.4" r=".8" fill="#fff"/><circle cx="5.3" cy="-14.4" r=".8" fill="#fff"/>`
+      + `<ellipse cx="-9" cy="-8" rx="2.6" ry="1.7" fill="#ff7a8a" fill-opacity=".55"/><ellipse cx="9" cy="-8" rx="2.6" ry="1.7" fill="#ff7a8a" fill-opacity=".55"/>`
+      + `<path d="M-3.4 -9.4L3.4 -9.4L0 -3Z" fill="#ffb11f"/><path d="M-3.4 -9.4L3.4 -9.4L2.4 -7.6L-2.4 -7.6Z" fill="#fff" fill-opacity=".35"/><path d="M1.6 -3.6q5.6 2 3.2 8.6q-5.4 .4 -4.6 -6.4Z" fill="#e0243a"/><path d="M2 -2q2.4 1.2 2 4" stroke="#fff" stroke-opacity=".4" stroke-width=".8" fill="none"/></g></g>`;
+    const acorn = (x, y, r, rot = 0, o = {}) => `<g transform="translate(${f1(x)} ${f1(y)}) rotate(${rot})"><g>${o.sway ? move('rotate', `-${o.sway};${o.sway};-${o.sway}`, o.dur || 3, o.begin || 0) : ''}<ellipse cy="${f1(r * .35)}" rx="${f1(r * .72)}" ry="${f1(r * .95)}" fill="#c58446"/><ellipse cx="${f1(-r * .25)}" cy="${f1(r * .1)}" rx="${f1(r * .18)}" ry="${f1(r * .45)}" fill="#fff" fill-opacity=".3"/><path d="M${f1(-r * .85)} ${f1(-r * .1)}Q0 ${f1(-r * 1.35)} ${f1(r * .85)} ${f1(-r * .1)}Q0 ${f1(r * .15)} ${f1(-r * .85)} ${f1(-r * .1)}Z" fill="#6b4423"/><path d="M${f1(-r * .5)} ${f1(-r * .45)}l${f1(r * .3)} ${f1(r * .3)}M${f1(-r * .1)} ${f1(-r * .6)}l${f1(r * .3)} ${f1(r * .35)}M${f1(r * .3)} ${f1(-r * .5)}l${f1(r * .22)} ${f1(r * .26)}" stroke="#3b2410" stroke-opacity=".5" stroke-width=".7"/><path d="M0 ${f1(-r * 1.1)}v${f1(-r * .35)}" stroke="#4a2c14" stroke-width="${f1(Math.max(.8, r * .14))}" stroke-linecap="round"/></g></g>`;
+    const cloud = (x, y, k, dur, begin, dx = 60) => `<g transform="translate(${x} ${y}) scale(${k})"><g>${move('translate', `0 0;${dx} 0;0 0`, dur, begin)}<ellipse cx="0" cy="0" rx="26" ry="9" fill="#fff" fill-opacity=".9"/><ellipse cx="-10" cy="-6" rx="13" ry="10" fill="#fff" fill-opacity=".9"/><ellipse cx="9" cy="-8" rx="15" ry="12" fill="#fff" fill-opacity=".9"/></g></g>`;
+
+    /* ===== Vibrant Pumpkin: nameplates ===== */
+    plate.pumpkinglow = svg(240, 44,
+      `<rect width="240" height="44" fill="url(#bgp)"/><rect width="240" height="22" fill="url(#shn)"/><ellipse cx="190" cy="26" rx="70" ry="22" fill="url(#jg)" fill-opacity=".7"/>`
+      + `<path d="M118 41Q148 31 178 39T240 35" stroke="#3f8a22" stroke-width="2.6" fill="none" stroke-linecap="round"/>`
+      + [[132, 36, -30], [150, 33, 20], [170, 38, -20], [196, 38, 25], [222, 36, -25]].map(([x, y, a], i) => `<g transform="translate(${x} ${y}) rotate(${a})"><g>${move('rotate', '-6;6;-6', 2.6 + i * .3, i * .4)}<ellipse cx="0" cy="-4" rx="2.6" ry="5.2" fill="#58b52e"/></g></g>`).join('')
+      + pk(158, 26, 9.5, { bob: 1.4, dur: 3, begin: 0 }) + pk(184, 29, 7.4, { bob: 1.2, dur: 2.6, begin: .7 }) + pk(212, 24, 12.5, { bob: 1.6, dur: 3.4, begin: .3 }) + pk(121, 32, 5.6, { bob: 1, dur: 2.4, begin: 1.1 })
+      + [[14, 10, 3], [58, 30, 2.2], [96, 12, 2.6], [136, 8, 2.2], [232, 8, 2.6]].map(([x, y, s], i) => sparkle(x, y, s, '#fff2b0', 1.8 + i * .35, i * .45)).join(''),
+      PGDEFS + `<linearGradient id="bgp" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5a1500"/><stop offset=".5" stop-color="#d9480a"/><stop offset="1" stop-color="#ff9d1a"/></linearGradient><linearGradient id="shn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>`);
+    plate.jacklantern = svg(240, 44,
+      `<rect width="240" height="44" fill="url(#bgj)"/>` + [[14, 8], [40, 16], [66, 6], [92, 14], [118, 7], [140, 12]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="1.1" fill="#e9dcff">${twinkle(1.6 + i * .3, i * .35, .15)}</circle>`).join('')
+      + `<circle cx="112" cy="16" r="9" fill="#ffe9b0" fill-opacity=".18"/><path d="M114 8a8 8 0 1 0 5 12a6.5 6.5 0 0 1 -5 -12Z" fill="#fff2c8"/>`
+      + `<path d="M0 40Q60 34 120 39T240 37V44H0Z" fill="#12061f"/>`
+      + pk(160, 27, 10, { face: true, begin: 0, fl: 0 }) + pk(190, 30, 7.6, { face: true, begin: .5, fl: .3 }) + pk(220, 26, 11.5, { face: true, begin: .9, fl: .5 })
+      + [[150, 40], [176, 40], [204, 38], [232, 40]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="1.6" fill="#ffb02e">${A(`<animate attributeName="cy" values="${y};${y - 30}" dur="${2.6 + i * .4}s" begin="${-i * .7}s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;1;0" dur="${2.6 + i * .4}s" begin="${-i * .7}s" repeatCount="indefinite"/>`)}</circle>`).join('')
+      + `<g transform="translate(88 28)"><g>${move('translate', '0 0;70 -8', 7)}<path d="M0 0q3 -5 6 0q3 -5 6 0q-3 2 -6 1q-3 1 -6 -1Z" fill="#0b0414">${A(`<animate attributeName="d" values="M0 0q3 -5 6 0q3 -5 6 0q-3 2 -6 1q-3 1 -6 -1Z;M0 1q3 2 6 0q3 2 6 0q-3 2 -6 1q-3 1 -6 -1Z;M0 0q3 -5 6 0q3 -5 6 0q-3 2 -6 1q-3 1 -6 -1Z" dur=".6s" repeatCount="indefinite"/>`)}</path></g></g>`,
+      PGDEFS + `<linearGradient id="bgj" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#150a2e"/><stop offset=".6" stop-color="#341455"/><stop offset="1" stop-color="#5a1d5a"/></linearGradient>`);
+    plate.spiceswirl = svg(240, 44,
+      `<rect width="240" height="44" fill="url(#bgs)"/>`
+      + [0, 1, 2].map(i => `<g>${move('translate', `0 0;-48 0`, 5 + i * 1.4, i * .8)}<path d="M0 ${12 + i * 11}q12 -9 24 0t24 0t24 0t24 0t24 0t24 0t24 0t24 0t24 0t24 0" fill="none" stroke="#ffe8c2" stroke-opacity="${.42 - i * .08}" stroke-width="${3.2 - i * .6}" stroke-linecap="round"/></g>`).join('')
+      + `<ellipse cx="196" cy="26" rx="58" ry="22" fill="url(#jg)" fill-opacity=".5"/>`
+      + pk(170, 28, 9, { bob: 1.2, dur: 3 }) + pk(206, 25, 11.5, { bob: 1.5, dur: 3.3, begin: .5 }) + maple(142, 22, .72, -20, '#ffb02e', { sway: 14, dur: 2.8 }) + maple(232, 33, .6, 28, '#ff7a1a', { sway: 14, dur: 3.2, begin: .6 })
+      + [[150, 10, 2.8], [190, 8, 2.2], [226, 12, 2.6], [120, 30, 2]].map(([x, y, s], i) => sparkle(x, y, s, '#fff4c8', 1.6 + i * .3, i * .5)).join('')
+      + [160, 182, 208].map((x, i) => `<path d="M${x} 10q-3 -3 0 -6t0 -6" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".55">${A(`<animate attributeName="stroke-opacity" values="0;.65;0" dur="2.8s" begin="${-i * .9}s" repeatCount="indefinite"/>`)}${move('translate', '0 6;0 -3', 2.8, i * .9)}</path>`).join(''),
+      PGDEFS + `<linearGradient id="bgs" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#4a1f0d"/><stop offset=".55" stop-color="#a14a14"/><stop offset="1" stop-color="#e8801f"/></linearGradient>`);
+
+    /* ===== Vibrant Pumpkin: profile banners ===== */
+    bg.pumpkinsunset = svg(1200, 200,
+      `<rect width="1200" height="200" fill="url(#sk)"/><circle cx="880" cy="138" r="150" fill="url(#sn)">${anim('opacity', '.8;1;.8', 5)}</circle><circle cx="880" cy="138" r="52" fill="#ffe9a8"/><circle cx="880" cy="138" r="52" fill="url(#sn2)"/>`
+      + [[260, 30, 22, 0], [520, 54, 26, 6], [760, 22, 20, 11]].map(([x, y, d, b]) => `<g>${move('translate', `${x} ${y};${x - 900} ${y - 8}`, d, b)}<path d="M0 0q5 -6 10 0q5 -6 10 0" fill="none" stroke="#2a0a3a" stroke-width="2" stroke-linecap="round">${A(`<animate attributeName="d" values="M0 0q5 -6 10 0q5 -6 10 0;M0 2q5 3 10 0q5 3 10 0;M0 0q5 -6 10 0q5 -6 10 0" dur=".7s" repeatCount="indefinite"/>`)}</path></g>`).join('')
+      + `<path d="M0 142Q220 100 470 132T900 126T1200 118V200H0Z" fill="#7a1f6a" fill-opacity=".9"/><path d="M0 164Q300 128 640 156T1200 148V200H0Z" fill="#3d0f4a"/>`
+      + [[70, 168, 16], [150, 174, 22], [250, 164, 13], [330, 176, 26], [440, 168, 17], [540, 174, 21], [650, 166, 14], [730, 176, 27], [840, 170, 18], [930, 176, 23], [1030, 166, 15], [1110, 174, 24], [1170, 168, 14]].map(([x, y, r], i) => pk(x, y, r, i % 3 === 0 ? { bob: 1.6, dur: 2.8 + (i % 4) * .4, begin: i * .3 } : {})).join('')
+      + fireflies(16, 1200, 90, 170, 3) + Array.from({ length: 8 }, (_, i) => { const cols = ['#ffb02e', '#ff7a1a', '#ffd36b']; return fall(60 + i * 150, 14 + (i * 31) % 50, 190, -80 - (i % 3) * 18, .6 + (i % 3) * .2, cols[i % 3], 9 + (i % 4) * 1.4, i * 1.3); }).join(''),
+      PGDEFS + `<linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a1a78"/><stop offset=".38" stop-color="#c0307a"/><stop offset=".72" stop-color="#ff7a1a"/><stop offset="1" stop-color="#ffc23a"/></linearGradient><radialGradient id="sn"><stop offset="0" stop-color="#fff2c4" stop-opacity=".95"/><stop offset=".4" stop-color="#ffb02e" stop-opacity=".5"/><stop offset="1" stop-color="#ff7a1a" stop-opacity="0"/></radialGradient><radialGradient id="sn2" cx=".4" cy=".35"><stop offset="0" stop-color="#fff" stop-opacity=".6"/><stop offset="1" stop-color="#ffb02e" stop-opacity="0"/></radialGradient>`);
+    bg.jacknight = svg(1200, 200,
+      `<rect width="1200" height="200" fill="url(#nt)"/>` + Array.from({ length: 34 }, (_, i) => `<circle cx="${(i * 149 + 30) % 1190}" cy="${6 + (i * 37) % 100}" r="${i % 4 ? 1 : 1.7}" fill="#efe6ff">${twinkle(1.6 + (i % 5) * .5, i * .31, .12)}</circle>`).join('')
+      + `<circle cx="990" cy="64" r="100" fill="url(#mn)"/><circle cx="990" cy="64" r="46" fill="#ffeab8"/><circle cx="974" cy="52" r="9" fill="#f0cf8c" fill-opacity=".7"/><circle cx="1004" cy="78" r="6" fill="#f0cf8c" fill-opacity=".7"/><circle cx="1010" cy="46" r="4" fill="#f0cf8c" fill-opacity=".6"/>`
+      + [[200, 40, 24, 0], [560, 66, 28, 7], [820, 28, 22, 13]].map(([x, y, d, b]) => `<g>${move('translate', `${x} ${y};${x - 1000} ${y + 10}`, d, b)}<path d="M0 0q8 -9 16 0q8 -9 16 0q-8 4 -16 3q-8 1 -16 -3Z" fill="#07030f">${A(`<animate attributeName="d" values="M0 0q8 -9 16 0q8 -9 16 0q-8 4 -16 3q-8 1 -16 -3Z;M0 2q8 5 16 0q8 5 16 0q-8 4 -16 3q-8 1 -16 -3Z;M0 0q8 -9 16 0q8 -9 16 0q-8 4 -16 3q-8 1 -16 -3Z" dur=".55s" repeatCount="indefinite"/>`)}</path></g>`).join('')
+      + `<path d="M0 150Q260 126 560 144T1200 138V200H0Z" fill="#150826"/>`
+      + [0, 1, 2].map(i => `<ellipse cx="${200 + i * 380}" cy="172" rx="260" ry="22" fill="#c8b3ff" fill-opacity=".1">${A(`<animate attributeName="cx" values="${200 + i * 380};${260 + i * 380};${200 + i * 380}" dur="${12 + i * 3}s" repeatCount="indefinite"/>`)}</ellipse>`).join('')
+      + `<rect x="0" y="176" width="1200" height="24" fill="#0b0414"/>` + Array.from({ length: 30 }, (_, i) => `<path d="M${i * 42 + 8} 186V164l4 -6l4 6V186" fill="#0b0414"/>`).join('')
+      + [[110, 166, 27, 0], [340, 162, 33, .6], [590, 165, 29, 1.1], [830, 161, 34, .3], [1070, 166, 27, .8]].map(([x, y, r, b], i) => pk(x, y, r, { face: true, begin: b, fl: i * .15 })).join('')
+      + fireflies(10, 1200, 80, 170, 5),
+      PGDEFS + `<linearGradient id="nt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a0f3a"/><stop offset=".6" stop-color="#2a1350"/><stop offset="1" stop-color="#5a1d5a"/></linearGradient><radialGradient id="mn"><stop offset="0" stop-color="#ffeab8" stop-opacity=".5"/><stop offset="1" stop-color="#ffeab8" stop-opacity="0"/></radialGradient>`);
+    bg.vinegarden = svg(1200, 200,
+      `<rect width="1200" height="200" fill="url(#vg)"/>` + [[120, 150, 34, 8], [330, 90, 22, 10], [600, 160, 40, 7], [840, 100, 26, 9], [1050, 150, 36, 8]].map(([x, y, r, d], i) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff3c4" fill-opacity=".22">${A(`<animate attributeName="cy" values="${y};${y - 24};${y}" dur="${d}s" begin="${-i * 1.3}s" repeatCount="indefinite"/>`)}</circle>`).join('')
+      + `<path d="M-10 168Q200 136 420 160T820 150T1210 156" fill="none" stroke="#2f7a1e" stroke-width="7" stroke-linecap="round"/><path d="M-10 30Q260 74 560 38T1210 56" fill="none" stroke="#3f9a2a" stroke-width="5" stroke-linecap="round"/>`
+      + [[[-10, 168], [200, 136], [420, 160]], [[420, 160], [620, 184], [820, 150]], [[820, 150], [1010, 116], [1210, 156]]].map((sg, si) => Array.from({ length: 8 }, (_, i) => { const t = (i + .5) / 8, [x, y] = quad(sg[0], sg[1], sg[2], t); return `<g transform="translate(${x} ${y}) rotate(${i % 2 ? 40 : -40 - 80})"><g>${move('rotate', '-7;7;-7', 3 + (i % 3) * .5, i * .3 + si)}<path d="M0 0q9 -10 20 -2q-8 12 -20 2z" fill="${['#58b52e', '#6fcf3a', '#3f9a2a'][(i + si) % 3]}"/><path d="M1 -1q8 -3 16 -2" stroke="#fff" stroke-opacity=".3" fill="none"/></g></g>`; }).join('')).join('')
+      + [[[-10, 30], [260, 74], [560, 38]], [[560, 38], [860, 2], [1210, 56]]].map((sg, si) => Array.from({ length: 9 }, (_, i) => { const t = (i + .5) / 9, [x, y] = quad(sg[0], sg[1], sg[2], t); return `<g transform="translate(${x} ${y}) rotate(${i % 2 ? 130 : 50})"><g>${move('rotate', '-7;7;-7', 3 + (i % 3) * .5, i * .3 + si)}<path d="M0 0q9 -10 18 -2q-7 11 -18 2z" fill="${['#58b52e', '#6fcf3a'][(i + si) % 2]}"/></g></g>`; }).join('')).join('')
+      + [[110, 146, 26], [250, 156, 15], [420, 148, 22], [560, 166, 30], [700, 160, 17], [840, 144, 24], [1000, 126, 18], [1120, 148, 28]].map(([x, y, r], i) => pk(x, y, r, i % 2 ? { bob: 1.4, dur: 3 + (i % 3) * .4, begin: i * .3 } : {})).join('')
+      + fireflies(14, 1200, 40, 160, 7) + [[300, 110, 3], [760, 70, 2.6], [980, 100, 3.2]].map(([x, y, s], i) => sparkle(x, y, s, '#fffbe0', 1.8 + i * .4, i * .5)).join(''),
+      PGDEFS + `<linearGradient id="vg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff0b0"/><stop offset=".55" stop-color="#ffc65a"/><stop offset="1" stop-color="#ff9a2e"/></linearGradient>`);
+
+    /* ===== Vibrant Pumpkin: avatar decorations ===== */
+    wreath.pumpkinring = svg(144, 144,
+      `<circle cx="72" cy="72" r="61" fill="none" stroke="#2f7a1e" stroke-width="4" stroke-linecap="round"/><circle cx="72" cy="72" r="61" fill="none" stroke="#7fd04a" stroke-width="1.2" stroke-opacity=".7" transform="rotate(5 72 72)"/>`
+      + Array.from({ length: 12 }, (_, i) => { const a = (i * 30 + 15) * Math.PI / 180, x = 72 + Math.cos(a) * 61, y = 72 + Math.sin(a) * 61; return `<g transform="translate(${f1(x)} ${f1(y)}) rotate(${i * 30 + 105})"><g>${move('rotate', '-9;9;-9', 2.8 + (i % 3) * .4, i * .25)}<path d="M0 0q-5 -6 0 -13q5 7 0 13z" fill="${i % 2 ? '#58b52e' : '#6fcf3a'}"/></g></g>`; }).join('')
+      + [-90, -18, 54, 126, 198].map((deg, i) => { const a = deg * Math.PI / 180; return pk(72 + Math.cos(a) * 61, 72 + Math.sin(a) * 61 + 1, 8.4, { bob: 1.2, dur: 2.8 + i * .2, begin: i * .4 }); }).join('')
+      + [[20, 22, 2.8], [124, 24, 2.4], [12, 108, 2.2], [130, 112, 2.8], [72, 140, 2.4]].map(([x, y, s], i) => sparkle(x, y, s, '#fff2b0', 1.7 + i * .3, i * .4)).join(''),
+      PGDEFS);
+    wreath.jackcrown = svg(144, 144,
+      `<circle cx="72" cy="72" r="60" fill="none" stroke="#3a1d5a" stroke-width="4"/><circle cx="72" cy="72" r="60" fill="none" stroke="#8a5cd0" stroke-width="1.2" stroke-opacity=".7"/>`
+      + [[132, 66, 1], [12, 70, -1]].map(([x, y, d], i) => `<g transform="translate(${x} ${y}) scale(${d} 1)"><g>${bob(2, 1.6, i * .5)}<path d="M0 0q4 -7 9 -2q3 -5 8 -1q-3 2 -8 2q-4 4 -9 1Z" fill="#150826">${A(`<animate attributeName="d" values="M0 0q4 -7 9 -2q3 -5 8 -1q-3 2 -8 2q-4 4 -9 1Z;M0 2q4 3 9 2q3 3 8 3q-3 -1 -8 -1q-4 1 -9 -4Z;M0 0q4 -7 9 -2q3 -5 8 -1q-3 2 -8 2q-4 4 -9 1Z" dur=".7s" repeatCount="indefinite"/>`)}</path></g></g>`).join('')
+      + pk(72, 13, 11.5, { face: true, fl: .2 }) + pk(28, 114, 7.4, { bob: 1.2, dur: 2.8 }) + pk(116, 114, 7.4, { bob: 1.2, dur: 3.2, begin: .6 })
+      + [[18, 34], [124, 36], [44, 132], [100, 134]].map(([x, y], i) => `<g transform="translate(${x} ${y}) rotate(${i * 20 - 30})"><g transform="scale(.42)">${candy(10, 18).replace(/<\/?g>/g, '')}</g></g>`).join('')
+      + [[40, 10, 2.4], [106, 12, 2.4], [8, 100, 2], [138, 98, 2]].map(([x, y, s], i) => sparkle(x, y, s, '#d9c2ff', 1.7 + i * .3, i * .4)).join(''),
+      PGDEFS);
+    wreath.candycorn = svg(144, 144,
+      `<g>${move('rotate', '0 72 72;360 72 72', 60)}${Array.from({ length: 12 }, (_, i) => `<g transform="translate(72 72) rotate(${i * 30}) translate(0 -53)"><g transform="scale(1.02)">${candy(10.5, 17)}</g></g>`).join('')}</g>`
+      + `<g>${move('rotate', '360 72 72;0 72 72', 40)}${Array.from({ length: 12 }, (_, i) => sparkle(72 + Math.cos((i * 30 + 15) * Math.PI / 180) * 62, 72 + Math.sin((i * 30 + 15) * Math.PI / 180) * 62, 2.6, i % 2 ? '#ffe27a' : '#ffb02e', 1.6 + (i % 4) * .3, i * .2)).join('')}</g>`
+      + `<circle cx="72" cy="72" r="51" fill="none" stroke="#ff8a1c" stroke-opacity=".55" stroke-width="1.6"/>`,
+      PGDEFS);
+
+    /* ===== Gobble Gobble Turkey: nameplates ===== */
+    plate.gobbleparade = svg(240, 44,
+      `<rect width="240" height="44" fill="url(#bgg)"/><ellipse cx="190" cy="20" rx="64" ry="24" fill="url(#tg)"/><path d="M0 36Q60 31 120 36T240 34V44H0Z" fill="#4f9a2a"/><path d="M0 40Q80 36 160 40T240 39V44H0Z" fill="#3f8a22"/>`
+      + gob(150, 29, .46, { hop: 1.6, dur: 1.1, begin: 0, set: [1, 4, 3, 2, 3, 4, 1] }) + gob(186, 31, .5, { hop: 1.8, dur: 1.3, begin: .3, set: [3, 2, 1, 4, 1, 2, 3] }) + gob(222, 29, .44, { hop: 1.5, dur: 1.2, begin: .6, set: [4, 3, 2, 1, 2, 3, 4] })
+      + `<g transform="translate(106 12)"><g>${anim('opacity', '0;1;1;0', 2.4, 0, 'keyTimes="0;.15;.8;1"')}${move('translate', '0 4;0 -2', 2.4)}<rect x="-2" y="-8" width="38" height="13" rx="6.5" fill="#fff"/><path d="M6 5l-3 5l8 -5Z" fill="#fff"/><text x="17" y="2" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-size="7.4" text-anchor="middle" fill="#c8431f">gobble!</text></g></g>`
+      + [[20, 10, 2.4], [60, 30, 2], [92, 8, 2.2]].map(([x, y, s], i) => sparkle(x, y, s, '#fff2c0', 1.8 + i * .4, i * .5)).join(''),
+      TFDEFS + `<linearGradient id="bgg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6b2d0f"/><stop offset=".5" stop-color="#d9731a"/><stop offset="1" stop-color="#ffc24a"/></linearGradient>`);
+    plate.featherfan = svg(240, 44,
+      `<rect width="240" height="44" fill="url(#bgf)"/><circle cx="198" cy="52" r="46" fill="url(#tg)">${anim('opacity', '.7;1;.7', 3)}</circle>`
+      + [-84, -63, -42, -21, 0, 21, 42, 63, 84].map((a, i) => feather(a, 198, 54, 46, 9, [1, 4, 3, 2, 5, 2, 3, 4, 1][i], { wob: 1.6, dur: 2.2 + (i % 3) * .3, begin: i * .2, r0: 4 })).join('')
+      + `<ellipse cx="198" cy="52" rx="14" ry="9" fill="#3a1a12"/>`
+      + [[18, 12, 2.6], [58, 28, 2], [100, 10, 2.4], [138, 30, 2.2], [236, 8, 2.4], [122, 14, 1.8]].map(([x, y, s], i) => sparkle(x, y, s, '#ffe9b0', 1.7 + i * .3, i * .4)).join(''),
+      TFDEFS + `<linearGradient id="bgf" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2e140e"/><stop offset=".6" stop-color="#6a2415"/><stop offset="1" stop-color="#9a3418"/></linearGradient>`);
+    plate.feastplaid = svg(240, 44,
+      `<rect width="240" height="44" fill="#a31f1f"/><rect width="240" height="44" fill="url(#pl1)"/><rect width="240" height="44" fill="url(#pl2)"/><rect width="240" height="44" fill="url(#vig)"/>`
+      + `<g transform="translate(188 24) rotate(-28)"><g>${bob(1.4, 2.8)}<path d="M-12 5q-3 -14 12 -16q18 -1 20 12q1 12 -14 13q-15 0 -18 -9Z" fill="url(#dr)"/><path d="M-6 -4q4 -5 11 -4" stroke="#fff" stroke-opacity=".45" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M14 7L30 12" stroke="#f4e9d0" stroke-width="4.4" stroke-linecap="round"/><circle cx="32.4" cy="9.6" r="3.2" fill="#f4e9d0"/><circle cx="32.8" cy="14.8" r="3.2" fill="#f4e9d0"/></g></g>`
+      + maple(152, 14, .78, -18, '#ffb02e', { sway: 12, dur: 2.8 }) + maple(226, 14, .66, 24, '#ff7a1a', { sway: 12, dur: 3.2, begin: .5 }) + acorn(150, 34, 4.4, -12, { sway: 8, dur: 2.6 }) + acorn(228, 34, 4, 14, { sway: 8, dur: 3, begin: .4 })
+      + [[132, 8, 2.2], [172, 38, 1.9], [212, 8, 2.2]].map(([x, y, s], i) => sparkle(x, y, s, '#ffe9b0', 1.8 + i * .3, i * .4)).join(''),
+      TFDEFS + `<pattern id="pl1" width="14" height="14" patternUnits="userSpaceOnUse"><rect width="14" height="7" fill="#1a0707" fill-opacity=".42"/></pattern><pattern id="pl2" width="14" height="14" patternUnits="userSpaceOnUse"><rect width="7" height="14" fill="#1a0707" fill-opacity=".42"/></pattern><linearGradient id="vig" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1a0505" stop-opacity=".65"/><stop offset=".55" stop-color="#1a0505" stop-opacity=".2"/><stop offset="1" stop-color="#1a0505" stop-opacity="0"/></linearGradient><radialGradient id="dr" cx=".4" cy=".3" r=".9"><stop offset="0" stop-color="#e8a05a"/><stop offset=".6" stop-color="#b0601f"/><stop offset="1" stop-color="#6d3410"/></radialGradient>`);
+
+    /* ===== Gobble Gobble Turkey: profile banners ===== */
+    bg.turkeyparade = svg(1200, 200,
+      `<rect width="1200" height="200" fill="url(#sk)"/><circle cx="1010" cy="50" r="90" fill="url(#sn)"/><circle cx="1010" cy="50" r="30" fill="#fff6c8"/>`
+      + cloud(160, 44, 1.5, 22, 0, 90) + cloud(470, 30, 1.1, 28, 4, -70) + cloud(790, 52, 1.7, 26, 8, 80)
+      + `<path d="M0 126Q240 92 520 122T1000 112T1200 118V200H0Z" fill="#8ccf5c"/><path d="M0 150Q300 120 640 146T1200 138V200H0Z" fill="#5fae38"/><path d="M0 176Q260 156 600 172T1200 166V200H0Z" fill="#3f8a22"/>`
+      + [[70, 120, .8, '#e8872a', '#c8431f'], [330, 126, .6, '#f2b632', '#e8872a'], [700, 118, .9, '#c8431f', '#f2b632'], [1130, 122, .7, '#e8872a', '#d65a22']].map(([x, y, sc, c1, c2], i) => `<g transform="translate(${x} ${y}) scale(${sc})"><rect x="-4" y="0" width="8" height="34" fill="#5a3418"/><g>${move('rotate', '-1.4 0 0;1.4 0 0;-1.4 0 0', 4.5, i * .6)}<circle cy="-8" r="25" fill="${c1}"/><circle cx="-19" cy="5" r="16" fill="${c2}"/><circle cx="19" cy="3" r="17" fill="${c1}"/><circle cx="4" cy="-23" r="14" fill="${c2}"/></g></g>`).join('')
+      + [[120, 150, 1.38, [1, 4, 3, 2, 3, 4, 1]], [330, 154, 1.55, [3, 2, 1, 4, 1, 2, 3]], [540, 148, 1.36, [4, 3, 2, 1, 2, 3, 4]], [760, 154, 1.58, [2, 1, 4, 3, 4, 1, 2]], [960, 150, 1.4, [1, 3, 5, 3, 5, 3, 1]], [1130, 154, 1.5, [3, 4, 1, 2, 1, 4, 3]]].map(([x, y, s, set], i) => gob(x, y, s, { hop: 3, dur: 1 + (i % 3) * .15, begin: i * .25, set })).join('')
+      + `<g transform="translate(600 40)"><g>${move('scale', '1 1;1.05 1.08;1 1', 1.2)}<text x="0" y="0" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-size="40" text-anchor="middle" fill="#fff" stroke="#c8431f" stroke-width="6" paint-order="stroke" stroke-linejoin="round" letter-spacing="2">GOBBLE GOBBLE</text></g></g>`
+      + Array.from({ length: 10 }, (_, i) => { const cols = ['#c8431f', '#e8872a', '#f2b632']; return fall(40 + i * 120, 10 + (i * 29) % 60, 190, -70 - (i % 3) * 16, .6 + (i % 3) * .2, cols[i % 3], 9 + (i % 4) * 1.4, i * 1.1); }).join(''),
+      TFDEFS + `<linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6cc4ff"/><stop offset=".7" stop-color="#bfe8ff"/><stop offset="1" stop-color="#ffeec4"/></linearGradient><radialGradient id="sn"><stop offset="0" stop-color="#fff6c8" stop-opacity=".9"/><stop offset="1" stop-color="#fff6c8" stop-opacity="0"/></radialGradient>`);
+    bg.featherburst = svg(1200, 200,
+      `<rect width="1200" height="200" fill="url(#fb)"/><circle cx="600" cy="236" r="260" fill="url(#tg)">${anim('opacity', '.6;1;.6', 4)}</circle>`
+      + [-88, -78, -68, -58, -48, -38, -28, -18, -8, 2, 12, 22, 32, 42, 52, 62, 72, 82, 92].map((a, i) => feather(a + (i % 2 ? 2 : -2), 600, 252, 244 - (i % 3) * 14, 26, [1, 4, 3, 2, 5][i % 5], { wob: 1.2, dur: 2.6 + (i % 4) * .3, begin: i * .15, r0: 20 })).join('')
+      + `<g transform="translate(600 178)"><g>${bob(3, 2.4)}<circle r="38" fill="url(#tb)"/><circle cx="-14" cy="-6" r="10.5" fill="#fff"/><circle cx="14" cy="-6" r="10.5" fill="#fff"/><circle cx="-13" cy="-4.5" r="6.2" fill="#2b1608">${anim('ry', '6.2;6.2;.8;6.2', 3.8)}</circle><circle cx="15" cy="-4.5" r="6.2" fill="#2b1608"/><circle cx="-10.6" cy="-7.4" r="2.2" fill="#fff"/><circle cx="17.4" cy="-7.4" r="2.2" fill="#fff"/><ellipse cx="-28" cy="12" rx="8" ry="5" fill="#ff7a8a" fill-opacity=".5"/><ellipse cx="28" cy="12" rx="8" ry="5" fill="#ff7a8a" fill-opacity=".5"/><path d="M-8 10L8 10L0 26Z" fill="#ffb11f"/></g></g>`
+      + Array.from({ length: 22 }, (_, i) => sparkle((i * 211 + 40) % 1180, 14 + (i * 41) % 130, 2.4 + (i % 3) * .8, i % 2 ? '#fff2c0' : '#ffd36b', 1.6 + (i % 5) * .4, i * .33)).join('')
+      + Array.from({ length: 8 }, (_, i) => { const cols = ['#c8431f', '#e8872a', '#f2b632']; return fall(80 + i * 150, 8 + (i * 31) % 50, 190, -60 - (i % 3) * 18, .6 + (i % 3) * .18, cols[i % 3], 9 + (i % 4) * 1.4, i * 1.2); }).join(''),
+      TFDEFS + `<radialGradient id="fb" cx=".5" cy="1" r="1"><stop offset="0" stop-color="#ffd36b"/><stop offset=".45" stop-color="#e8501a"/><stop offset="1" stop-color="#5a0f2a"/></radialGradient>`);
+    bg.feasttable = svg(1200, 200,
+      `<rect width="1200" height="200" fill="url(#wl)"/>` + [[80, 60, 40, 7], [300, 90, 28, 9], [520, 40, 34, 8], [760, 80, 30, 10], [980, 50, 38, 7], [1130, 100, 26, 9]].map(([x, y, r, d], i) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#ffb347" fill-opacity=".13">${A(`<animate attributeName="cy" values="${y};${y - 14};${y}" dur="${d}s" begin="${-i}s" repeatCount="indefinite"/>`)}</circle>`).join('')
+      + `<path d="M-10 26Q300 86 600 38Q900 -8 1210 34" fill="none" stroke="#6b4423" stroke-width="4"/>`
+      + [[[-10, 26], [300, 86], [600, 38]], [[600, 38], [900, -8], [1210, 34]]].map((sg, si) => Array.from({ length: 11 }, (_, i) => { const t = (i + .5) / 11, [x, y] = quad(sg[0], sg[1], sg[2], t), cols = ['#c8431f', '#e8872a', '#f2b632', '#a8331a']; return maple(x, y + 2, .74, (i * 47 + si * 20) % 360, cols[(i + si) % 4], { sway: 8, dur: 3 + (i % 3), begin: i * .3 }) + sparkle(x + 6, y + 18, 3, ['#ffd36b', '#fff3d6', '#ff9a3c'][i % 3], 1.5 + (i % 4) * .4, i * .3); }).join('')).join('')
+      + `<rect y="146" width="1200" height="54" fill="url(#tbl)"/>` + Array.from({ length: 8 }, (_, i) => `<path d="M0 ${152 + i * 7}H1200" stroke="#4a2810" stroke-opacity=".35"/>`).join('')
+      + `<rect x="120" y="150" width="960" height="40" fill="#b3261e"/><rect x="120" y="150" width="960" height="40" fill="url(#ck)"/><rect x="120" y="150" width="960" height="6" fill="#fff" fill-opacity=".14"/>`
+      + `<g transform="translate(600 140)">` + [-1, 1].map(d => `<g transform="scale(${d} 1)"><path d="M70 22L118 6" stroke="#f4e9d0" stroke-width="12" stroke-linecap="round"/><circle cx="124" cy="-1" r="8" fill="#f4e9d0"/><circle cx="124" cy="14" r="8" fill="#f4e9d0"/><ellipse cx="62" cy="24" rx="42" ry="24" fill="url(#rt)" transform="rotate(-18 62 24)"/></g>`).join('') + `<ellipse cx="0" cy="18" rx="92" ry="42" fill="url(#rt)"/><ellipse cx="-24" cy="2" rx="38" ry="12" fill="#fff" fill-opacity=".28" transform="rotate(-8)"/><path d="M-70 24q70 30 140 0" stroke="#7a3d12" stroke-opacity=".35" stroke-width="2" fill="none"/></g>`
+      + [[470, 164], [500, 172], [530, 166], [668, 168], [700, 164], [730, 172]].map(([x, y], i) => `<g>${bob(1, 2.4 + i * .3, i * .4)}<circle cx="${x}" cy="${y}" r="7" fill="#b3173a"/><circle cx="${x - 2}" cy="${y - 2.4}" r="2" fill="#fff" fill-opacity=".7"/></g>`).join('') + [[452, 176], [548, 178], [650, 178], [750, 176]].map(([x, y]) => `<ellipse cx="${x}" cy="${y}" rx="12" ry="5" fill="#4aa52a" transform="rotate(${x % 7 * 6 - 18} ${x} ${y})"/>`).join('')
+      + `<g transform="translate(270 168)"><ellipse cx="0" cy="12" rx="62" ry="12" fill="#00000040"/><ellipse cx="0" cy="4" rx="60" ry="22" fill="#e8b36a"/><ellipse cx="0" cy="-2" rx="52" ry="18" fill="url(#pie)"/><path d="M-50 -2L50 -2M-40 -12L40 6M-40 6L40 -12M-22 -18L22 14M-22 14L22 -18" stroke="#f2c97e" stroke-width="4"/><ellipse cx="0" cy="-2" rx="52" ry="18" fill="none" stroke="#f2c97e" stroke-width="4"/><ellipse cx="-16" cy="-8" rx="14" ry="3.4" fill="#fff" fill-opacity=".3"/></g>`
+      + [[900, 158, 0], [1000, 162, .7]].map(([x, y, b]) => `<g transform="translate(${x} ${y})"><rect x="-8" y="-26" width="16" height="44" rx="3" fill="#fff3d6"/><rect x="-8" y="-26" width="6" height="44" rx="3" fill="#fff" fill-opacity=".5"/><ellipse cx="0" cy="-36" rx="9" ry="16" fill="url(#jg2)">${A(`<animate attributeName="ry" values="16;19;15;18;16" dur="1.2s" begin="${-b}s" repeatCount="indefinite"/>`)}</ellipse><ellipse cx="0" cy="-32" rx="4.4" ry="9" fill="#fff6c8">${flicker(1.2, b)}</ellipse></g>`).join('')
+      + `<g transform="translate(150 160)"><path d="M0 28Q-6 -6 -20 -18M0 28Q8 -10 22 -22M0 28Q0 -12 2 -30" stroke="#d9a53a" stroke-width="3" fill="none"/>${[[-20, -18], [22, -22], [2, -30]].map(([x, y]) => `<ellipse cx="${x}" cy="${y}" rx="6" ry="13" fill="#ffd23a" transform="rotate(${x * 1.2} ${x} ${y})"/>`).join('')}</g>`
+      + fireflies(10, 1200, 20, 130, 4),
+      TFDEFS + `<linearGradient id="wl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b1522"/><stop offset="1" stop-color="#6a3118"/></linearGradient><linearGradient id="tbl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9a6030"/><stop offset="1" stop-color="#5a3418"/></linearGradient><pattern id="ck" width="24" height="24" patternUnits="userSpaceOnUse"><rect width="12" height="12" fill="#fff" fill-opacity=".12"/><rect x="12" y="12" width="12" height="12" fill="#fff" fill-opacity=".12"/></pattern><radialGradient id="rt" cx=".4" cy=".3" r=".9"><stop offset="0" stop-color="#f0a85a"/><stop offset=".55" stop-color="#c8701f"/><stop offset="1" stop-color="#7a3d12"/></radialGradient><radialGradient id="pie" cx=".4" cy=".3"><stop offset="0" stop-color="#ffb347"/><stop offset="1" stop-color="#c8691f"/></radialGradient><radialGradient id="jg2"><stop offset="0" stop-color="#fff0a0"/><stop offset=".5" stop-color="#ffb02e"/><stop offset="1" stop-color="#ff7a00" stop-opacity="0"/></radialGradient>`);
+
+    /* ===== Gobble Gobble Turkey: avatar decorations ===== */
+    wreath.turkeyfan = svg(144, 144,
+      `<circle cx="72" cy="72" r="54" fill="none" stroke="#7a3d12" stroke-opacity=".5" stroke-width="2.4"/>` + [-126, -105, -84, -63, -42, -21, 0, 21, 42, 63, 84, 105, 126].map((a, i) => feather(a, 72, 72, 22, 8.4, [1, 4, 3, 2, 5, 2, 3, 2, 5, 2, 3, 4, 1][i], { wob: 1.8, dur: 2.2 + (i % 3) * .3, begin: i * .18, r0: 50 })).join('')
+      + `<g transform="translate(72 133)"><g>${bob(1.6, 2.4)}<circle r="9.6" fill="url(#tb)"/><circle cx="-3.8" cy="-2" r="3" fill="#fff"/><circle cx="3.8" cy="-2" r="3" fill="#fff"/><circle cx="-3.6" cy="-1.7" r="1.7" fill="#2b1608">${anim('ry', '1.7;1.7;.25;1.7', 3.6)}</circle><circle cx="3.9" cy="-1.7" r="1.7" fill="#2b1608"/><circle cx="-3" cy="-2.5" r=".65" fill="#fff"/><circle cx="4.5" cy="-2.5" r=".65" fill="#fff"/><ellipse cx="-7.2" cy="2.6" rx="2" ry="1.3" fill="#ff7a8a" fill-opacity=".6"/><ellipse cx="7.2" cy="2.6" rx="2" ry="1.3" fill="#ff7a8a" fill-opacity=".6"/><path d="M-2.8 2.2L2.8 2.2L0 7.4Z" fill="#ffb11f"/><path d="M1.4 6.6q4.2 1.6 2.4 6.2q-4 .2 -3.4 -5Z" fill="#e0243a"/><path d="M-3.4 -9l1 -3.6l1.6 2.6l1.8 -3.8l1.6 3.6" fill="#a8331a"/></g></g>`
+      + [[14, 118, 2.2], [130, 118, 2.2], [72, 4, 2]].map(([x, y, s], i) => sparkle(x, y, s, '#ffe9b0', 1.7 + i * .3, i * .4)).join(''),
+      TFDEFS);
+    wreath.feathermandala = svg(144, 144,
+      `<g>${move('rotate', '0 72 72;360 72 72', 70)}${Array.from({ length: 18 }, (_, i) => feather(i * 20, 72, 72, 21, 6.2, [1, 4, 3, 2, 5, 4][i % 6], { wob: 1.2, dur: 2.4 + (i % 4) * .25, begin: i * .15, r0: 51 })).join('')}</g>`
+      + `<circle cx="72" cy="72" r="51" fill="none" stroke="#ffe08a" stroke-opacity=".6" stroke-width="1.6"/><circle cx="72" cy="72" r="53.5" fill="none" stroke="#7a1230" stroke-opacity=".45" stroke-width="1.6"/>`
+      + Array.from({ length: 6 }, (_, i) => { const a = (i * 60 + 10) * Math.PI / 180; return sparkle(f1(72 + Math.cos(a) * 49), f1(72 + Math.sin(a) * 49), 2.6, '#fff2c0', 1.6 + (i % 3) * .3, i * .3); }).join(''),
+      TFDEFS);
+    wreath.acorngarland = svg(144, 144,
+      `<circle cx="72" cy="72" r="60" fill="none" stroke="#5a3a1a" stroke-width="3.6"/><circle cx="72" cy="72" r="60" fill="none" stroke="#a0713a" stroke-width="1.1" stroke-opacity=".7" transform="rotate(8 72 72)"/>`
+      + Array.from({ length: 12 }, (_, i) => { const a = (i * 30 + 15) * Math.PI / 180, x = 72 + Math.cos(a) * 60, y = 72 + Math.sin(a) * 60, rot = i * 30 + 15 + 90; return i % 3 === 0 ? acorn(x, y - 2, 8.2, rot + 180, { sway: 6, dur: 2.8 + (i % 3) * .3, begin: i * .2 }) : i % 3 === 1 ? maple(x, y, .78, rot, ['#c8431f', '#e8872a', '#f2b632', '#a8331a'][i % 4], { sway: 12, dur: 2.6 + (i % 3) * .4, begin: i * .2 }) : `<g>${bob(1.2, 2.4 + (i % 3) * .3, i * .2)}<circle cx="${f1(x)}" cy="${f1(y)}" r="5.2" fill="#b3173a"/><circle cx="${f1(x - 1.6)}" cy="${f1(y - 1.8)}" r="1.5" fill="#fff" fill-opacity=".7"/><circle cx="${f1(x + 5)}" cy="${f1(y + 2.4)}" r="3.8" fill="#d1294a"/></g>`; }).join('')
+      + [[20, 22, 2.6], [124, 22, 2.6], [12, 104, 2.2], [132, 104, 2.2], [72, 140, 2.2], [72, 4, 2.2]].map(([x, y, s], i) => sparkle(x, y, s, '#ffe9b0', 1.7 + i * .3, i * .4)).join(''));
+
+    /* ----- Holiday sets: two Christmas sets and eight nights of Hanukkah (all original) ----- */
+    const XDEFS = `<radialGradient id="fg"><stop offset="0" stop-color="#fff3b0" stop-opacity=".85"/><stop offset=".5" stop-color="#ffb02e" stop-opacity=".35"/><stop offset="1" stop-color="#ff7a00" stop-opacity="0"/></radialGradient><linearGradient id="gd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff4b8"/><stop offset=".45" stop-color="#f2c14e"/><stop offset="1" stop-color="#a8721f"/></linearGradient><linearGradient id="sv" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#cfd9ea"/><stop offset="1" stop-color="#8396b4"/></linearGradient><linearGradient id="cb" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e8f3ff"/><stop offset=".5" stop-color="#9cc8f5"/><stop offset="1" stop-color="#5f93d6"/></linearGradient><linearGradient id="fr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3fae5a"/><stop offset="1" stop-color="#14663a"/></linearGradient><radialGradient id="dn" cx=".4" cy=".3" r=".9"><stop offset="0" stop-color="#f0b868"/><stop offset=".6" stop-color="#d8903a"/><stop offset="1" stop-color="#9a5a1a"/></radialGradient><radialGradient id="bx" cx=".35" cy=".3" r=".9"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset=".35" stop-color="#fff" stop-opacity="0"/></radialGradient>`;
+    const dim = (x, y, s, inner) => `<g transform="translate(${f1(x)} ${f1(y)}) scale(${s})">${inner}</g>`;
+    const snowflake = (x, y, r, rot, c = '#fff', sw = 1.4, o = {}) => `<g transform="translate(${f1(x)} ${f1(y)}) rotate(${rot})"><g>${o.spin ? move('rotate', '0;360', o.spin, o.begin || 0) : ''}<g stroke="${c}" stroke-width="${sw}" stroke-linecap="round" fill="none">${[0, 60, 120].map(a => `<g transform="rotate(${a})"><path d="M0 ${-r}V${r}"/><path d="M0 ${f1(-r * .62)}l${f1(r * .26)} ${f1(-r * .22)}M0 ${f1(-r * .62)}l${f1(-r * .26)} ${f1(-r * .22)}M0 ${f1(r * .62)}l${f1(r * .26)} ${f1(r * .22)}M0 ${f1(r * .62)}l${f1(-r * .26)} ${f1(r * .22)}"/></g>`).join('')}</g></g></g>`;
+    const snowfall = (n, w, h, seed = 1, c = '#fff') => Array.from({ length: n }, (_, i) => { const x = (i * 131 * seed + 20) % w, y0 = (i * 47 * seed) % (h * .6), r = 1.2 + (i % 4) * .6, d = 6 + (i % 5) * 1.6; return `<circle cx="${x}" cy="${y0}" r="${r}" fill="${c}" fill-opacity="${.55 + (i % 3) * .15}">${A(`<animate attributeName="cy" values="${y0};${h + 6}" dur="${d}s" begin="${-i * .9}s" repeatCount="indefinite"/><animate attributeName="cx" values="${x};${x + (i % 2 ? 12 : -12)};${x}" dur="${d / 1.6}s" begin="${-i * .5}s" repeatCount="indefinite"/>`)}</circle>`; }).join('');
+    const bauble = (x, y, r, c, o = {}) => `<g transform="translate(${f1(x)} ${f1(y)})"><g>${o.sway ? move('rotate', `-${o.sway};${o.sway};-${o.sway}`, o.dur || 2.6, o.begin || 0) : ''}<rect x="${f1(-r * .22)}" y="${f1(-r * 1.25)}" width="${f1(r * .44)}" height="${f1(r * .4)}" rx="1" fill="url(#gd)"/><circle r="${r}" fill="${c}"/><circle r="${r}" fill="url(#bx)"/><path d="M${f1(-r * .8)} ${f1(r * .15)}q${f1(r * .8)} ${f1(r * .5)} ${f1(r * 1.6)} 0" stroke="#fff" stroke-opacity=".45" stroke-width="${f1(Math.max(.7, r * .12))}" fill="none"/><ellipse cx="${f1(r * .35)}" cy="${f1(r * .55)}" rx="${f1(r * .4)}" ry="${f1(r * .22)}" fill="#000" fill-opacity=".14"/></g></g>`;
+    const cane = (x, y, s, rot = 0, o = {}) => `<g transform="translate(${f1(x)} ${f1(y)}) rotate(${rot}) scale(${s})"><g>${o.sway ? move('rotate', `-${o.sway};${o.sway};-${o.sway}`, o.dur || 3, o.begin || 0) : ''}<path d="M0 22V-4Q0 -14 8 -14Q16 -14 16 -6" fill="none" stroke="#fff" stroke-width="6.4" stroke-linecap="round"/><path d="M0 22V-4Q0 -14 8 -14Q16 -14 16 -6" fill="none" stroke="#e0223a" stroke-width="6.4" stroke-linecap="round" stroke-dasharray="4 4.4"/><path d="M-2 20V-4Q-2 -12 4 -14" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.4" stroke-linecap="round"/></g></g>`;
+    const holly = (x, y, s, rot = 0, o = {}) => `<g transform="translate(${f1(x)} ${f1(y)}) rotate(${rot}) scale(${s})"><g>${o.sway ? move('rotate', `-${o.sway};${o.sway};-${o.sway}`, o.dur || 3, o.begin || 0) : ''}${[-38, 38].map(a => `<g transform="rotate(${a})"><path d="M0 0C6 -6 4 -12 8 -14C8 -17 12 -17 12 -21C16 -22 14 -26 18 -28C12 -34 6 -30 0 -36C-6 -30 -12 -34 -18 -28C-14 -26 -16 -22 -12 -21C-12 -17 -8 -17 -8 -14C-4 -12 -6 -6 0 0Z" fill="url(#fr)" transform="scale(.62)"/><path d="M0 -2V-20" stroke="#fff" stroke-opacity=".3" stroke-width=".9"/></g>`).join('')}<circle cx="-2.6" cy="3" r="3.6" fill="#d8182e"/><circle cx="3.4" cy="2" r="3.6" fill="#e8283c"/><circle cx="0" cy="7" r="3.6" fill="#c8102a"/><circle cx="-3.4" cy="1.8" r="1" fill="#fff" fill-opacity=".75"/><circle cx="2.4" cy="1" r="1" fill="#fff" fill-opacity=".75"/></g></g>`;
+    const giftbox = (x, y, w, h, c1, c2, o = {}) => `<g transform="translate(${f1(x)} ${f1(y)})"><g>${o.bob ? bob(o.bob, o.dur || 3, o.begin || 0) : ''}<rect x="${f1(-w / 2)}" y="${f1(-h)}" width="${w}" height="${h}" rx="1.6" fill="${c1}"/><rect x="${f1(-w / 2)}" y="${f1(-h)}" width="${w}" height="${f1(h * .28)}" fill="#000" fill-opacity=".12"/><rect x="${f1(-w * .09)}" y="${f1(-h)}" width="${f1(w * .18)}" height="${h}" fill="${c2}"/><rect x="${f1(-w / 2)}" y="${f1(-h * .56)}" width="${w}" height="${f1(h * .14)}" fill="${c2}"/><path d="M0 ${f1(-h)}c${f1(-w * .36)} ${f1(-h * .36)} ${f1(-w * .5)} ${f1(-h * .02)} ${f1(-w * .06)} 0M0 ${f1(-h)}c${f1(w * .36)} ${f1(-h * .36)} ${f1(w * .5)} ${f1(-h * .02)} ${f1(w * .06)} 0" fill="${c2}" stroke="${c2}" stroke-width="1"/><rect x="${f1(-w / 2)}" y="${f1(-h)}" width="${f1(w * .35)}" height="${h}" fill="#fff" fill-opacity=".12"/></g></g>`;
+    const star5 = (x, y, r, fill, o = {}) => `<g transform="translate(${f1(x)} ${f1(y)})"><g>${o.spin ? move('rotate', '-8;8;-8', o.spin, o.begin || 0) : ''}<polygon points="${Array.from({ length: 10 }, (_, i) => { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * .46 : r; return f1(Math.cos(a) * rr) + ',' + f1(Math.sin(a) * rr); }).join(' ')}" fill="${fill}" stroke="${o.stroke || '#fff'}" stroke-opacity=".6" stroke-width=".8" stroke-linejoin="round"/></g></g>`;
+    const flame = (x, y, s, begin = 0) => `<g transform="translate(${f1(x)} ${f1(y)}) scale(${s})"><circle cy="-4" r="9" fill="url(#fg)">${A(`<animate attributeName="r" values="9;11;8.5;10.5;9" dur="1.3s" begin="${-begin}s" repeatCount="indefinite"/>`)}</circle><g>${A(`<animateTransform attributeName="transform" type="scale" values="1 1;1.06 1.14;.96 .94;1.04 1.08;1 1" dur="1.1s" begin="${-begin}s" repeatCount="indefinite"/>`)}<path d="M0 3C-3.2 .5 -3.4 -3.4 0 -9C3.4 -3.4 3.2 .5 0 3Z" fill="#ff9a1f"/><path d="M0 2.4C-2 .5 -2.2 -2 0 -5.6C2.2 -2 2 .5 0 2.4Z" fill="#ffd84a"/><path d="M0 1.6C-1 .4 -1 -1.2 0 -3C1 -1.2 1 .4 0 1.6Z" fill="#fffbe0"/></g></g>`;
+    // a fir tree with snowy layers, a star, twinkling lights and baubles
+    const fir = (x, y, h, o = {}) => { const w = h * .62, lights = ['#ffd84a', '#ff5a5a', '#5ad2ff', '#ff9ad5', '#9cff8a']; return `<g transform="translate(${f1(x)} ${f1(y)})"><rect x="${f1(-h * .05)}" y="${f1(-h * .12)}" width="${f1(h * .1)}" height="${f1(h * .14)}" fill="#6b4423"/>`
+      + [[0, 1], [.28, .82], [.52, .62]].map(([t, k], i) => `<path d="M0 ${f1(-h * (.92 - t * .9) - 0)}L${f1(w * k / 2)} ${f1(-h * (.12 + t * .58) + 0)}Q0 ${f1(-h * (.04 + t * .58))} ${f1(-w * k / 2)} ${f1(-h * (.12 + t * .58))}Z" fill="url(#fr)" transform="translate(0 ${f1(h * .02 * i)})"/>`).join('')
+      + (o.lights === false ? '' : Array.from({ length: 9 }, (_, i) => { const t = (i + .6) / 9.4, yy = -h * (.14 + t * .72), xx = Math.sin(i * 2.3) * w * .42 * (1 - t); return `<circle cx="${f1(xx)}" cy="${f1(yy)}" r="${f1(Math.max(.9, h * .026))}" fill="${lights[i % 5]}">${twinkle(1.2 + (i % 4) * .4, i * .3, .25)}</circle>`; }).join(''))
+      + star5(0, -h * .95, Math.max(3, h * .09), '#ffe27a', { spin: 3 }) + `</g>`; };
+    const house = (x, y, s, c = '#8b3a2a', o = {}) => `<g transform="translate(${f1(x)} ${f1(y)}) scale(${s})"><rect x="-22" y="-24" width="44" height="24" fill="${c}"/><path d="M-27 -22L0 -44L27 -22Z" fill="#f4f8ff"/><path d="M-27 -22L0 -44L27 -22L24 -20Q0 -37 -24 -20Z" fill="#b8c8e0" fill-opacity=".5"/><rect x="10" y="-44" width="7" height="14" fill="#6b3a2a"/><rect x="9" y="-46" width="9" height="3" fill="#f4f8ff"/><rect x="-14" y="-17" width="10" height="9" rx="1" fill="#ffd36b">${flicker(2 + (o.fl || 0), o.begin || 0)}</rect><rect x="4" y="-17" width="10" height="9" rx="1" fill="#ffd36b">${flicker(2.4 + (o.fl || 0), (o.begin || 0) + .5)}</rect><rect x="-6" y="-12" width="0" height="0"/><path d="M13.5 -46q-2 -5 1 -9t0 -9" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="2" stroke-linecap="round">${A(`<animate attributeName="stroke-opacity" values="0;.55;0" dur="3s" begin="${-(o.begin || 0)}s" repeatCount="indefinite"/>`)}${move('translate', '0 4;-2 -8', 3, o.begin || 0)}</path></g>`;
+    const snowman = (x, y, s, o = {}) => `<g transform="translate(${f1(x)} ${f1(y)}) scale(${s})"><g>${o.bob ? bob(o.bob, o.dur || 2.4, o.begin || 0) : ''}<ellipse cy="-8" rx="15" ry="14" fill="#f4f9ff"/><ellipse cy="-28" rx="11" ry="10.5" fill="#fff"/><ellipse cy="-44" rx="8" ry="7.6" fill="#fff"/><ellipse cx="-4" cy="-10" rx="6" ry="5" fill="#fff" fill-opacity=".9"/><circle cx="-3" cy="-45.5" r="1.1" fill="#1b2230"/><circle cx="3" cy="-45.5" r="1.1" fill="#1b2230"/><path d="M0 -43l7 1.4l-7 1.6Z" fill="#ff8a1c"/><circle cx="0" cy="-30" r="1.4" fill="#1b2230"/><circle cx="0" cy="-24" r="1.4" fill="#1b2230"/><path d="M-9 -34Q0 -29 9 -34l.6 4Q0 -24 -9.6 -30Z" fill="#d8182e"/><path d="M6 -33l3 9l3 -1l-2 -8Z" fill="#b01428"/><rect x="-8.5" y="-54" width="17" height="3" rx="1" fill="#1b2230"/><rect x="-5.4" y="-64" width="10.8" height="11" rx="1.4" fill="#1b2230"/><rect x="-5.4" y="-57" width="10.8" height="2.6" fill="#d8182e"/><path d="M-11 -28l-14 -9M11 -28l14 -9" stroke="#6b4423" stroke-width="2" stroke-linecap="round"/></g></g>`;
+    const ginger = (x, y, s, rot = 0, o = {}) => `<g transform="translate(${f1(x)} ${f1(y)}) rotate(${rot}) scale(${s})"><g>${o.sway ? move('rotate', `-${o.sway};${o.sway};-${o.sway}`, o.dur || 2.4, o.begin || 0) : ''}<path d="M0 -14a7 7 0 1 1 .1 0M-5 -8h-10a3.6 3.6 0 0 0 0 7.2h8l-3 16a3.6 3.6 0 0 0 7 1.6l3 -9l3 9a3.6 3.6 0 0 0 7 -1.6l-3 -16h8a3.6 3.6 0 0 0 0 -7.2h-10Z" fill="#c8802f" stroke="#a8601f" stroke-width=".8"/><path d="M-6 -7q6 4 12 0" stroke="#fff" stroke-width="1.4" fill="none" stroke-linecap="round"/><circle cx="-2.6" cy="-17" r="1" fill="#fff"/><circle cx="2.6" cy="-17" r="1" fill="#fff"/><circle cx="0" cy="-3" r="1.3" fill="#e8283c"/><circle cx="0" cy="3" r="1.3" fill="#e8283c"/><path d="M-1.8 -14.2q1.8 1.6 3.6 0" stroke="#fff" stroke-width=".9" fill="none"/></g></g>`;
+    const sleigh = (x, y, s, o = {}) => `<g transform="translate(${f1(x)} ${f1(y)}) scale(${s})"><g>${o.bob ? bob(o.bob, o.dur || 1.8, o.begin || 0) : ''}${[0, 1].map(i => `<g transform="translate(${-44 - i * 26} ${i * 2})"><ellipse cx="0" cy="4" rx="9" ry="5.4" fill="#8a5a2b"/><path d="M-6 0L-8 -8l5 2" fill="#8a5a2b"/><circle cx="-9" cy="-9" r="3.6" fill="#8a5a2b"/><path d="M-9 -12l-3 -7M-9 -12l3 -6M-12 -19l-3 -1M-6 -18l2 -4" stroke="#6b4423" stroke-width="1.4" stroke-linecap="round"/><circle cx="-12.4" cy="-9" r="1.7" fill="#ff3a3a"/><circle cx="-12.4" cy="-9" r="4" fill="#ff3a3a" fill-opacity=".3">${twinkle(.9, i * .3, .3)}</circle><path d="M-4 8v6M3 8v6" stroke="#6b4423" stroke-width="1.6"/></g>`).join('')}<path d="M-30 6H-4" stroke="#7a5a2a" stroke-width="1.2"/><path d="M-12 -6Q-14 6 -4 8H26Q30 8 28 2L24 -10Z" fill="#d8182e"/><path d="M-12 -6Q-14 6 -4 8H26" fill="none" stroke="#f2c14e" stroke-width="2"/><path d="M-14 12Q-4 14 28 12Q34 12 32 6" fill="none" stroke="#f2c14e" stroke-width="2" stroke-linecap="round"/><circle cx="8" cy="-8" r="6" fill="#ffd9b0"/><path d="M2 -9q6 6 12 0l-1 8h-10Z" fill="#fff"/><path d="M1 -12Q8 -22 15 -12Z" fill="#d8182e"/><circle cx="15.4" cy="-12" r="2" fill="#fff"/><rect x="-8" y="-12" width="12" height="9" rx="1.4" fill="#2faa5a"/></g></g>`;
+
+    const ring = (n, r0, fn, cx = 72, cy = 72, start = -90) => Array.from({ length: n }, (_, i) => { const deg = start + i * 360 / n, a = deg * Math.PI / 180; return fn(f1(cx + Math.cos(a) * r0), f1(cy + Math.sin(a) * r0), i, deg + 90); }).join('');
+    const sparks = (list, c = '#fff6c8', t = 1.7) => list.map(([x, y, s], i) => sparkle(x, y, s, c, t + i * .3, i * .4)).join('');
+    const logs = (x, y, s) => `<g transform="translate(${x} ${y}) scale(${s})"><rect x="-20" y="-4" width="40" height="9" rx="4.5" fill="#5a3418" transform="rotate(-8)"/><rect x="-20" y="-4" width="40" height="9" rx="4.5" fill="#6b4423" transform="rotate(8)"/><circle cx="-19" cy="-1" r="4" fill="#c8a06a"/><circle cx="19" cy="-1" r="4" fill="#c8a06a"/></g>`;
+    const stockingS = (x, y, s, c, begin = 0) => `<g transform="translate(${x} ${y}) scale(${s})"><g>${move('rotate', '-4 0 0;4 0 0;-4 0 0', 3, begin)}<path d="M-8 0H8V22Q8 34 -2 38Q-14 38 -14 30Q-14 24 -8 22Z" fill="${c}"/><rect x="-10" y="-5" width="20" height="9" rx="3" fill="#fff"/><path d="M-10 18Q-14 28 -8 34" stroke="#fff" stroke-opacity=".35" stroke-width="2" fill="none"/></g></g>`;
+    const bulbs = (pts, r = 2.3, t = 1.4) => pts.map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="${r * 2.6}" fill="${['#ffd84a', '#ff5a5a', '#5ad2ff', '#ff9ad5', '#9cff8a'][i % 5]}" fill-opacity=".22">${twinkle(t + (i % 4) * .3, i * .27, .3)}</circle><circle cx="${x}" cy="${y}" r="${r}" fill="${['#ffd84a', '#ff5a5a', '#5ad2ff', '#ff9ad5', '#9cff8a'][i % 5]}">${twinkle(t + (i % 4) * .3, i * .27, .3)}</circle>`).join('');
+    const along = (p0, c, p1, n, from = .05, to = .95) => Array.from({ length: n }, (_, i) => quad(p0, c, p1, from + (to - from) * i / (n - 1)));
+
+    /* ===== Cosy Christmas: nameplates ===== */
+    plate.xfireside = svg(240, 44,
+      `<rect width="240" height="44" fill="url(#b)"/><ellipse cx="190" cy="40" rx="70" ry="30" fill="url(#fg)"/>`
+      + `<path d="M-2 4Q60 14 120 6T242 8" fill="none" stroke="#2a1a10" stroke-width="1.6"/>` + bulbs(along([-2, 4], [60, 14], [120, 6], 6, .1, .95).concat(along([120, 6], [180, -2], [242, 8], 6, .1, .95)))
+      + logs(190, 40, 1) + flame(176, 36, 1.5, 0) + flame(190, 38, 1.9, .4) + flame(205, 36, 1.4, .8)
+      + Array.from({ length: 7 }, (_, i) => `<circle cx="${172 + i * 6}" cy="34" r="1.2" fill="#ffd36b">${A(`<animate attributeName="cy" values="34;4" dur="${2 + (i % 3) * .5}s" begin="${-i * .4}s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;1;0" dur="${2 + (i % 3) * .5}s" begin="${-i * .4}s" repeatCount="indefinite"/>`)}</circle>`).join('')
+      + holly(124, 34, .5, -20, { sway: 6, dur: 3 }) + sparks([[30, 28, 2.4], [70, 34, 2], [100, 24, 2.2]]),
+      XDEFS + `<linearGradient id="b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3a0f0a"/><stop offset=".55" stop-color="#a8301a"/><stop offset="1" stop-color="#ff9a2e"/></linearGradient>`);
+    plate.xpine = svg(240, 44,
+      `<rect width="240" height="44" fill="url(#b)"/><ellipse cx="190" cy="22" rx="60" ry="26" fill="#fff" fill-opacity=".08"/>`
+      + `<g>${move('rotate', '-1.5 130 40;1.5 130 40;-1.5 130 40', 5)}<path d="M120 40Q170 30 236 12" stroke="#4a2c14" stroke-width="3" fill="none" stroke-linecap="round"/>` + Array.from({ length: 22 }, (_, i) => { const t = (i + 1) / 23, [x, y] = quad([120, 40], [170, 30], [236, 12], t); return `<path d="M${x} ${y}l${-6 - (i % 3)} ${-9}M${x} ${y}l${-6 - (i % 3)} ${9}" stroke="${i % 2 ? '#2f9a52' : '#1f7a40'}" stroke-width="2.6" stroke-linecap="round"/>`; }).join('') + `</g>`
+      + bauble(150, 28, 5.4, '#e0223a', { sway: 8, dur: 2.6 }) + bauble(184, 24, 4.6, '#f2c14e', { sway: 8, dur: 3, begin: .5 }) + bauble(214, 17, 5, '#3a8ad8', { sway: 8, dur: 2.8, begin: .9 })
+      + holly(132, 14, .55, 30, { sway: 6 }) + snowflake(30, 12, 6, 0, '#e8f4ff', 1.2, { spin: 14 }) + snowflake(78, 32, 5, 20, '#e8f4ff', 1.1, { spin: 18, begin: 2 }) + sparks([[56, 12, 2.2], [100, 30, 2], [232, 36, 2.4]], '#e8fff0'),
+      XDEFS + `<linearGradient id="b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0b3320"/><stop offset=".6" stop-color="#17703e"/><stop offset="1" stop-color="#2faa5a"/></linearGradient>`);
+    plate.xginger = svg(240, 44,
+      `<rect width="240" height="44" fill="url(#b)"/><path d="M0 7q7 6 14 0t14 0t14 0t14 0t14 0t14 0t14 0t14 0t14 0t14 0t14 0t14 0t14 0t14 0t14 0t14 0t14 0" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-opacity=".92"/>`
+      + [[130, 26, 10], [152, 20, -8], [176, 30, 12]].map(([x, y, a], i) => ginger(x, y, .78, a, { sway: 10, dur: 1.6 + i * .3, begin: i * .3 })).join('') + cane(204, 24, .7, 14, { sway: 6, dur: 3 }) + cane(226, 22, .62, -10, { sway: 6, dur: 3.4, begin: .6 })
+      + [[18, 26, '#e8283c'], [48, 36, '#2faa5a'], [80, 28, '#ffd84a'], [104, 36, '#3a8ad8'], [34, 32, '#ff9ad5']].map(([x, y, c]) => `<circle cx="${x}" cy="${y}" r="3" fill="${c}"/>`).join('') + sparks([[60, 18, 2.4], [112, 16, 2.2], [236, 38, 2]], '#fff3d6'),
+      XDEFS + `<linearGradient id="b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5a2f14"/><stop offset=".55" stop-color="#b8752e"/><stop offset="1" stop-color="#e8a85a"/></linearGradient>`);
+
+    /* ===== Cosy Christmas: profile banners ===== */
+    bg.xvillage = svg(1200, 200,
+      `<rect width="1200" height="200" fill="url(#sk)"/>` + Array.from({ length: 36 }, (_, i) => `<circle cx="${(i * 149 + 30) % 1190}" cy="${6 + (i * 37) % 90}" r="${i % 4 ? 1 : 1.7}" fill="#efe6ff">${twinkle(1.6 + (i % 5) * .5, i * .31, .12)}</circle>`).join('')
+      + `<circle cx="980" cy="56" r="90" fill="url(#mn)"/><circle cx="980" cy="56" r="40" fill="#fff4d0"/><circle cx="968" cy="46" r="7" fill="#e8d8a8" fill-opacity=".7"/>`
+      + `<path d="M0 124Q220 96 470 118T900 112T1200 110V200H0Z" fill="#cfdcf2"/><path d="M0 146Q260 128 560 142T1200 138V200H0Z" fill="#e8f0fc"/><path d="M0 170Q300 156 640 166T1200 162V200H0Z" fill="#fff"/>`
+      + [[110, 150, .9, '#8b3a2a'], [260, 154, .72, '#2a5a8a'], [420, 150, 1, '#a8452a'], [610, 156, .8, '#3a7a4a'], [790, 150, .95, '#8a2a4a'], [960, 154, .78, '#c8752a'], [1100, 150, .9, '#2a5a8a']].map(([x, y, s, c], i) => house(x, y, s, c, { begin: i * .7, fl: i * .2 })).join('')
+      + fir(40, 180, 90) + fir(190, 184, 60) + fir(1170, 180, 96) + fir(1060, 186, 64) + fir(520, 186, 56)
+      + snowfall(46, 1200, 200, 3) + sparks([[330, 100, 3], [700, 90, 3.2], [880, 104, 2.6]], '#fff6c8'),
+      XDEFS + `<linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a1450"/><stop offset=".6" stop-color="#40338c"/><stop offset="1" stop-color="#d98aa0"/></linearGradient><radialGradient id="mn"><stop offset="0" stop-color="#fff4d0" stop-opacity=".5"/><stop offset="1" stop-color="#fff4d0" stop-opacity="0"/></radialGradient>`);
+    bg.xtree = svg(1200, 200,
+      `<rect width="1200" height="200" fill="url(#wl)"/>` + [[120, 60, 36], [380, 120, 26], [600, 40, 32], [1040, 110, 34]].map(([x, y, r], i) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#ffb347" fill-opacity=".1">${A(`<animate attributeName="cy" values="${y};${y - 14};${y}" dur="${8 + i}s" repeatCount="indefinite"/>`)}</circle>`).join('')
+      + `<rect x="120" y="22" width="190" height="120" rx="6" fill="#0a1450"/><rect x="120" y="22" width="190" height="120" rx="6" fill="none" stroke="#f4e8d0" stroke-width="7"/><path d="M215 22V142M120 82H310" stroke="#f4e8d0" stroke-width="5"/>` + Array.from({ length: 12 }, (_, i) => `<circle cx="${128 + (i * 37) % 176}" cy="${28 + (i * 23) % 100}" r="${1.2 + (i % 3) * .5}" fill="#fff">${A(`<animate attributeName="cy" values="26;140" dur="${4 + (i % 4)}s" begin="${-i * .6}s" repeatCount="indefinite"/>`)}</circle>`).join('') + `<circle cx="280" cy="48" r="14" fill="#fff4d0"/>`
+      + `<rect y="164" width="1200" height="36" fill="url(#fl)"/><ellipse cx="800" cy="170" rx="260" ry="26" fill="#c8102a" fill-opacity=".8"/><ellipse cx="800" cy="168" rx="240" ry="20" fill="#e8283c"/>`
+      + `<circle cx="800" cy="100" r="120" fill="url(#fg)" fill-opacity=".5"/>` + fir(800, 172, 150) + bauble(790, 96, 5, '#e0223a', { sway: 6 }) + bauble(812, 114, 5.4, '#f2c14e', { sway: 6, begin: .5 }) + bauble(790, 132, 6, '#3a8ad8', { sway: 6, begin: 1 }) + bauble(816, 146, 6, '#e0223a', { sway: 6, begin: .3 }) + bauble(776, 150, 5.4, '#f2c14e', { sway: 6, begin: .8 })
+      + giftbox(700, 180, 40, 30, '#2a6ad8', '#ffd84a') + giftbox(746, 184, 30, 24, '#e0223a', '#fff') + giftbox(886, 182, 44, 34, '#2faa5a', '#ff9ad5') + giftbox(936, 186, 32, 26, '#9a4ad8', '#ffd84a') + giftbox(842, 188, 24, 20, '#ffd84a', '#e0223a')
+      + giftbox(980, 188, 28, 22, '#e0223a', '#fff', { bob: 1, dur: 3 }) + sparks([[640, 60, 3], [960, 50, 3.2], [560, 120, 2.6], [1090, 90, 3]], '#fff6c8') + bulbs([[470, 40], [510, 50], [550, 38], [590, 52], [1010, 36], [1060, 48], [1110, 34], [1160, 46]]),
+      XDEFS + `<linearGradient id="wl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a1018"/><stop offset="1" stop-color="#5a2a1c"/></linearGradient><linearGradient id="fl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a5328"/><stop offset="1" stop-color="#4a2810"/></linearGradient>`);
+    bg.xmantel = svg(1200, 200,
+      `<rect width="1200" height="200" fill="url(#wl)"/>` + [[180, 80, 40, 7], [1020, 100, 36, 9], [600, 30, 30, 8]].map(([x, y, r, d], i) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#ffb347" fill-opacity=".1">${A(`<animate attributeName="cy" values="${y};${y - 14};${y}" dur="${d}s" repeatCount="indefinite"/>`)}</circle>`).join('')
+      + `<circle cx="600" cy="150" r="190" fill="url(#fg)" fill-opacity=".55"/>`
+      + `<rect x="430" y="52" width="340" height="150" fill="#7a2a1c"/>` + Array.from({ length: 6 }, (_, r) => Array.from({ length: 9 }, (_, c) => `<rect x="${432 + c * 38 + (r % 2 ? 19 : 0) - (r % 2 ? 38 : 0)}" y="${54 + r * 24}" width="36" height="22" rx="2" fill="${(r + c) % 3 ? '#a8402a' : '#8e3322'}"/>`).join('')).join('')
+      + `<path d="M480 202V120Q480 86 600 86T720 120V202Z" fill="#14080a"/><ellipse cx="600" cy="196" rx="86" ry="10" fill="#ffb347" fill-opacity=".4"/>` + logs(600, 178, 2) + flame(566, 172, 4.2, 0) + flame(600, 176, 5.6, .4) + flame(634, 172, 4, .8) + flame(584, 168, 3.2, .2) + flame(618, 168, 3.4, .6)
+      + `<rect x="396" y="38" width="408" height="18" rx="4" fill="#f4e8d0"/><rect x="396" y="38" width="408" height="5" rx="2" fill="#fff"/>`
+      + `<path d="M400 40Q500 70 600 44Q700 70 800 40" fill="none" stroke="#14663a" stroke-width="7" stroke-linecap="round"/>` + along([400, 40], [500, 70], [600, 44], 8, .05, .95).concat(along([600, 44], [700, 70], [800, 40], 8, .05, .95)).map(([x, y], i) => holly(x, y + 2, .5, i * 40, { sway: 4, dur: 3 + (i % 3) * .4, begin: i * .2 })).join('')
+      + stockingS(450, 58, 1.1, '#d8182e', 0) + stockingS(520, 56, 1.1, '#2faa5a', .5) + stockingS(690, 56, 1.1, '#d8182e', 1) + stockingS(760, 58, 1.1, '#2faa5a', .3)
+      + [[820, 38], [370, 38]].map(([x, y], i) => `<rect x="${x - 7}" y="${y - 30}" width="14" height="30" rx="2" fill="#fff3d6"/>` + flame(x, y - 32, 1.5, i * .5)).join('')
+      + giftbox(300, 196, 50, 38, '#2a6ad8', '#ffd84a') + giftbox(352, 198, 34, 28, '#e0223a', '#fff') + giftbox(900, 198, 48, 36, '#2faa5a', '#ff9ad5') + giftbox(950, 196, 36, 30, '#9a4ad8', '#ffd84a') + giftbox(250, 198, 30, 24, '#ffd84a', '#e0223a')
+      + sparks([[420, 120, 2.6], [790, 110, 2.6], [200, 120, 3], [1040, 120, 3]], '#fff6c8') + Array.from({ length: 8 }, (_, i) => `<circle cx="${560 + i * 11}" cy="170" r="1.4" fill="#ffd36b">${A(`<animate attributeName="cy" values="170;100" dur="${2.4 + (i % 3) * .5}s" begin="${-i * .4}s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;1;0" dur="${2.4 + (i % 3) * .5}s" begin="${-i * .4}s" repeatCount="indefinite"/>`)}</circle>`).join(''),
+      XDEFS + `<linearGradient id="wl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1f0e12"/><stop offset="1" stop-color="#4a2018"/></linearGradient>`);
+
+    /* ===== Cosy Christmas: avatar decorations ===== */
+    wreath.xhollywreath = svg(144, 144,
+      `<circle cx="72" cy="72" r="58" fill="none" stroke="#14663a" stroke-width="5"/>` + ring(9, 59, (x, y, i, rot) => holly(x, y, .6, rot + 20, { sway: 5, dur: 2.8 + (i % 3) * .4, begin: i * .3 }))
+      + `<g transform="translate(72 132)"><g>${bob(1.2, 2.8)}<path d="M0 0C-12 -10 -22 -6 -20 4C-18 12 -8 8 0 0Z" fill="#d8182e"/><path d="M0 0C12 -10 22 -6 20 4C18 12 8 8 0 0Z" fill="#e8283c"/><path d="M-3 4L-12 16L-6 14L-2 8ZM3 4L12 16L6 14L2 8Z" fill="#b01428"/><circle r="4.4" fill="#f2c14e"/><circle cx="-1.2" cy="-1.2" r="1.4" fill="#fff" fill-opacity=".7"/></g></g>`
+      + sparks([[16, 24, 2.6], [128, 24, 2.6], [10, 104, 2.2], [134, 104, 2.2], [72, 6, 2.4]]),
+      XDEFS);
+    wreath.xbaubles = svg(144, 144,
+      `<circle cx="72" cy="72" r="58" fill="none" stroke="url(#gd)" stroke-width="2.4"/><circle cx="72" cy="72" r="58" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width=".8" transform="rotate(4 72 72)"/>`
+      + ring(10, 59, (x, y, i) => bauble(x, y + 3, 6.4, ['#e0223a', '#f2c14e', '#2faa5a', '#3a8ad8', '#c8409a'][i % 5], { sway: 8, dur: 2.4 + (i % 3) * .3, begin: i * .25 }), 72, 72, -90)
+      + sparks([[20, 20, 2.6], [124, 20, 2.6], [20, 124, 2.6], [124, 124, 2.6], [72, 138, 2.2]], '#fff6c8'),
+      XDEFS);
+    wreath.xgingerring = svg(144, 144,
+      `<circle cx="72" cy="72" r="57" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="6 5" stroke-linecap="round" stroke-opacity=".9"/>`
+      + `<g>${move('rotate', '0 72 72;360 72 72', 70)}` + ring(6, 62, (x, y, i, rot) => ginger(x, y, .62, rot + 180, { sway: 8, dur: 2 + (i % 3) * .3, begin: i * .3 })) + ring(6, 62, (x, y, i, rot) => cane(x - 3, y - 2, .38, rot - 20), 72, 72, -60) + `</g>`
+      + sparks([[14, 30, 2.4], [130, 30, 2.4], [14, 112, 2.4], [130, 112, 2.4]], '#fff3d6'),
+      XDEFS);
+
+    /* ===== Santa & Sparkle: nameplates ===== */
+    plate.xcandystripe = svg(240, 44,
+      `<rect width="240" height="44" fill="#fff"/><g>${move('translate', '0 0;-34 0', 1.4)}${Array.from({ length: 12 }, (_, i) => `<path d="M${i * 34 - 6} 0h17l-20 44h-17z" fill="#e0223a"/>`).join('')}</g><rect width="240" height="44" fill="url(#gl)"/>`
+      + cane(214, 24, .72, 12, { sway: 5, dur: 3 }) + holly(178, 24, .55, -10, { sway: 5 }) + snowflake(24, 14, 6, 0, '#fff', 1.4, { spin: 12 }) + snowflake(120, 30, 5, 20, '#fff', 1.3, { spin: 16, begin: 1 }) + sparks([[60, 10, 2.6], [96, 34, 2.2], [150, 10, 2.4], [236, 36, 2]], '#fff'),
+      XDEFS + `<linearGradient id="gl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".28"/></linearGradient>`);
+    plate.xsleighplate = svg(240, 44,
+      `<rect width="240" height="44" fill="url(#b)"/>` + [[16, 8], [40, 16], [70, 6], [100, 14], [126, 8], [150, 18], [176, 6]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="1.1" fill="#fff">${twinkle(1.6 + i * .3, i * .35, .15)}</circle>`).join('')
+      + `<path d="M104 8a7 7 0 1 0 5 11a5.6 5.6 0 0 1 -5 -11Z" fill="#fff4d0"/>`
+      + `<g>${move('translate', '-60 0;260 0', 7)}${sleigh(0, 24, .62, { bob: 1.4, dur: 1.4 })}${Array.from({ length: 8 }, (_, i) => sparkle(-70 - i * 9, 22 + (i % 2 ? 4 : -2), 2.2 - i * .12, '#ffd84a', 1.2 + i * .1, i * .15)).join('')}</g>`
+      + `<path d="M0 38L14 32L26 38L40 30L56 38L70 33L86 38L100 31L116 38L134 32L150 38L170 30L188 38L204 32L222 38L240 33V44H0Z" fill="#12163a"/><path d="M0 40h240" stroke="#fff" stroke-width="4" stroke-opacity=".9"/>` + [[26, 34], [86, 34], [150, 34], [204, 36]].map(([x, y], i) => `<rect x="${x}" y="${y - 8}" width="5" height="8" fill="#2a2e5a"/><rect x="${x - 1}" y="${y - 9}" width="7" height="2" fill="#fff"/>`).join(''),
+      XDEFS + `<linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1445"/><stop offset="1" stop-color="#3a2f86"/></linearGradient>`);
+    plate.xsnowplate = svg(240, 44,
+      `<rect width="240" height="44" fill="url(#b)"/>` + snowfall(18, 240, 44, 5) + `<path d="M0 36Q60 30 120 35T240 33V44H0Z" fill="#fff"/><path d="M0 40Q80 36 160 40T240 39V44H0Z" fill="#dfeeff"/>`
+      + snowman(150, 38, .46, { bob: 1.2, dur: 2.2 }) + snowman(180, 40, .34, { bob: 1.2, dur: 2.6, begin: .5 }) + snowman(208, 38, .5, { bob: 1.2, dur: 2.4, begin: .9 }) + fir(232, 40, 30) + fir(112, 40, 24)
+      + snowflake(24, 12, 6, 0, '#fff', 1.3, { spin: 12 }) + snowflake(70, 26, 5, 20, '#fff', 1.2, { spin: 16, begin: 1 }) + sparks([[50, 10, 2.4], [96, 12, 2.2], [136, 8, 2.4]], '#fff'),
+      XDEFS + `<linearGradient id="b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1c4a8a"/><stop offset=".6" stop-color="#4a90d8"/><stop offset="1" stop-color="#9ccdf5"/></linearGradient>`);
+
+    /* ===== Santa & Sparkle: profile banners ===== */
+    bg.xsleighflight = svg(1200, 200,
+      `<rect width="1200" height="200" fill="url(#sk)"/>` + [0, 1, 2].map(i => `<path d="M-20 ${40 + i * 14}Q300 ${-10 + i * 20} 640 ${50 + i * 8}T1220 ${30 + i * 16}" fill="none" stroke="${['#5affc8', '#8a8aff', '#5ad2ff'][i]}" stroke-opacity=".2" stroke-width="${26 - i * 6}" stroke-linecap="round">${A(`<animate attributeName="stroke-opacity" values=".12;.3;.12" dur="${5 + i}s" repeatCount="indefinite"/>`)}</path>`).join('')
+      + Array.from({ length: 40 }, (_, i) => `<circle cx="${(i * 149 + 30) % 1190}" cy="${6 + (i * 37) % 110}" r="${i % 4 ? 1 : 1.8}" fill="#fff">${twinkle(1.6 + (i % 5) * .5, i * .31, .12)}</circle>`).join('')
+      + `<circle cx="330" cy="70" r="110" fill="url(#mn)"/><circle cx="330" cy="70" r="48" fill="#fff4d0"/><circle cx="316" cy="58" r="8" fill="#e8d8a8" fill-opacity=".7"/><circle cx="346" cy="84" r="6" fill="#e8d8a8" fill-opacity=".7"/>`
+      + `<g>${move('translate', '-180 0;1400 0', 16)}${sleigh(0, 74, 1.75, { bob: 3, dur: 1.6 })}${Array.from({ length: 16 }, (_, i) => sparkle(-180 - i * 14, 70 + Math.sin(i) * 8, 3.4 - i * .16, i % 2 ? '#ffd84a' : '#fff', 1.2 + i * .1, i * .12)).join('')}</g>`
+      + `<path d="M0 150L50 130L100 150L160 124L230 150L300 128L370 150L450 120L520 150L600 130L680 150L760 122L840 150L920 128L1000 150L1080 124L1150 150L1200 130V200H0Z" fill="#161a46"/><path d="M0 168Q300 158 640 166T1200 160V200H0Z" fill="#f4f8ff"/>`
+      + [[160, 146], [450, 142], [760, 144], [1080, 146]].map(([x, y], i) => `<rect x="${x}" y="${y}" width="14" height="22" fill="#2a2e5a"/><rect x="${x - 2}" y="${y - 3}" width="18" height="5" fill="#fff"/>`).join('') + Array.from({ length: 16 }, (_, i) => `<rect x="${40 + i * 74}" y="${170 + (i % 3) * 6}" width="9" height="8" fill="#ffd36b">${flicker(2 + (i % 4) * .4, i * .3)}</rect>`).join('')
+      + snowfall(36, 1200, 200, 9),
+      XDEFS + `<linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#050b30"/><stop offset=".6" stop-color="#1c2a78"/><stop offset="1" stop-color="#5a4aa0"/></linearGradient><radialGradient id="mn"><stop offset="0" stop-color="#fff4d0" stop-opacity=".5"/><stop offset="1" stop-color="#fff4d0" stop-opacity="0"/></radialGradient>`);
+    bg.xcandyland = svg(1200, 200,
+      `<rect width="1200" height="200" fill="url(#sk)"/>` + [[180, 40, 40], [520, 60, 54], [860, 36, 44], [1100, 66, 38]].map(([x, y, r], i) => `<g><ellipse cx="${x}" cy="${y}" rx="${r * 1.4}" ry="${r * .5}" fill="#fff" fill-opacity=".85"/>${move('translate', `0 0;${i % 2 ? -24 : 24} 0;0 0`, 10 + i * 2, i)}</g>`).join('')
+      + [[110, 100, 28, '#ff5a9a'], [330, 90, 24, '#5ad2ff'], [700, 96, 30, '#ffd84a'], [980, 92, 26, '#9a6aff']].map(([x, y, r, c], i) => `<g transform="translate(${x} ${y})"><g>${bob(3, 3 + i * .3, i * .4)}<rect x="-3" y="0" width="6" height="${86 - y + 100}" fill="#fff"/><circle r="${r}" fill="${c}"/><path d="M0 0m-${r * .75} 0a${r * .75} ${r * .75} 0 1 1 ${r * 1.5} 0a${r * .5} ${r * .5} 0 1 1 -${r} 0a${r * .25} ${r * .25} 0 1 1 ${r * .5} 0" fill="none" stroke="#fff" stroke-width="${r * .16}" stroke-linecap="round"/></g></g>`).join('')
+      + `<path d="M0 150Q200 120 440 148T900 140T1200 146V200H0Z" fill="#ffc2e0"/><path d="M0 172Q300 150 640 170T1200 164V200H0Z" fill="#a8e8d0"/>`
+      + [[600, 168, 1.6, 8], [250, 172, 1.4, -10], [1100, 170, 1.5, 6]].map(([x, y, s, a], i) => cane(x, y, s * 2, a, { sway: 4, dur: 3 + i * .4, begin: i * .3 })).join('')
+      + [[80, 168, '#ff5a9a'], [150, 178, '#ffd84a'], [220, 170, '#5ad2ff'], [440, 176, '#9a6aff'], [530, 170, '#ff5a9a'], [760, 178, '#ffd84a'], [830, 170, '#5ad2ff'], [1010, 176, '#9a6aff'], [1130, 172, '#ff5a9a']].map(([x, y, c], i) => `<g transform="translate(${x} ${y})"><path d="M-10 0Q-10 -16 0 -18Q10 -16 10 0Z" fill="${c}"/><ellipse cx="-3" cy="-10" rx="2.4" ry="4" fill="#fff" fill-opacity=".5"/></g>`).join('')
+      + [[400, 170, 8], [680, 172, -6], [940, 168, 10]].map(([x, y, a], i) => ginger(x, y, 1.1, a, { sway: 10, dur: 1.5 + i * .3, begin: i * .3 })).join('')
+      + snowfall(26, 1200, 200, 5, '#fff') + Array.from({ length: 22 }, (_, i) => sparkle((i * 211 + 40) % 1180, 12 + (i * 41) % 130, 2.4 + (i % 3) * .8, '#fff', 1.6 + (i % 5) * .4, i * .33)).join(''),
+      XDEFS + `<linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff9ad5"/><stop offset=".6" stop-color="#ffc9ea"/><stop offset="1" stop-color="#fff0f8"/></linearGradient>`);
+    bg.xsnowhill = svg(1200, 200,
+      `<rect width="1200" height="200" fill="url(#sk)"/>` + [0, 1, 2].map(i => `<path d="M-20 ${34 + i * 16}Q300 ${-6 + i * 24} 640 ${46 + i * 10}T1220 ${26 + i * 18}" fill="none" stroke="${['#5affc8', '#a08aff', '#5ad2ff'][i]}" stroke-opacity=".28" stroke-width="${30 - i * 7}" stroke-linecap="round">${A(`<animate attributeName="stroke-opacity" values=".16;.36;.16" dur="${5 + i}s" repeatCount="indefinite"/>`)}</path>`).join('')
+      + Array.from({ length: 28 }, (_, i) => `<circle cx="${(i * 157 + 30) % 1190}" cy="${6 + (i * 37) % 80}" r="${i % 4 ? 1 : 1.7}" fill="#fff">${twinkle(1.6 + (i % 5) * .5, i * .31, .12)}</circle>`).join('')
+      + `<path d="M0 132Q240 100 520 128T1000 118T1200 124V200H0Z" fill="#e4efff"/><path d="M0 158Q300 138 640 156T1200 150V200H0Z" fill="#fff"/><path d="M0 184Q260 170 600 182T1200 176V200H0Z" fill="#dbe9ff"/>`
+      + fir(70, 168, 96) + fir(180, 176, 64) + fir(1130, 170, 100) + fir(1030, 178, 66)
+      + snowman(430, 176, 1.15, { bob: 2, dur: 2.6 }) + snowman(500, 180, .92, { bob: 2, dur: 2.9, begin: .5 }) + snowman(560, 182, .66, { bob: 2, dur: 2.4, begin: 1 }) + snowman(820, 178, 1, { bob: 2, dur: 2.7, begin: .3 })
+      + giftbox(690, 186, 30, 24, '#e0223a', '#fff') + giftbox(724, 188, 22, 18, '#2a6ad8', '#ffd84a')
+      + snowfall(46, 1200, 200, 4) + sparks([[330, 100, 3], [700, 80, 3.2], [920, 110, 2.6]], '#fff'),
+      XDEFS + `<linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#173a78"/><stop offset=".6" stop-color="#5a9ae0"/><stop offset="1" stop-color="#bfe0fa"/></linearGradient>`);
+
+    /* ===== Santa & Sparkle: avatar decorations ===== */
+    wreath.xcaneRing = svg(144, 144,
+      `<g>${move('rotate', '0 72 72;360 72 72', 80)}` + ring(12, 61, (x, y, i, rot) => cane(x, y + 4, .5, rot - 10, { sway: 5, dur: 2.6 + (i % 3) * .3, begin: i * .2 })) + `</g>`
+      + `<circle cx="72" cy="72" r="52" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="1.4"/>` + sparks([[14, 14, 2.6], [130, 14, 2.6], [14, 130, 2.6], [130, 130, 2.6]], '#fff'),
+      XDEFS);
+    wreath.xreindeer = svg(144, 144,
+      `<circle cx="72" cy="72" r="54" fill="none" stroke="url(#gd)" stroke-width="2.4"/>`
+      + [-1, 1].map(d => `<g transform="translate(72 0) scale(${d} 1)"><g>${move('rotate', '-2 -32 30;2 -32 30;-2 -32 30', 3.2, d > 0 ? 0 : .5)}<path d="M-30 30Q-40 22 -42 10Q-44 2 -48 -2M-40 14Q-50 12 -56 6M-38 22Q-48 24 -54 20M-42 8Q-40 -2 -44 -10" fill="none" stroke="#8a5a2b" stroke-width="5" stroke-linecap="round"/><path d="M-30 30Q-40 22 -42 10Q-44 2 -48 -2" fill="none" stroke="#c28a4a" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".7"/></g></g>`).join('')
+      + [[22, 40], [122, 40]].map(([x, y], i) => bauble(x, y + 6, 4.4, i ? '#e0223a' : '#2faa5a', { sway: 10, dur: 2.2 + i * .4 })).join('')
+      + `<g transform="translate(72 132)"><g>${bob(1.4, 1.8)}<circle r="14" fill="url(#fg)">${anim('opacity', '.6;1;.6', 1.4)}</circle><circle r="8" fill="#e0223a"/><circle r="8" fill="url(#bx)"/><path d="M-6 -2q6 6 12 0" stroke="#7a0a1a" stroke-width="1.2" fill="none" stroke-linecap="round"/></g></g>`
+      + holly(30, 108, .6, -50, { sway: 6 }) + holly(114, 108, .6, 50, { sway: 6, begin: .4 }) + sparks([[72, 6, 2.4], [8, 80, 2.2], [136, 80, 2.2]], '#fff6c8'),
+      XDEFS);
+    wreath.xcrystal = svg(144, 144,
+      `<circle cx="72" cy="72" r="56" fill="none" stroke="#bfe6ff" stroke-opacity=".7" stroke-width="2"/><circle cx="72" cy="72" r="59" fill="none" stroke="#fff" stroke-opacity=".4" stroke-width="1"/>`
+      + `<g>${move('rotate', '0 72 72;360 72 72', 90)}` + ring(8, 61, (x, y, i, rot) => snowflake(x, y, 8.4, i * 15, i % 2 ? '#bfe6ff' : '#fff', 1.6, { spin: 12 + i, begin: i }), 72, 72, -90) + `</g>`
+      + ring(8, 61, (x, y, i) => sparkle(x, y, 2.4, '#fff', 1.6 + i * .2, i * .3), 72, 72, -67.5) + sparks([[16, 20, 2.4], [128, 20, 2.4], [16, 124, 2.4], [128, 124, 2.4]], '#e8f6ff'),
+      XDEFS);
+
+    /* ===== Hanukkah: eight nights, each with its own nameplate, banner and avatar decoration. Night N shows N candles plus the shamash, lit as tradition has it ===== */
+    const HK_LIT = [8, 7, 6, 5, 3, 2, 1, 0];       // candles are added from the right, so night 1 is the right-most branch
+    const HKNAMES = ['First Light', 'Dreidel Spin', 'Gold Gelt', 'Latke Night', 'Sufganiyot Sparkle', 'Light in the Window', 'A Little Oil', 'Festival of Lights'];
+    const HKBG = [['#0a1840', '#1b3a8c'], ['#14104a', '#3b2f9c'], ['#06303e', '#1b6a8a'], ['#1a1450', '#5b3fb0'], ['#0b2a6a', '#2f6fd0'], ['#13283f', '#5f86b8'], ['#04283a', '#1f7f86'], ['#0a0f2e', '#27407f']];
+    // the hanukkiah: eight branches in a row and a raised shamash in the middle; n candles are placed and lit
+    const hanukkiah = (cx, cy, s, n, o = {}) => { const R = o.raise == null ? 16 : o.raise, used = new Set(HK_LIT.slice(0, n)); let c = ''; for (let i = 0; i < 9; i++) { const x = (i - 4) * 14, y = i === 4 ? -R : 0, isSh = i === 4; c += `<path d="M${x - 5} ${y}h10l-2 7h-6z" fill="url(#gd)"/>`; if (isSh || used.has(i)) { const h = isSh ? 24 : 20; c += `<rect x="${x - 3}" y="${y - h}" width="6" height="${h}" rx="1.4" fill="url(#cb)"/><path d="M${x - 3} ${y - h * .7}l6 -3M${x - 3} ${y - h * .4}l6 -3M${x - 3} ${y - h * .1}l6 -3" stroke="#fff" stroke-opacity=".5" stroke-width="1.2"/><path d="M${x} ${y - h}v-2" stroke="#3a2a1a" stroke-width=".8"/>` + flame(x, y - h - 2, isSh ? 1.1 : 1, i * .21); } }
+      return `<g transform="translate(${f1(cx)} ${f1(cy)}) scale(${s})"><circle cx="0" cy="-22" r="${o.glow || 64}" fill="url(#fg)" fill-opacity=".6">${anim('opacity', '.5;.8;.5', 2.6)}</circle><rect x="-70" y="6" width="140" height="7" rx="3.5" fill="url(#gd)"/><rect x="-2.6" y="${-R}" width="5.2" height="${6 + R}" fill="url(#gd)"/><path d="M-22 22L22 22L10 13H-10Z" fill="url(#gd)"/><rect x="-70" y="6" width="140" height="2.4" rx="1.2" fill="#fff" fill-opacity=".5"/>${c}</g>`; };
+    const star6 = (x, y, r, fill = 'url(#sv)', o = {}) => `<g transform="translate(${f1(x)} ${f1(y)})"><g>${o.spin ? move('rotate', '0;360', o.spin, o.begin || 0) : ''}<polygon points="0,${-r} ${f1(r * .866)},${f1(r * .5)} ${f1(-r * .866)},${f1(r * .5)}" fill="none" stroke="${fill}" stroke-width="${f1(Math.max(1.1, r * .2))}" stroke-linejoin="round"/><polygon points="0,${r} ${f1(r * .866)},${f1(-r * .5)} ${f1(-r * .866)},${f1(-r * .5)}" fill="none" stroke="${fill}" stroke-width="${f1(Math.max(1.1, r * .2))}" stroke-linejoin="round"/></g></g>`;
+    const LETTERS = ['נ', 'ג', 'ה', 'ש'];
+    const dreidel = (x, y, s, i = 0) => `<g transform="translate(${f1(x)} ${f1(y)}) scale(${s})"><g>${bob(2, 1.6 + (i % 3) * .3, i * .3)}<g>${A(`<animateTransform attributeName="transform" type="scale" values="1 1;.12 1;-1 1;.12 1;1 1" dur="${2 + (i % 3) * .4}s" begin="${-i * .5}s" repeatCount="indefinite"/>`)}<rect x="-1.6" y="-24" width="3.2" height="9" rx="1.2" fill="url(#sv)"/><path d="M-11 -14h22v13l-11 15l-11 -15Z" fill="#2f6fd0"/><path d="M-11 -14h22v13l-11 15l-11 -15Z" fill="url(#bx)"/><path d="M-11 -14h22v13l-11 15l-11 -15Z" fill="none" stroke="url(#sv)" stroke-width="1.6" stroke-linejoin="round"/><text x="0" y="-1.4" font-family="Arial,'Noto Sans Hebrew','DejaVu Sans',sans-serif" font-weight="700" font-size="13" text-anchor="middle" fill="#fff6c8">${LETTERS[i % 4]}</text></g></g></g>`;
+    const gelt = (x, y, r, i = 0) => `<g transform="translate(${f1(x)} ${f1(y)})"><g>${bob(2, 2 + (i % 3) * .4, i * .35)}<circle r="${r}" fill="url(#gd)"/><circle r="${f1(r * .78)}" fill="none" stroke="#a8721f" stroke-opacity=".6" stroke-width="${f1(Math.max(.8, r * .09))}"/><g transform="scale(${f1(r / 14)})"><polygon points="0,-7 6,3.5 -6,3.5" fill="none" stroke="#a8721f" stroke-width="1.6" stroke-linejoin="round"/><polygon points="0,7 6,-3.5 -6,-3.5" fill="none" stroke="#a8721f" stroke-width="1.6" stroke-linejoin="round"/></g><ellipse cx="${f1(-r * .35)}" cy="${f1(-r * .4)}" rx="${f1(r * .3)}" ry="${f1(r * .16)}" fill="#fff" fill-opacity=".6" transform="rotate(-30 ${f1(-r * .35)} ${f1(-r * .4)})"/>${sparkle(f1(r * .7), f1(-r * .7), r * .32, '#fff', 1.5 + (i % 3) * .3, i * .3)}</g></g>`;
+    const latke = (x, y, r, i = 0) => `<g transform="translate(${f1(x)} ${f1(y)})"><ellipse cx="0" cy="${f1(r * .5)}" rx="${f1(r * 1.2)}" ry="${f1(r * .38)}" fill="#fff" fill-opacity=".9"/><g>${bob(1.2, 2.6 + (i % 3) * .3, i * .3)}<ellipse rx="${f1(r)}" ry="${f1(r * .8)}" fill="#c8802a"/><ellipse rx="${f1(r * .86)}" ry="${f1(r * .66)}" fill="#e0a040"/>${[[-.4, -.2], [.3, -.3], [0, .25], [-.15, 0], [.45, .2], [-.5, .25]].map(([a, b]) => `<ellipse cx="${f1(r * a)}" cy="${f1(r * b)}" rx="${f1(r * .16)}" ry="${f1(r * .1)}" fill="#8a5a1a" fill-opacity=".6"/>`).join('')}<ellipse cx="${f1(-r * .3)}" cy="${f1(-r * .4)}" rx="${f1(r * .3)}" ry="${f1(r * .12)}" fill="#fff" fill-opacity=".35"/><circle cx="${f1(r * .1)}" cy="${f1(-r * .05)}" r="${f1(r * .3)}" fill="#fff3e0"/><circle cx="${f1(r * .1)}" cy="${f1(-r * .05)}" r="${f1(r * .16)}" fill="#e87a5a"/></g><path d="M${f1(-r * .3)} ${f1(-r * .9)}q-2 -3 0 -6t0 -6" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.2" stroke-linecap="round">${A(`<animate attributeName="stroke-opacity" values="0;.6;0" dur="2.6s" begin="${-i * .7}s" repeatCount="indefinite"/>`)}${move('translate', '0 4;0 -4', 2.6, i * .7)}</path></g>`;
+    const donut = (x, y, r, i = 0) => `<g transform="translate(${f1(x)} ${f1(y)})"><g>${bob(1.6, 2.4 + (i % 3) * .3, i * .35)}<ellipse cy="${f1(r * .62)}" rx="${f1(r * .9)}" ry="${f1(r * .22)}" fill="#000" fill-opacity=".18"/><ellipse rx="${f1(r)}" ry="${f1(r * .82)}" fill="url(#dn)"/><path d="M${f1(-r * .96)} ${f1(-r * .06)}q${f1(r * .12)} ${f1(-r * .62)} ${f1(r * .56)} ${f1(-r * .72)}q${f1(r * .52)} ${f1(-r * .1)} ${f1(r * .78)} ${f1(r * .26)}q${f1(r * .5)} ${f1(r * .1)} ${f1(r * .62)} ${f1(r * .42)}q${f1(-r * .2)} ${f1(r * .16)} ${f1(-r * .3)} ${f1(-r * .02)}q${f1(-r * .2)} ${f1(r * .22)} ${f1(-r * .44)} ${f1(-r * .04)}q${f1(-r * .24)} ${f1(r * .22)} ${f1(-r * .5)} ${f1(-r * .02)}q${f1(-r * .24)} ${f1(r * .2)} ${f1(-r * .48)} ${f1(-r * .02)}q${f1(-r * .24)} ${f1(r * .18)} ${f1(-r * .24)} ${f1(-r * .12)}Z" fill="#fff"/>${[[-.5, -.4], [-.1, -.55], [.3, -.42], [-.3, -.18], [.1, -.22], [.5, -.12]].map(([a, b]) => `<circle cx="${f1(r * a)}" cy="${f1(r * b)}" r="${f1(r * .05)}" fill="#e6dccb"/>`).join('')}<ellipse cx="${f1(-r * .3)}" cy="${f1(-r * .46)}" rx="${f1(r * .26)}" ry="${f1(r * .09)}" fill="#fff" fill-opacity=".8"/><path d="M${f1(r * .12)} ${f1(r * .1)}q${f1(r * .1)} ${f1(r * .34)} ${f1(r * .04)} ${f1(r * .58)}q${f1(-r * .18)} 0 ${f1(-r * .14)} ${f1(-r * .3)}Z" fill="#c8102a"/><circle cx="${f1(r * .14)}" cy="${f1(r * .12)}" r="${f1(r * .13)}" fill="#e8283c"/><circle cx="${f1(r * .1)}" cy="${f1(r * .08)}" r="${f1(r * .04)}" fill="#fff" fill-opacity=".8"/></g></g>`;
+    const oiljar = (x, y, s, i = 0) => `<g transform="translate(${f1(x)} ${f1(y)}) scale(${s})"><g>${bob(1.4, 2.6, i * .4)}<path d="M-3 -16h6v4q9 3 9 12q0 9 -12 11q-12 -2 -12 -11q0 -9 9 -12Z" fill="#c8702a"/><path d="M-3 -16h6v4q9 3 9 12q0 9 -12 11q-12 -2 -12 -11q0 -9 9 -12Z" fill="url(#bx)"/><path d="M-9 -2h18" stroke="#f2c14e" stroke-width="1.6"/><path d="M-8 3h16" stroke="#f2c14e" stroke-width="1.2"/><path d="M-3 -16Q0 -20 3 -16" fill="#e8a850"/><path d="M0 -18v-3" stroke="#3a2a1a" stroke-width="1"/>${flame(0, -21, .9, i * .3)}<path d="M7 -22q3 -1 3 1.4" stroke="#6a8a2a" stroke-width="1.2" fill="none" stroke-linecap="round"/></g></g>`;
+    // a window with a hanukkiah glowing inside: it is the custom to put the lit lights where passers-by can see them
+    const windowM = (x, y, s, i = 0) => `<g transform="translate(${f1(x)} ${f1(y)}) scale(${s})"><g>${bob(1, 3 + (i % 3) * .3, i * .4)}<path d="M-10 13V-3a10 10 0 0 1 20 0V13Z" fill="#14265a"/><path d="M-10 13V-3a10 10 0 0 1 20 0V13Z" fill="url(#fg)" fill-opacity=".9">${anim('opacity', '.7;1;.7', 2.4, i * .4)}</path><path d="M-5 9h10M-3.4 9v-5M-1.2 9v-6M1.2 9v-6M3.4 9v-5" stroke="#f2c14e" stroke-width="1.1" stroke-linecap="round"/><circle cx="-3.4" cy="2.4" r="1" fill="#ffe9a8"/><circle cx="-1.2" cy="1.4" r="1" fill="#ffe9a8"/><circle cx="1.2" cy="1.4" r="1" fill="#ffe9a8"/><circle cx="3.4" cy="2.4" r="1" fill="#ffe9a8"/><path d="M-10 13V-3a10 10 0 0 1 20 0V13Z" fill="none" stroke="url(#sv)" stroke-width="1.8"/><path d="M0 -13V13M-10 3H10" stroke="url(#sv)" stroke-width="1.2" stroke-opacity=".8"/><rect x="-12.4" y="12.6" width="24.8" height="3" rx="1.4" fill="url(#sv)"/></g></g>`;
+    const motif = (m, x, y, s, i = 0) => ({ star: () => `<g transform="translate(${f1(x)} ${f1(y)})">${sparkle(0, 0, 9 * s, '#e8f4ff', 1.6 + (i % 3) * .3, i * .35)}${star6(0, 0, 6 * s, 'url(#sv)', { spin: 14 + i, begin: i })}</g>`, dreidel: () => dreidel(x, y, s * .8, i), gelt: () => gelt(x, y, 9 * s, i), latke: () => latke(x, y, 9 * s, i), donut: () => donut(x, y, 9 * s, i), window: () => windowM(x, y, s * .86, i), magen: () => star6(x, y, 9 * s, i % 2 ? 'url(#gd)' : 'url(#sv)', { spin: 18 + i, begin: i }), oil: () => oiljar(x, y + 4 * s, s * .8, i) }[m] || (() => ''))();
+    const MOT = ['star', 'dreidel', 'gelt', 'latke', 'donut', 'window', 'oil', 'all'];
+    const mix = (m, i) => m === 'all' ? ['dreidel', 'gelt', 'window', 'donut', 'latke', 'oil'][i % 6] : m;
+    for (let n = 1; n <= 8; n++) {
+      const m = MOT[n - 1], [c0, c1] = HKBG[n - 1], D = XDEFS + `<linearGradient id="b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${c0}"/><stop offset="1" stop-color="${c1}"/></linearGradient><linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c0}"/><stop offset="1" stop-color="${c1}"/></linearGradient>`;
+      plate['hk' + n] = svg(240, 44,
+        `<rect width="240" height="44" fill="url(#b)"/><path d="M0 42Q60 36 120 41T240 38V44H0Z" fill="#fff" fill-opacity=".08"/>` + Array.from({ length: 14 }, (_, i) => `<circle cx="${(i * 37 + 12) % 236}" cy="${5 + (i * 13) % 30}" r="${i % 3 ? .9 : 1.5}" fill="#e8f4ff">${twinkle(1.6 + (i % 4) * .4, i * .3, .12)}</circle>`).join('')
+        + [112, 136, 160].map((x, i) => motif(mix(m, i), x, 26, .62 + (i === 1 ? .1 : 0), i)).join('') + hanukkiah(206, 32, .44, n, { glow: 54 }) + sparks([[24, 10, 2.4], [60, 32, 2], [96, 10, 2.2]], '#e8f4ff'), D);
+      bg['hk' + n] = svg(1200, 200,
+        `<rect width="1200" height="200" fill="url(#sk)"/>` + [0, 1].map(i => `<path d="M-20 ${46 + i * 22}Q300 ${6 + i * 26} 640 ${56 + i * 10}T1220 ${36 + i * 18}" fill="none" stroke="${i ? '#a8c8ff' : '#e8f4ff'}" stroke-opacity=".12" stroke-width="${30 - i * 8}" stroke-linecap="round">${A(`<animate attributeName="stroke-opacity" values=".07;.2;.07" dur="${6 + i}s" repeatCount="indefinite"/>`)}</path>`).join('')
+        + Array.from({ length: 40 }, (_, i) => `<circle cx="${(i * 151 + 30) % 1190}" cy="${6 + (i * 37) % 110}" r="${i % 4 ? 1 : 1.8}" fill="#e8f4ff">${twinkle(1.6 + (i % 5) * .5, i * .31, .12)}</circle>`).join('')
+        + star6(180, 60, 26, 'url(#sv)', { spin: 40 }) + star6(1060, 50, 20, 'url(#sv)', { spin: 50, begin: 4 })
+        + `<text x="360" y="62" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-size="34" fill="#e8f4ff" stroke="${c1}" stroke-width="5" paint-order="stroke" stroke-linejoin="round" letter-spacing="3">NIGHT ${n}</text><text x="362" y="92" font-family="Arial,sans-serif" font-weight="700" font-size="18" fill="#f2c14e" letter-spacing="2">${HKNAMES[n - 1].toUpperCase()}</text>`
+        + `<path d="M0 176Q300 160 640 174T1200 168V200H0Z" fill="#fff" fill-opacity=".1"/><rect x="720" y="172" width="340" height="14" rx="6" fill="#1a2a5a"/><rect x="720" y="172" width="340" height="4" rx="2" fill="#fff" fill-opacity=".25"/>`
+        + hanukkiah(890, 170, 2.1, n, { glow: 110 }) + [0, 1, 2, 3, 4].map(i => motif(mix(m, i), 250 + i * 100, 152, 2.4, i)).join('') + [0, 1].map(i => motif(mix(m, i + 2), 1090 + i * 70, 154, 2.2, i + 5)).join('')
+        + snowfall(24, 1200, 200, 6, '#e8f4ff') + Array.from({ length: 16 }, (_, i) => sparkle((i * 223 + 40) % 1180, 14 + (i * 43) % 140, 2.4 + (i % 3) * .8, i % 2 ? '#f2c14e' : '#e8f4ff', 1.6 + (i % 5) * .4, i * .33)).join(''), D);
+      wreath['hk' + n] = svg(144, 144,
+        `<circle cx="72" cy="72" r="57" fill="none" stroke="url(#sv)" stroke-width="2.4"/><circle cx="72" cy="72" r="60" fill="none" stroke="#2f6fd0" stroke-opacity=".5" stroke-width="1.4"/>`
+        + ring(8, 61, (x, y, i) => (i === 4 ? '' : motif(mix(m, i), x, y + 1, .86, i)), 72, 72, -90) + hanukkiah(72, 136, .38, n, { glow: 36, raise: 8 })
+        + ring(8, 61, (x, y, i) => sparkle(x, y, 2.2, '#e8f4ff', 1.6 + i * .2, i * .3), 72, 72, -67.5) + sparks([[14, 18, 2.4], [130, 18, 2.4], [14, 126, 2.4], [130, 126, 2.4]], '#f2c14e'), D);
+    }
     return { wreath, bg, plate };
   }
   // the collections the decorations are filed under, so you can find one without scrolling through everything
   const SERIES = [
     { id: 'classic', name: 'Classic', blurb: 'Plain, handsome nameplates.', groups: [{ plate: ['embers', 'aurora', 'tide', 'sakura', 'circuit', 'starfield', 'parchment', 'neon', 'slime', 'prism'] }] },
+    { id: 'vibrantpumpkin', name: 'Vibrant Pumpkin', blurb: 'Glossy, glowing pumpkins and jack-o\'-lanterns.', season: 'thanksgiving', groups: [{ plate: ['pumpkinglow', 'jacklantern', 'spiceswirl'], bg: ['pumpkinsunset', 'jacknight', 'vinegarden'], wreath: ['pumpkinring', 'jackcrown', 'candycorn'] }] },
+    { id: 'gobblegobble', name: 'Gobble Gobble Turkey', blurb: 'Cute turkeys, jewel-bright tail feathers and a feast.', season: 'thanksgiving', groups: [{ plate: ['gobbleparade', 'featherfan', 'feastplaid'], bg: ['turkeyparade', 'featherburst', 'feasttable'], wreath: ['turkeyfan', 'feathermandala', 'acorngarland'] }] },
+    { id: 'cosychristmas', name: 'Cosy Christmas', blurb: 'Fireside warmth, snowy villages and holly.', season: 'christmas', groups: [{ plate: ['xfireside', 'xpine', 'xginger'], bg: ['xvillage', 'xtree', 'xmantel'], wreath: ['xhollywreath', 'xbaubles', 'xgingerring'] }] },
+    { id: 'santasparkle', name: 'Santa & Sparkle', blurb: 'Sleighs, candy canes, snowmen and sparkle.', season: 'christmas', groups: [{ plate: ['xcandystripe', 'xsleighplate', 'xsnowplate'], bg: ['xsleighflight', 'xcandyland', 'xsnowhill'], wreath: ['xcaneRing', 'xreindeer', 'xcrystal'] }] },
+    { id: 'hanukkah', name: 'Hanukkah', blurb: 'Eight nights of light: each night has its own set, with that night\'s candles lit.', groups: [
+      { name: 'Night 1: First Light', season: 'hanukkah:1', plate: ['hk1'], bg: ['hk1'], wreath: ['hk1'] },
+      { name: 'Night 2: Dreidel Spin', season: 'hanukkah:2', plate: ['hk2'], bg: ['hk2'], wreath: ['hk2'] },
+      { name: 'Night 3: Gold Gelt', season: 'hanukkah:3', plate: ['hk3'], bg: ['hk3'], wreath: ['hk3'] },
+      { name: 'Night 4: Latke Night', season: 'hanukkah:4', plate: ['hk4'], bg: ['hk4'], wreath: ['hk4'] },
+      { name: 'Night 5: Sufganiyot Sparkle', season: 'hanukkah:5', plate: ['hk5'], bg: ['hk5'], wreath: ['hk5'] },
+      { name: 'Night 6: Light in the Window', season: 'hanukkah:6', plate: ['hk6'], bg: ['hk6'], wreath: ['hk6'] },
+      { name: 'Night 7: A Little Oil', season: 'hanukkah:7', plate: ['hk7'], bg: ['hk7'], wreath: ['hk7'] },
+      { name: 'Night 8: Festival of Lights', season: 'hanukkah:8', plate: ['hk8'], bg: ['hk8'], wreath: ['hk8'] },
+    ] },
     { id: 'boba', name: 'Kawaii Boba Tea', blurb: 'Pink milk tea, pearls and sparkles.', groups: [{ plate: ['bubbletea', 'hexcandy'], bg: ['boba'], wreath: ['bobacup', 'sprout', 'catphones', 'pearlring'] }] },
     { id: 'lunar', name: 'Lunar New Year', blurb: 'Red lanterns, gold waves, koi and fireworks.', groups: [{ plate: ['lanternglow', 'goldwaves'], bg: ['lantern'], wreath: ['redlantern', 'lotus', 'koi', 'firecrackers', 'envelopes', 'dragon'] }] },
     { id: 'anime', name: 'Anime', blurb: 'Manga moods, magical girls and sparkles.', groups: [
@@ -420,8 +881,67 @@ const DecoCore = (() => {
       { name: 'Style & snacks', wreath: ['sushi', 'ramen', 'scholar', 'catonesie', 'catears'] },
     ] },
   ];
-  const seriesOfTheme = id => ({ boba: 'boba', lunar: 'lunar', anime: 'anime', animehearts: 'anime', animecosmos: 'anime' }[id] || '');
+  /* Holiday calendar: every seasonal set is open in a window that comes round each year. The windows are worked out from the calendar (Hanukkah from the
+     Hebrew calendar, because its dates move), so nothing is downloaded and nothing has to be updated. Outside its window a set is a blurred teaser with the
+     date it next opens. What you are already wearing stays on; the window only decides what you can pick. */
+  const DAY = 864e5;
+  const plus = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  // the Hebrew calendar (Reingold and Dershowitz, Calendrical Calculations): the civil date of 25 Kislev, the day after the first night of Hanukkah
+  const heb = (() => {
+    const elapsed = y => { const me = Math.floor((235 * y - 234) / 19), pe = 12084 + 13753 * me, d = 29 * me + Math.floor(pe / 25920); return (3 * (d + 1)) % 7 < 3 ? d + 1 : d; };
+    const delay = y => { const a = elapsed(y - 1), b = elapsed(y), c = elapsed(y + 1); return c - b === 356 ? 2 : b - a === 382 ? 1 : 0; };
+    const newYear = y => -1373427 + elapsed(y) + delay(y);
+    const longHeshvan = y => { const n = newYear(y + 1) - newYear(y); return n === 355 || n === 385; };
+    const fromRD = rd => { const t = new Date((rd - 719163) * DAY); return new Date(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()); };
+    return { kislev25: y => fromRD(newYear(y) + 30 + (longHeshvan(y) ? 30 : 29) + 24) };
+  })();
+  const hanukkahNight1 = y => plus(heb.kislev25(y + 3761), -1);        // the evening the first candle is lit (Gregorian year y)
+  const nth = (y, month, weekday, n) => { const first = new Date(y, month, 1); return new Date(y, month, 1 + (7 + weekday - first.getDay()) % 7 + 7 * (n - 1)); };
+  // [first day, last day] of each season in year y; Hanukkah night N opens on its night and all nights stay open for a week after the festival ends
+  const WINDOW = {
+    thanksgiving: y => { const t = nth(y, 10, 4, 4); return [plus(t, -7), plus(t, 7)]; },
+    christmas: y => [new Date(y, 11, 18), new Date(y + 1, 0, 6)],
+    hanukkah: (y, n) => { const d = hanukkahNight1(y); return [plus(d, n - 1), plus(d, 14)]; },
+  };
+  const windowOf = (season, y) => { const [k, n] = String(season).split(':'), f = WINDOW[k]; return f ? f(y, +n || 1).map(d => d.getTime()) : null; };
+  // is it open now? if not, when does it next open?
+  const status = (season, now = Date.now()) => {
+    if (!season) return { open: true };
+    const y = new Date(now).getFullYear(); let next = null;
+    for (let yy = y - 1; yy <= y + 1; yy++) {
+      const w = windowOf(season, yy); if (!w) return { open: true };
+      if (now >= w[0] && now < w[1] + DAY) return { open: true, from: w[0], to: w[1] };
+      if (w[0] > now && (!next || w[0] < next[0])) next = w;
+    }
+    return { open: false, from: next[0], to: next[1] };
+  };
+  const isOpen = (season, now = Date.now()) => status(season, now).open;
+  const fmtDay = (t, now) => { const o = { weekday: 'short', month: 'short', day: 'numeric' }; if (new Date(t).getFullYear() !== new Date(now).getFullYear()) o.year = 'numeric'; return new Date(t).toLocaleDateString(undefined, o); };
+  const opensLabel = (season, now = Date.now()) => { const st = status(season, now); return st.from ? fmtDay(st.from, now) : ''; };
+  const untilLabel = (season, now = Date.now()) => { const st = status(season, now); return st.open && st.to ? fmtDay(st.to, now) : ''; };
+  const LOCKS = {};
+  for (const se of SERIES) for (const g of se.groups) { const o = g.season || se.season; if (o) for (const k of ['plate', 'bg', 'wreath']) for (const id of g[k] || []) LOCKS[id] = o; }
+  const lockedNow = (id, now = Date.now()) => !!LOCKS[id] && !isOpen(LOCKS[id], now);
+  // the next set to open within six weeks (for the "Next up" line)
+  const nextOpening = (now = Date.now()) => {
+    let best = null; const consider = (name, season) => { if (!season) return; const st = status(season, now); if (!st.open && st.from - now <= 45 * DAY && (!best || st.from < best.from)) best = { name, season, from: st.from }; };
+    for (const se of SERIES) { consider(se.name, se.season); for (const g of se.groups) if (g.season) consider(se.name + ', ' + g.name, g.season); }
+    return best;
+  };
+  const seriesOfTheme = id => ({ vibrantpumpkin: 'vibrantpumpkin', gobblegobble: 'gobblegobble', cosychristmas: 'cosychristmas', santasparkle: 'santasparkle', hanukkah1: 'hanukkah', hanukkah2: 'hanukkah', hanukkah3: 'hanukkah', hanukkah4: 'hanukkah', hanukkah5: 'hanukkah', hanukkah6: 'hanukkah', hanukkah7: 'hanukkah', hanukkah8: 'hanukkah', boba: 'boba', lunar: 'lunar', anime: 'anime', animehearts: 'anime', animecosmos: 'anime' }[id] || '');
   const has = (list, id) => list.some(x => x.id === id);
+  /* your own decorations (imported from a pack file) are added to the same lists while they are in use: the ones in this
+     account, plus the nameplates of other accounts so the account list can draw them. They are marked custom and never
+     come up in the "other people" the app makes up (the ghosts). */
+  const mine = { own: [], seen: [] };
+  const LISTS = { plate: PLATES, banner: BACKGROUNDS, wreath: WREATHS };
+  function setCustom(which, records) {
+    mine[which] = (records || []).filter(r => r && LISTS[r.dkind] && typeof r.id === 'string');
+    for (const list of Object.values(LISTS)) for (let i = list.length - 1; i >= 0; i--) if (list[i].custom) list.splice(i, 1);
+    for (const r of [...mine.own, ...mine.seen]) { const list = LISTS[r.dkind]; if (!has(list, r.id)) list.push({ id: r.id, name: r.name || 'Mine', blurb: r.blurb || 'Imported from a file.', anim: !!r.moves, custom: true }); }
+  }
+  const builtin = list => list.filter(x => !x.custom);
+  const ghostPool = (list, now) => builtin(list).filter(x => !lockedNow(x.id, now));
   const plate = id => PLATES.find(p => p.id === id) || PLATES[0];
   const plateOk = id => !!id && id !== 'none' && has(PLATES, id);
   const banner = id => BANNERS.find(b => b.id === id) || null;
@@ -436,9 +956,9 @@ const DecoCore = (() => {
   const bannerCss = s => (s.bannerImg ? `url("${s.bannerImg}") center / cover` : s.bannerPreset ? banner(s.bannerPreset).css : '');
   // generated members get a nameplate or a tag now and then (scenery, same seed gives the same people)
   const hash = s => { let x = 2166136261; for (const c of String(s)) { x ^= c.charCodeAt(0); x = Math.imul(x, 16777619); } return x >>> 0; };
-  const ghostPlate = id => { const n = hash('plate' + id); return n % 100 < 28 ? PLATES[1 + (n >>> 8) % (PLATES.length - 1)].id : 'none'; };
+  const ghostPlate = (id, now) => { const n = hash('plate' + id), pool = ghostPool(PLATES, now); return n % 100 < 28 ? pool[1 + (n >>> 8) % (pool.length - 1)].id : 'none'; };
   const ghostTag = id => { const n = hash('tag' + id); if (n % 100 >= 22) return null; const words = ['MOON', 'FOX', 'KOI', 'ZEN', 'ASH', 'OWL', 'IVY', 'NOVA', 'RAIN', 'JAZZ']; return { tag: words[(n >>> 8) % words.length], tagColor: TAG_COLORS[(n >>> 12) % TAG_COLORS.length][0], tagGlyph: TAG_GLYPHS[(n >>> 16) % TAG_GLYPHS.length][0] }; };
-  const ghostWreath = id => { const n = hash('wreath' + id); return n % 100 < 16 ? WREATHS[1 + (n >>> 8) % (WREATHS.length - 1)].id : ''; };
-  return { SERIES, seriesOfTheme, buildArt, plateOk, uri, BACKGROUNDS, WREATHS, THEMES, ghostWreath, PLATES, TAG_COLORS, TAG_GLYPHS, BANNERS, plate, banner, cleanTag, tagOk, normProfile, normServer, bannerCss, ghostPlate, ghostTag };
+  const ghostWreath = (id, now) => { const n = hash('wreath' + id), pool = ghostPool(WREATHS, now); return n % 100 < 16 ? pool[1 + (n >>> 8) % (pool.length - 1)].id : ''; };
+  return { isOpen, status, opensLabel, untilLabel, nextOpening, lockedNow, hanukkahNight1, LOCKS, setCustom, SERIES, seriesOfTheme, buildArt, plateOk, uri, BACKGROUNDS, WREATHS, THEMES, ghostWreath, PLATES, TAG_COLORS, TAG_GLYPHS, BANNERS, plate, banner, cleanTag, tagOk, normProfile, normServer, bannerCss, ghostPlate, ghostTag };
 })();
 export default DecoCore;

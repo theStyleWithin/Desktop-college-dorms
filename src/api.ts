@@ -2,6 +2,7 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { stat, writeFile } from "@tauri-apps/plugin-fs";
+import DecoCore from "./lib/decoCore";
 
 export type MediaKind = "image" | "gif" | "video" | "vrm";
 export interface Media { kind: MediaKind; file: string }
@@ -447,7 +448,8 @@ export const api = {
   listCharDeco: () => invoke<CharDeco[]>("list_char_deco"),
   setCharDeco: (characterId: string, plate: string, bg: string, wreath: string) => invoke<CharDeco | null>("set_char_deco", { characterId, plate, bg, wreath }),
   clearCharDeco: (characterId: string) => invoke<void>("clear_char_deco", { characterId }),
-  generateCharDeco: (characterId: string) => invoke<CharDeco>("generate_char_deco", { characterId }),
+  /** The model never dresses a character in a holiday set that is closed today (the calendar rules live in decoCore.js). */
+  generateCharDeco: (characterId: string) => invoke<CharDeco>("generate_char_deco", { characterId, locked: Object.keys(DecoCore.LOCKS).filter((id) => DecoCore.lockedNow(id)) }),
   // saved prompts
   listPrompts: () => invoke<SavedPrompt[]>("list_prompts"),
   savePrompt: (p: { id?: string; title: string; body: string; tag?: string }) => invoke<SavedPrompt>("save_prompt", { prompt: { created_at: 0, updated_at: 0, tag: "", ...p, id: p.id ?? "" } }),

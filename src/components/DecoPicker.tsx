@@ -27,12 +27,16 @@ export default function DecoPicker({ value, animate, onChange, avatar, name, chi
   const cur = value;
   const want = (k: string) => view.kind === "all" || view.kind === k;
 
-  const themeCard = (t: (typeof DecoCore.THEMES)[number]) => (
-    <button key={t.id} type="button" className={`theme-card${cur.plate === t.plate && cur.bg === t.bg && cur.wreath === t.wreath ? " on" : ""}`} data-theme-pick={t.id} onClick={() => onChange({ plate: t.plate, bg: t.bg, wreath: t.wreath })}>
-      <span className="theme-av"><span className="dw-av"><Wreathed wreath={t.wreath}>{avatar(56)}</Wreathed></span></span>
-      <span><b>{t.name}</b><small>{t.blurb}</small></span>
-    </button>
-  );
+  const themeCard = (t: (typeof DecoCore.THEMES)[number]) => {
+    const lock = !DecoCore.isOpen(t.season);
+    return (
+      <button key={t.id} type="button" className={`theme-card${lock ? " locked" : ""}${cur.plate === t.plate && cur.bg === t.bg && cur.wreath === t.wreath ? " on" : ""}`} data-theme-pick={t.id} data-locked={lock ? "true" : undefined}
+        disabled={lock} aria-disabled={lock} onClick={() => { if (!lock) onChange({ plate: t.plate, bg: t.bg, wreath: t.wreath }); }}>
+        <span className="theme-av"><span className="dw-av"><Wreathed wreath={t.wreath}>{avatar(56)}</Wreathed></span></span>
+        <span><b>{t.name}</b><small>{lock ? `\u{1F512} Unlocks ${DecoCore.opensLabel(t.season)}` : t.blurb}</small></span>
+      </button>
+    );
+  };
   const platePick = (p: DecoItem) => (
     <button key={"plate-" + p.id} type="button" className={`plate-pick m-row-like ${plateProps(p.id, animate).className}${cur.plate === p.id ? " on" : ""}`} aria-pressed={cur.plate === p.id} data-plate-pick={p.id}
       {...(plateProps(p.id, animate)["data-plate"] ? { "data-plate": p.id, "data-anim": animate ? "on" : "off" } : {})} onClick={() => onChange({ plate: p.id })}>
@@ -62,11 +66,22 @@ export default function DecoPicker({ value, animate, onChange, avatar, name, chi
     const kinds = (g: (typeof se.groups)[number]) => KINDS.filter(([k]) => want(k) && ((g as Record<string, string[] | undefined>)[k] ?? []).length).map(([k, label, cls, build, map]) => (
       <div className="dc-kind" key={k}><h6>{label}</h6><div className={cls} role="group" aria-label={label}>{((g as Record<string, string[]>)[k]).map((id) => build(map[id]))}</div></div>
     ));
-    const body = se.groups.map((g, i) => { const ks = kinds(g); return ks.length ? <div className="dc-group" key={i}>{g.name ? <h5>{g.name}</h5> : null}{ks}</div> : null; }).filter(Boolean);
+    const body = se.groups.map((g, i) => {
+      const ks = kinds(g); if (!ks.length) return null;
+      const season = g.season || se.season, lock = !DecoCore.isOpen(season);
+      // a locked set is a blurred teaser: the colours can be seen, but nothing in it can be picked until its day
+      const inner = lock ? <div className="dc-kinds dc-teaser" aria-hidden="true" ref={(el) => { if (el) el.inert = true; }}>{ks}</div> : <div className="dc-kinds">{ks}</div>;
+      return (
+        <div className={`dc-group${lock ? " locked" : ""}`} key={i} data-locked={lock ? "true" : undefined}>
+          {g.name || lock ? <h5>{g.name || ""}{lock ? <span className="dc-unlock">{"\u{1F512} Unlocks " + DecoCore.opensLabel(season)}</span> : g.season ? <span className="dc-until">{"Open until " + DecoCore.untilLabel(season)}</span> : null}</h5> : null}
+          {inner}
+        </div>
+      );
+    }).filter(Boolean);
     if (!body.length && !(view.kind === "all" && themes.length)) return null;
     return (
       <section className="dc-series" aria-label={se.name} key={se.id}>
-        <h4>{se.name}<small>{se.blurb}</small></h4>
+        <h4>{se.name}<small>{se.blurb}</small>{!DecoCore.isOpen(se.season) ? <span className="dc-unlock">{"\u{1F512} Unlocks " + DecoCore.opensLabel(se.season)}</span> : se.season ? <span className="dc-until">{"Open until " + DecoCore.untilLabel(se.season)}</span> : null}</h4>
         {view.kind === "all" && themes.length ? <div className="theme-grid">{themes.map(themeCard)}</div> : null}
         {body}
       </section>
@@ -81,6 +96,7 @@ export default function DecoPicker({ value, animate, onChange, avatar, name, chi
         {wearing.length ? <button className="btn" type="button" onClick={() => onChange({ plate: "none", bg: "", wreath: "" })}>Take it all off</button> : null}
       </div>
       {children}
+      {(() => { const nx = DecoCore.nextOpening(); return nx ? <p className="dc-next" data-testid="deco-next">{"\u2728 Next up: " + nx.name + " \u00b7 " + DecoCore.opensLabel(nx.season)}</p> : null; })()}
       <div className="dc-filters" role="group" aria-label="Collection">
         {chip("All collections", view.series === "all", () => setView({ series: "all" }))}
         {DecoCore.SERIES.map((se) => chip(se.name, view.series === se.id, () => setView({ series: se.id })))}

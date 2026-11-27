@@ -138,10 +138,17 @@ pub fn parse_choice(raw: &str) -> Option<(String, String, String)> {
     Some((plate, bg, wreath))
 }
 
+/// Takes out any part of a choice that is in a holiday set that is closed today (the model was not offered them, but may name one anyway).
+pub fn without_locked((plate, bg, wreath): (String, String, String), locked: &[String]) -> (String, String, String) {
+    let l = |id: &str| locked.iter().any(|x| x == id);
+    (if l(&plate) { "none".into() } else { plate }, if l(&bg) { String::new() } else { bg }, if l(&wreath) { String::new() } else { wreath })
+}
+
 /// Ask the model to choose decorations that suit this character, and keep them as theirs. Whatever the user chose by hand is only
 /// replaced when they ask for a new pick themselves.
 #[tauri::command]
-pub async fn generate_char_deco(state: State<'_, Shared>, character_id: String) -> R<CharDeco> {
+pub async fn generate_char_deco(state: State<'_, Shared>, character_id: String, locked: Option<Vec<String>>) -> R<CharDeco> {
+    let locked = locked.unwrap_or_default();
     let st: Shared = state.inner().clone();
     let o = owner(&st)?;
     let (ch, settings) = {
@@ -152,6 +159,8 @@ pub async fn generate_char_deco(state: State<'_, Shared>, character_id: String) 
     let c = &ch.card;
     let cut = |t: &str, n: usize| t.chars().take(n).collect::<String>();
     let d = data();
+    // holiday sets that are closed today are not on offer (the page works out which, from the calendar)
+    let open = |list: &[Item]| list.iter().filter(|i| !locked.contains(&i.id)).map(|i| format!("{} ({}: {})", i.id, i.name, i.blurb)).collect::<Vec<_>>().join("\n");
     let msgs = vec![
         dorms_core::prompt::ChatMsg {
             role: "system".into(),
@@ -161,9 +170,9 @@ pub async fn generate_char_deco(state: State<'_, Shared>, character_id: String) 
                  Nameplates:\n{plates}\n\nBackgrounds:\n{bgs}\n\nWreaths:\n{wreaths}\n\n\
                  Reply with only a JSON object like {{\"plate\":\"<id>\",\"bg\":\"<id>\",\"wreath\":\"<id>\"}} and nothing else.",
                 name = c.name,
-                plates = options(&d.plates),
-                bgs = options(&d.backgrounds),
-                wreaths = options(&d.wreaths)
+                plates = open(&d.plates),
+                bgs = open(&d.backgrounds),
+                wreaths = open(&d.wreaths)
             ),
         },
         dorms_core::prompt::ChatMsg {
@@ -179,7 +188,10 @@ pub async fn generate_char_deco(state: State<'_, Shared>, character_id: String) 
     ];
     let params = GenParams { temperature: 0.7, top_p: 0.95, max_tokens: 90 };
     let raw = llm::stream_chat(&st.http, &ep, &msgs, &params, &Notify::new(), |_| {}).await?;
-    let (plate, bg, wreath) = parse_choice(&raw).ok_or("The model didn't choose anything usable. Try again.")?;
+    let (plate, bg, wreath) = parse_choice(&raw).map(|c| without_locked(c, &locked)).ok_or("The model didn't choose anything usable. Try again.")?;
+    if plate == "none" && bg.is_empty() && wreath.is_empty() {
+        return Err("The model didn't choose anything usable. Try again.".into());
+    }
     let deco = CharDeco { character_id, plate, bg, wreath, source: "ai".into(), updated_at: db::now() };
     let db = st.db.lock().unwrap();
     // the character may have been deleted while the model was thinking
@@ -237,6 +249,15 @@ mod tests {
         assert_eq!(parse_choice("}{"), None);
     }
 
+    #[test]
+    fn a_closed_holiday_set_is_never_kept_from_the_model() {
+        let c = ("hk3".to_string(), "pumpkinsunset".to_string(), "bobacup".to_string());
+        let locked = vec!["hk3".to_string(), "pumpkinsunset".to_string()];
+        assert_eq!(without_locked(c.clone(), &locked), ("none".to_string(), String::new(), "bobacup".to_string()));
+        assert_eq!(without_locked(c.clone(), &[]), c);
+        assert!(data().plates.iter().any(|p| p.id == "hk3") && data().backgrounds.iter().any(|p| p.id == "pumpkinsunset"), "the new sets are in the list");
+    }
+
     /// The Rust side reads the ids from decoData.json and the page draws them from decoCore.js: they have to name the same things.
     #[test]
     fn the_data_file_and_the_art_code_agree() {
@@ -249,14 +270,16 @@ mod tests {
             }
         }
         // every picture that is drawn has an entry in the list, and every entry that is not "none" has a picture
+        // the eight Hanukkah nights are drawn in one loop (`wreath['hk' + n] = svg(`), the rest one by one
+        let hk = |id: &str, kind: &str| id.len() == 3 && id.starts_with("hk") && core.contains(&format!("{kind}['hk' + n] = svg("));
         for i in d.wreaths.iter().filter(|i| i.id != "none") {
-            assert!(core.contains(&format!("wreath.{} = svg(", i.id)), "no art for the wreath {}", i.id);
+            assert!(hk(&i.id, "wreath") || core.contains(&format!("wreath.{} = svg(", i.id)) || core.contains(&format!("wreath['{}'] = svg(", i.id)), "no art for the wreath {}", i.id);
         }
         for i in d.backgrounds.iter().filter(|i| i.id != "none") {
-            assert!(core.contains(&format!("bg.{} = svg(", i.id)), "no art for the background {}", i.id);
+            assert!(hk(&i.id, "bg") || core.contains(&format!("bg.{} = svg(", i.id)) || core.contains(&format!("bg['{}'] = svg(", i.id)), "no art for the background {}", i.id);
         }
         for i in d.plates.iter().filter(|i| i.id != "none" && !CSS_PLATES.contains(&i.id.as_str())) {
-            assert!(core.contains(&format!("plate.{} = svg(", i.id)), "no art for the nameplate {}", i.id);
+            assert!(hk(&i.id, "plate") || core.contains(&format!("plate.{} = svg(", i.id)) || core.contains(&format!("plate['{}'] = svg(", i.id)), "no art for the nameplate {}", i.id);
         }
     }
 
