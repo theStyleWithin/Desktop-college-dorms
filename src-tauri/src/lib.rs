@@ -365,6 +365,7 @@ pub fn run() {
             accounts::prepare_export,
             accounts::read_export,
             accounts::save_export,
+            accounts::save_export_to_uri,
             accounts::confirm_export_saved,
             accounts::eject_profile,
             accounts::delete_profile,
