@@ -2,6 +2,7 @@ mod accounts;
 mod commands;
 mod db;
 mod extras;
+mod gallerycomments;
 mod guide;
 mod handoff;
 mod llama;
@@ -239,6 +240,11 @@ pub fn run() {
             presence::list_statuses,
             presence::set_status,
             presence::generate_status,
+            gallerycomments::gallery_comments,
+            gallerycomments::gallery_comment_counts,
+            gallerycomments::add_gallery_comment,
+            gallerycomments::edit_gallery_comment,
+            gallerycomments::delete_gallery_comment,
             viewfolders::list_view_folders,
             viewfolders::add_view_folder,
             viewfolders::remove_view_folder,

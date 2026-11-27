@@ -247,6 +247,8 @@ export interface PackageExtract {
 export interface ProviderHealth { state: "local" | "ok" | "warn" | "down" | "none"; detail: string; model: string; checked_at: number }
 /** How a character (or the user) is dressed: a nameplate, an animated profile background and an avatar wreath (ids from lib/decoData.json). */
 /** A decoration the person brought in from a file (the page rebuilds the art safely before it is kept; ids look like cp_0123456789). */
+/** A comment the person wrote under a picture in the Gallery (kept on this device only). `parent_id` is the comment it answers. */
+export interface GalleryComment { id: string; pic_key: string; parent_id: string | null; author: string; body: string; created_at: number; edited_at: number | null }
 /** A folder on the computer added to the Gallery, only to look at. */
 export interface ViewFolder { id: string; path: string; name: string; exists: boolean }
 export interface ViewPic { name: string; path: string; kind: "image" | "gif" | "video"; size: number }
@@ -458,6 +460,11 @@ export const api = {
   setCharDeco: (characterId: string, plate: string, bg: string, wreath: string) => invoke<CharDeco | null>("set_char_deco", { characterId, plate, bg, wreath }),
   clearCharDeco: (characterId: string) => invoke<void>("clear_char_deco", { characterId }),
   /** The model never dresses a character in a holiday set that is closed today (the calendar rules live in decoCore.js). */
+  galleryComments: (picKey: string) => invoke<GalleryComment[]>("gallery_comments", { picKey }),
+  galleryCommentCounts: () => invoke<Record<string, number>>("gallery_comment_counts"),
+  addGalleryComment: (picKey: string, parentId: string | null, author: string, body: string) => invoke<GalleryComment>("add_gallery_comment", { picKey, parentId, author, body }),
+  editGalleryComment: (id: string, body: string) => invoke<GalleryComment>("edit_gallery_comment", { id, body }),
+  deleteGalleryComment: (id: string) => invoke<number>("delete_gallery_comment", { id }),
   listViewFolders: () => invoke<ViewFolder[]>("list_view_folders"),
   addViewFolder: (path: string) => invoke<ViewFolder>("add_view_folder", { path }),
   removeViewFolder: (id: string) => invoke<void>("remove_view_folder", { id }),
