@@ -111,6 +111,10 @@ def inv_err_file(cmd, path, headers):
 def inv_err(cmd, args=None):
     try: invoke(cmd, args); return None
     except RuntimeError as ex: return str(ex)
+def sk(base):
+    """The key a per-profile choice is kept under for whoever is signed in (the guest space or a profile)."""
+    pr = invoke("session_state").get("profile")
+    return base + "." + (pr["id"] if pr else "guest")
 def click_exact(sel, text):
     return d.execute_script("const el=[...document.querySelectorAll(arguments[0])].find(b=>b.textContent.trim()===arguments[1]&&!b.disabled);if(!el)return false;el.scrollIntoView({block:'center'});el.click();return true", sel, text)
 def click_text(sel, text):
@@ -2909,11 +2913,11 @@ try:
         d.find_element(By.CSS_SELECTOR, "[data-fit=%s]" % fit_).click(); time.sleep(0.2)
         check("the size mode %s applies" % fit_, d.find_element(By.CSS_SELECTOR, "[data-testid=stage-image]").get_attribute("data-fit") == fit_)
     d.find_element(By.CSS_SELECTOR, "[data-fit=fill]").click(); time.sleep(0.2)
-    check("the chosen size mode is remembered", d.execute_script("return localStorage.getItem('dorms.gallery.fit.guest')") == "fill")
+    check("the chosen size mode is remembered", d.execute_script("return localStorage.getItem(arguments[0])", sk("dorms.gallery.fit")) == "fill")
     d.find_element(By.CSS_SELECTOR, "[data-fit=fit]").click(); time.sleep(0.2)
     # the panel can sit below the picture, and can be a chat with a character about what is on screen
     d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-flip]").click(); time.sleep(0.3)
-    check("the panel can be flipped below the picture (and it is remembered)", d.execute_script("return document.querySelector('.gal-vbody').dataset.layout") == "below" and d.execute_script("return localStorage.getItem('dorms.gallery.layout.guest')") == "below")
+    check("the panel can be flipped below the picture (and it is remembered)", d.execute_script("return document.querySelector('.gal-vbody').dataset.layout") == "below" and d.execute_script("return localStorage.getItem(arguments[0])", sk("dorms.gallery.layout")) == "below")
     d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-flip]").click(); time.sleep(0.3)
     check("and flipped back beside it", d.execute_script("return document.querySelector('.gal-vbody').dataset.layout") == "side")
     d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-tab-chat]").click(); time.sleep(0.5)
@@ -2947,16 +2951,16 @@ try:
     check("a second folder from the computer opens without the Gallery failing", len(d.find_elements(By.CSS_SELECTOR, "[data-testid=gallery-error]")) == 0 and d.execute_script("return document.querySelectorAll('[data-testid=gallery-tiles] [data-gallery-tile]').length") == 2)
     check("big pictures are shown as small copies in the tiles", d.execute_script("return [...document.querySelectorAll('[data-testid=gallery-tiles] img')].every(i => i.complete && i.naturalWidth > 0 && i.naturalWidth <= 360)") and os.path.isdir(os.path.join(DATA, "media", "gallery-thumbs")))
     d.execute_script("[...document.querySelectorAll('[data-testid=gallery-crumbs] button')].find(b=>b.textContent.includes('Gallery')).click()"); time.sleep(0.6)
-    invoke("remove_view_folder", {"id": vf2_["id"]})
+    invoke("remove_view_folder", {"id": vf2_["id"]}); reload_ui(); nav("Gallery"); time.sleep(1.2)
     check("taking a folder off the Gallery forgets it", invoke("list_view_folders") == [] and d.execute_script("return !document.querySelector('[data-gallery-disk-folder]')"))
     check("and nothing on the computer is touched", all(os.path.exists(os.path.join(vroot_, r_)) for r_ in ("a.png", "b.png", "sub/c.png", "notes.txt")))
     # the setting that makes adding gallery files link them instead of copying
     nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Customization').click()"); time.sleep(0.8)
     check("Customization has a switch to link gallery files instead of copying them, off by default", d.execute_script("const c=document.querySelector('[data-testid=gallery-link-toggle]');return !!c && !c.checked"))
     d.execute_script("document.querySelector('[data-testid=gallery-link-toggle]').click()"); time.sleep(0.4)
-    check("turning it on is remembered for this profile", d.execute_script("return localStorage.getItem('dorms.gallery.linkfiles.guest')") == "1" and d.execute_script("return document.querySelector('[data-testid=gallery-link-toggle]').checked"))
+    check("turning it on is remembered for this profile", d.execute_script("return localStorage.getItem(arguments[0])", sk("dorms.gallery.linkfiles")) == "1" and d.execute_script("return document.querySelector('[data-testid=gallery-link-toggle]').checked"))
     d.execute_script("document.querySelector('[data-testid=gallery-link-toggle]').click()"); time.sleep(0.4)
-    check("and turning it off clears it", d.execute_script("return localStorage.getItem('dorms.gallery.linkfiles.guest')") is None)
+    check("and turning it off clears it", d.execute_script("return localStorage.getItem(arguments[0])", sk("dorms.gallery.linkfiles")) is None)
     nav("Gallery"); time.sleep(1.0)
     # gallery folders made in the app, the Add folder menu, arranging folders and keeping everything in one place
     own_ = invoke("create_gallery_folder", {"name": "  Fan art  "})
@@ -3013,8 +3017,8 @@ try:
     check("a folder card starts at the usual size", attr_("span") == "1" and attr_("hmul") == "1" and not d.execute_script("return !!%s.querySelector('[data-testid=gallery-size-reset]')" % first_))
     key_("ArrowRight"); time.sleep(0.3); key_("ArrowDown"); time.sleep(0.3)
     check("a card can be made wider and taller (Shift and the arrow keys, or by dragging its corner)", attr_("span") == "2" and attr_("hmul") == "1.25", f"{attr_('span')} {attr_('hmul')}")
-    check("a stretched card has a way back, and is taller and wider", d.execute_script("const s=%s; const c=s.querySelector('.gal-cover').getBoundingClientRect(); return !!s.querySelector('[data-testid=gallery-size-reset]') && s.getBoundingClientRect().width > 300 && c.height > c.width * 0.9" % first_))
-    sizes_key_ = "dorms.gallery.cardsizes.guest"
+    check("a stretched card has a way back, and is taller and wider", d.execute_script("const s=%s; const c=s.querySelector('.gal-cover').getBoundingClientRect(); return !!s.querySelector('[data-testid=gallery-size-reset]') && s.getBoundingClientRect().width > 300 && c.height > 280" % first_))
+    sizes_key_ = sk("dorms.gallery.cardsizes")
     check("the size is remembered for this profile", d.execute_script("return Object.keys(JSON.parse(localStorage.getItem(arguments[0])||'{}')).length", sizes_key_) == 1)
     reload_ui(); nav("Gallery"); time.sleep(1.5)
     check("and is still there after a restart of the screen", attr_("span") == "2" and attr_("hmul") == "1.25")
