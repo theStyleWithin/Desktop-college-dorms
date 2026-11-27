@@ -153,6 +153,8 @@ export interface Chat {
   style?: "chat" | "phone";
   /** the room the story has moved into (a pathway taken); otherwise the chat is in its dorm's room */
   room_id?: number | null;
+  /** true when you chose to play as your own persona in this chat even though its world brings one */
+  world_persona_off?: boolean;
 }
 export interface Message {
   id: number;
@@ -259,7 +261,7 @@ export interface CustomDeco {
 }
 export interface CharDeco { character_id: string; plate: string; bg: string; wreath: string; source: "ai" | "user"; updated_at: number }
 /** A world: a folder of connected rooms, kept apart from other worlds, with lorebooks attached that apply to every chat in it. */
-export interface World { id: number; name: string; description: string; /** background lore written to be read (not sent to the model) */ lore: string; lorebooks: string[]; created_at: number }
+export interface World { id: number; name: string; description: string; /** background lore written to be read (not sent to the model) */ lore: string; lorebooks: string[]; /** a persona that stands in for yours while a chat is in this world ("" for none) */ persona: string; /** a playbook used when neither the chat nor its characters choose one */ playbook: string; /** standing instructions for every chat in this world */ instructions: string; /** saved prompts (ids) shown first in the Prompts menu in chats of this world */ prompts: string[]; created_at: number }
 export interface RoomDeco { plate: string; bg: string; wreath: string; tag: string; tag_color: string; tag_glyph: string }
 export const DEFAULT_ROOM_DECO: RoomDeco = { plate: "none", bg: "", wreath: "", tag: "", tag_color: "#5865f2", tag_glyph: "" };
 export interface UserDeco { plate: string; bg: string; wreath: string; animate: boolean; tag: string; tag_color: string; tag_glyph: string; banner: string; ai_pick: boolean }
@@ -282,7 +284,7 @@ export interface PbLore { book: string; default_on: boolean; gates: PbGate[] }
 export interface PbScenario { name: string; description: string; values: Record<string, unknown> }
 export interface Playbook { id: string; name: string; description: string; instructions: string; variables: PbVar[]; rules: PbRule[]; lorebooks: string[]; lore: PbLore[]; scenarios: PbScenario[]; created_at: number; updated_at: number }
 export interface PbValue { id: string; label: string; kind: PbVar["kind"]; value: unknown; meaning: string; note: string; min?: number | null; max?: number | null; options: string[] }
-export interface ChatPlaybook { mode: "inherit" | "none" | "set"; selected: string | null; active: Playbook | null; values: PbValue[]; turn: number; llm: boolean; from_character: boolean }
+export interface ChatPlaybook { mode: "inherit" | "none" | "set"; selected: string | null; active: Playbook | null; values: PbValue[]; turn: number; llm: boolean; from_character: boolean; from_world: boolean }
 /** Writing a novel: the plot, how far it has got, and what today's request allowance leaves. */
 export interface NovelPlan { plot: string; tone: string; pov: string; chapters: number; chapter_tokens: number; done: number }
 export interface NovelStatus { running: boolean; plan: NovelPlan | null; used_today: number; limit: number; reserve: number }
@@ -440,6 +442,7 @@ export const api = {
   quitApp: () => invoke<void>("quit_app"),
   listWorlds: () => invoke<World[]>("list_worlds"),
   createWorld: (name: string, description: string) => invoke<World>("create_world", { name, description }),
+  setWorldSetup: (id: number, persona: string, playbook: string, instructions: string, prompts: string[]) => invoke<World>("set_world_setup", { id, persona, playbook, instructions, prompts }),
   updateWorld: (id: number, name: string, description: string, lore: string, lorebooks: string[]) => invoke<World>("update_world", { id, name, description, lore, lorebooks }),
   deleteWorld: (id: number) => invoke<void>("delete_world", { id }),
   moveRoomsToWorld: (ids: number[], worldId: number | null) => invoke<void>("move_rooms_to_world", { ids, worldId }),

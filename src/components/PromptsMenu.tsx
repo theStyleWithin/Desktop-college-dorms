@@ -3,6 +3,7 @@ import { api, type SavedPrompt } from "../api";
 import { Modal, useToast } from "./ui";
 import { errText } from "../lib/util";
 import TokenatorHelper from "./TokenatorHelper";
+import { useWorldShelf } from "../lib/worldShelf";
 
 export const PROMPT_DRAG = "application/x-dorms-prompt";
 
@@ -73,7 +74,11 @@ export default function PromptsMenu() {
     if (!window.confirm(`Delete the prompt “${p.title}”?`)) return;
     try { await api.deletePrompt(p.id); await load(); } catch (e) { toast(errText(e), "err"); }
   };
-  const shown = (items ?? []).filter((p) => !q.trim() || `${p.title} ${p.tag}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const shelf = useWorldShelf();
+  const onShelf = (id: string) => !!shelf && shelf.ids.includes(id);
+  const matches = (p: SavedPrompt) => !q.trim() || `${p.title} ${p.tag}`.toLowerCase().includes(q.trim().toLowerCase());
+  const shown = (items ?? []).filter((p) => !onShelf(p.id) && matches(p));
+  const shelved = (items ?? []).filter((p) => onShelf(p.id) && matches(p));
 
   return (
     <div className="prompts">
@@ -91,8 +96,9 @@ export default function PromptsMenu() {
             {items && items.length > 4 && <input type="search" placeholder="Search prompts…" aria-label="Search prompts" value={q} onChange={(e) => setQ(e.target.value)} />}
             {items === null && <div className="hint">Loading…</div>}
             {items && items.length === 0 && <div className="hint">No prompts yet. Add one, then drag it into a chat to send it, or click it to put it in your message box.</div>}
-            {shown.map((p) => (
-              <div key={p.id} className="prompt-row" draggable data-prompt={p.title} title={`${p.title}\n\nDrag into the chat to send it. Click to put it in your message box.`}
+            {shelved.length > 0 && <div className="hint" data-testid="prompts-world-shelf">🌍 From {shelf?.world}</div>}
+            {[...shelved, ...shown].map((p) => (
+              <div key={p.id} className={`prompt-row${onShelf(p.id) ? " from-world" : ""}`} draggable data-prompt={p.title} title={`${p.title}\n\nDrag into the chat to send it. Click to put it in your message box.`}
                 onDragStart={(e) => { e.dataTransfer.setData(PROMPT_DRAG, JSON.stringify({ title: p.title, body: p.body })); e.dataTransfer.effectAllowed = "copy"; }}
                 onClick={() => void use(p)}>
                 <div className="prompt-title">{p.title}</div>

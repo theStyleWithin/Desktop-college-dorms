@@ -631,7 +631,8 @@ pub fn effective(c: &Connection, chat: &db::Chat, o: &Owner) -> Option<(Playbook
     let id = match row.mode.as_str() {
         "none" => return None,
         "set" => row.playbook_id.clone()?,
-        _ => chat.character_ids.iter().filter_map(|i| db::get_character(c, i, o).ok().flatten()).map(|ch| ch.playbook).find(|p| !p.is_empty())?,
+        _ => chat.character_ids.iter().filter_map(|i| db::get_character(c, i, o).ok().flatten()).map(|ch| ch.playbook).find(|p| !p.is_empty())
+            .or_else(|| db::chat_world(c, chat, o).ok().flatten().map(|w| w.playbook).filter(|p| !p.is_empty()))?,
     };
     get(c, &id, o).map(|pb| (pb, row))
 }
@@ -817,12 +818,15 @@ pub struct ChatPlaybook {
     pub llm: bool,
     /// Where it comes from, when it is the character's own.
     pub from_character: bool,
+    /// True when the playbook in use comes from the world the chat is in (no character of the chat brings one).
+    pub from_world: bool,
 }
 
 fn view(c: &Connection, chat: &db::Chat, o: &Owner) -> ChatPlaybook {
     let row = chat_row(c, chat.id);
     let eff = effective(c, chat, o);
     let from_character = row.mode == "inherit" && eff.is_some();
+    let from_world = from_character && !chat.character_ids.iter().filter_map(|i| db::get_character(c, i, o).ok().flatten()).any(|ch| !ch.playbook.is_empty());
     match eff {
         Some((pb, row)) => {
             let values = pb.variables.iter().map(|v| {
@@ -830,9 +834,9 @@ fn view(c: &Connection, chat: &db::Chat, o: &Owner) -> ChatPlaybook {
                 let meaning = val.as_f64().and_then(|n| v.bands.iter().filter(|b| b.from <= n).max_by(|a, b| a.from.total_cmp(&b.from)).map(|b| b.text.clone())).unwrap_or_default();
                 VarView { id: v.id.clone(), label: if v.label.is_empty() { v.id.clone() } else { v.label.clone() }, kind: v.kind.clone(), value: val, meaning, note: v.note.clone(), min: v.min, max: v.max, options: v.options.clone() }
             }).collect();
-            ChatPlaybook { mode: row.mode.clone(), selected: row.playbook_id.clone(), active: Some(pb), values, turn: row.turn, llm: row.llm, from_character }
+            ChatPlaybook { mode: row.mode.clone(), selected: row.playbook_id.clone(), active: Some(pb), values, turn: row.turn, llm: row.llm, from_character, from_world }
         }
-        None => ChatPlaybook { mode: row.mode.clone(), selected: row.playbook_id.clone(), active: None, values: vec![], turn: row.turn, llm: row.llm, from_character: false },
+        None => ChatPlaybook { mode: row.mode.clone(), selected: row.playbook_id.clone(), active: None, values: vec![], turn: row.turn, llm: row.llm, from_character: false, from_world: false },
     }
 }
 
@@ -1132,6 +1136,50 @@ mod tests {
         assert!(st.vars.contains_key("v00"), "the active playbook's values are never let go");
         assert!(!st.vars.contains_key("v01") && st.vars.contains_key("v59"), "the oldest unused go first");
         assert!(st.touched.keys().all(|k| st.vars.contains_key(k)));
+    }
+
+    #[test]
+    fn a_world_adds_a_fallback_playbook_a_persona_and_instructions_and_never_replaces() {
+        let c = db::open(std::path::Path::new(":memory:")).unwrap();
+        let o: Owner = Some("a".to_string());
+        let mut p1 = pb(BASIC); p1.id = "p1".into(); save(&c, &p1, &o).unwrap();
+        let mut p2 = pb(BASIC); p2.id = "p2".into(); save(&c, &p2, &o).unwrap();
+        db::save_persona(&c, &db::Persona { id: "kai".into(), name: "Kai".into(), description: "A traveller.".into(), style: String::new(), avatar: None, frame: None, created_at: 0 }, &o).unwrap();
+        let room = db::create_room(&c, &db::Room { id: 0, name: "Pier".into(), kind: "other".into(), description: String::new(), owner_kind: "self".into(), character_id: None, backdrop: String::new(), created_at: 0, music: String::new(), music_name: String::new(), model: String::new(), model_name: String::new(), model_scale: 1.0, model_rot: 0.0, model_y: 0.0, model_share: false, parent_id: None, links: vec![], deco: db::RoomDeco::default(), world_id: None, gallery: vec![] }, &o).unwrap();
+        let w = db::create_world(&c, "Harbour", "", &o).unwrap();
+        db::move_rooms_to_world(&c, &[room.id], Some(w.id), &o).unwrap();
+        db::set_world_setup(&c, w.id, "kai", "p1", "Keep it salty.", &[], &o).unwrap();
+        let w = db::get_world(&c, w.id, &o).unwrap().unwrap();
+        assert_eq!((w.persona.as_str(), w.playbook.as_str(), w.instructions.as_str()), ("kai", "p1", "Keep it salty."));
+        let ch = db::Character { id: "c1".into(), card: dorms_core::CharacterData { name: "C".into(), ..Default::default() }, media: None, outfits: vec![], gallery: vec![], gallery_mode: String::new(), outfit: Default::default(), ..serde_json::from_value(json!({"id":"c1","card":{"name":"C"}})).unwrap() };
+        db::save_character(&c, &ch, &o).unwrap();
+        let chat = db::create_chat(&c, None, "x", "dm", &["c1".to_string()], &o).unwrap();
+        assert!(effective(&c, &chat, &o).is_none(), "outside a world nothing is added");
+        db::set_chat_room(&c, chat.id, Some(room.id), &o).unwrap();
+        let chat = db::get_chat(&c, chat.id, &o).unwrap().unwrap();
+        assert_eq!(effective(&c, &chat, &o).unwrap().0.id, "p1", "the world's playbook is the fallback");
+        let mut ch2 = db::get_character(&c, "c1", &o).unwrap().unwrap(); ch2.playbook = "p2".into(); db::save_character(&c, &ch2, &o).unwrap();
+        assert_eq!(effective(&c, &chat, &o).unwrap().0.id, "p2", "the character's own playbook wins over the world's");
+        let mut row = chat_row(&c, chat.id); row.mode = "none".into(); save_row(&c, chat.id, &row).unwrap();
+        assert!(effective(&c, &chat, &o).is_none(), "the chat's choice of none is respected");
+        let mut s = db::get_settings(&c, &o);
+        crate::extras::apply_world_persona(&c, &o, &chat, &mut s);
+        assert_eq!(s.active_persona, "kai", "the world's persona stands in while the chat is in the world");
+        assert!(crate::extras::extra_system(&c, &chat, &o, "").contains("Keep it salty."), "the instructions reach the model");
+        let mut off = chat.clone(); off.world_persona_off = true; db::update_chat(&c, &off, &o).unwrap();
+        let off = db::get_chat(&c, chat.id, &o).unwrap().unwrap();
+        assert!(off.world_persona_off, "the choice is kept");
+        let mut s = db::get_settings(&c, &o);
+        crate::extras::apply_world_persona(&c, &o, &off, &mut s);
+        assert_eq!(s.active_persona, "", "switched off for this chat, the person's own stays");
+        let mut s = db::get_settings(&c, &o);
+        let plain = db::create_chat(&c, None, "y", "dm", &["c1".to_string()], &o).unwrap();
+        crate::extras::apply_world_persona(&c, &o, &plain, &mut s);
+        assert_eq!(s.active_persona, "", "a chat outside the world keeps the person's own");
+        db::save_prompt(&c, &db::SavedPrompt { id: "sp1".into(), title: "Salt".into(), body: "[OOC: salty]".into(), tag: String::new(), created_at: 0, updated_at: 0 }, &o).unwrap();
+        db::set_world_setup(&c, w.id, "kai", "p1", "Keep it salty.", &["sp1".to_string(), "sp1".to_string(), "not-mine".to_string()], &o).unwrap();
+        assert_eq!(db::get_world(&c, w.id, &o).unwrap().unwrap().prompts, vec!["sp1".to_string()], "the shelf keeps only the person's own prompts, once each");
+        db::set_world_setup(&c, w.id, "", "", "", &[], &o).unwrap();
     }
 
     #[test]

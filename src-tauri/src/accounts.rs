@@ -1323,13 +1323,17 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
         }
         // worlds first, so each room can be put in its own (their lorebooks are the new copies)
         let mut world_map: HashMap<i64, i64> = HashMap::new();
+        let mut world_shelves: Vec<(i64, Vec<String>)> = Vec::new();
         for w in &parsed.data.worlds {
             let name: String = w.name.chars().filter(|c| !c.is_control()).take(60).collect();
             if name.trim().is_empty() { continue; }
             let nw = db::create_world(&db, name.trim(), &w.description.chars().take(4000).collect::<String>(), &o).map_err(e)?;
             let books: Vec<String> = w.lorebooks.iter().filter_map(|b| book_map.get(b).cloned()).collect();
             db::update_world(&db, nw.id, &nw.name, &nw.description, &w.lore.replace('\r', "").chars().take(20_000).collect::<String>(), &books, &o).map_err(e)?;
+            let (wp, wb) = (persona_map.get(&w.persona).cloned().unwrap_or_default(), playbook_map.get(&w.playbook).cloned().unwrap_or_default());
+            db::set_world_setup(&db, nw.id, &wp, &wb, &w.instructions.replace('\r', "").trim().chars().take(4000).collect::<String>(), &[], &o).map_err(e)?;
             world_map.insert(w.id, nw.id);
+            world_shelves.push((nw.id, w.prompts.clone()));
         }
         // rooms (after the characters, since a room can belong to one) and the dorms' place in them
         let mut room_map: HashMap<i64, i64> = HashMap::new();
@@ -1492,9 +1496,18 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
         for n in &parsed.data.notes {
             db::save_note(&db, &db::Note { id: uid(), ..n.clone() }, &o).map_err(e)?;
         }
+        let mut prompt_map: HashMap<String, String> = HashMap::new();
         for pr in &parsed.data.prompts {
             if pr.title.trim().is_empty() || pr.body.trim().is_empty() { continue; }
-            db::save_prompt(&db, &db::SavedPrompt { id: uid(), title: pr.title.chars().take(100).collect(), tag: pr.tag.chars().take(30).collect(), ..pr.clone() }, &o).map_err(e)?;
+            let nid = uid();
+            db::save_prompt(&db, &db::SavedPrompt { id: nid.clone(), title: pr.title.chars().take(100).collect(), tag: pr.tag.chars().take(30).collect(), ..pr.clone() }, &o).map_err(e)?;
+            prompt_map.insert(pr.id.clone(), nid);
+        }
+        // a world's prompt shelf points at the copies that arrived
+        for (wid, old) in &world_shelves {
+            let ids: Vec<String> = old.iter().filter_map(|p| prompt_map.get(p).cloned()).collect();
+            if ids.is_empty() { continue; }
+            if let Some(w) = db::get_world(&db, *wid, &o).map_err(e)? { db::set_world_setup(&db, *wid, &w.persona, &w.playbook, &w.instructions, &ids, &o).map_err(e)?; }
         }
         for cp in &parsed.data.chat_playbooks {
             let Some(chat) = chat_map.get(&cp.chat_id) else { continue };

@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api, displayName, mediaUrl, musicUrl, onAutoStopped, onGen, tagline, type Character, type Chat, type ChatKind, type Message, type TurnMode,
-  galleryUrl, onNovel, type MediaKind, type NovelStatus,
+  galleryUrl, onNovel, type MediaKind, type NovelStatus, type Playbook,
 } from "../api";
 import Art from "../components/Art";
 import MicButton from "../components/MicButton";
@@ -13,6 +13,7 @@ import PhoneView from "../components/PhoneView";
 import MusicPlayer from "../components/MusicPlayer";
 import MusicField from "../components/MusicField";
 import { PROMPT_DRAG } from "../components/PromptsMenu";
+import { setWorldShelf } from "../lib/worldShelf";
 import { detectMood, pickGalleryItem } from "../lib/mood";
 import { useTextScale, setTextScaleAnchored, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
 import { TagChip, Wreathed, useAway, useCharDeco } from "../lib/deco";
@@ -77,6 +78,24 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
     if (moved) return moved;
     const d = dorms.find((x) => x.id === chat?.dorm_id); return d?.room_id != null ? rooms.find((r) => r.id === d.room_id) ?? null : null;
   }, [chat, dorms, rooms]);
+  /** What the world this chat is in brings along (shown as one line under the title). */
+  const chatWorld = useMemo(() => (room?.world_id != null ? worlds.find((w) => w.id === room.world_id) : undefined), [room, worlds]);
+  const [worldPbs, setWorldPbs] = useState<Playbook[]>([]);
+  useEffect(() => { if (chatWorld?.playbook) api.listPlaybooks().then(setWorldPbs).catch(() => {}); }, [chatWorld?.playbook]);
+  useEffect(() => {
+    setWorldShelf(chatWorld && chatWorld.prompts.length ? { world: chatWorld.name, ids: chatWorld.prompts } : null);
+    return () => setWorldShelf(null);
+  }, [chatWorld]);
+  const worldBrings = useMemo(() => {
+    if (!chatWorld) return "";
+    const bits: string[] = [];
+    const pe = personas.find((x) => x.id === chatWorld.persona); if (pe) bits.push(`you play ${pe.name}`);
+    const pb = worldPbs.find((x) => x.id === chatWorld.playbook); if (pb) bits.push(`playbook ${pb.name}`);
+    if (chatWorld.lorebooks.length) bits.push(`${chatWorld.lorebooks.length} lorebook${chatWorld.lorebooks.length === 1 ? "" : "s"}`);
+    if (chatWorld.instructions.trim()) bits.push("standing instructions");
+    if (chatWorld.prompts.length) bits.push(`${chatWorld.prompts.length} prompt${chatWorld.prompts.length === 1 ? "" : "s"} on the shelf`);
+    return bits.length ? `From this world (${chatWorld.name}): ${bits.join(", ")}` : "";
+  }, [chatWorld, personas, worldPbs]);
   // a moving (GIF) backdrop moves only here, in the chat in front, and only while the app is in front and animation is on
   const awayNow = useAway();
   const roomBg = roomBackground(room, !awayNow && settings.deco?.animate !== false);
@@ -377,13 +396,21 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
                   </select>
                 </>
               )}
-              {personas.length > 0 && (
+              {chatWorld && personas.some((x) => x.id === chatWorld.persona) && !chat.world_persona_off ? (
+                <span className="row" style={{ gap: 6 }}>
+                  <span className="chip" data-testid="world-persona-note" title="This world brings a persona, so it stands in for yours while you are in this world">Playing as {personas.find((x) => x.id === chatWorld.persona)?.name} (from this world)</span>
+                  <button className="btn sm" data-testid="world-persona-off" onClick={() => patchChat({ world_persona_off: true })} title="Use your own persona in this chat only">Use mine here</button>
+                </span>
+              ) : (<>
+                {chatWorld && chat.world_persona_off && personas.some((x) => x.id === chatWorld.persona) && <button className="btn sm" data-testid="world-persona-on" onClick={() => patchChat({ world_persona_off: false })} title="Go back to the world's persona in this chat">Use the world's</button>}
+                {personas.length > 0 && (
                 <select style={{ width: "auto" }} aria-label="Playing as" title="Who you are in this roleplay" value={settings.active_persona}
                   onChange={(e) => { void api.setActivePersona(e.target.value || null).then(refresh).catch((er) => toast(errText(er), "err")); }}>
                   <option value="">Playing as {settings.user_name}</option>
                   {personas.map((p) => <option key={p.id} value={p.id}>Playing as {p.name}</option>)}
                 </select>
-              )}
+                )}
+              </>)}
               <button className={`btn sm ${phone ? "primary" : ""}`} aria-pressed={phone} onClick={() => patchChat({ style: phone ? "chat" : "phone" })} title="Switch between the normal chat and a texting view">📱 Phone</button>
               <button className="btn sm" onClick={() => setModal({ type: "mech" })} title="Optional story layers: affection, status, and more">🧩 Mechanics</button>
               <button className="btn sm" onClick={() => setModal({ type: "playbook" })} title="The story's values and rules" data-testid="pb-open">🎲 Playbook</button>
@@ -391,6 +418,7 @@ export default function ChatPage({ initialChatId }: { initialChatId?: number }) 
               <button className="btn sm" onClick={async () => { if (window.confirm("Clear every message in this chat?")) { await api.clearChat(chat.id); setMsgs([]); } }}>Clear</button>
               <button className="btn sm danger" onClick={deleteChat}>Delete</button>
               </div>
+              {worldBrings && <div className="hint" data-testid="world-brings" style={{ flexBasis: "100%" }}>🌍 {worldBrings}</div>}
             </header>
 
             {phone ? (

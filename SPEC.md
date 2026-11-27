@@ -436,3 +436,16 @@ In the character editor's Avatar section, next to **Upload**: a **picture link**
 - **Clipboard**: a picture copied from the internet (Copy image) and pasted in the Avatar section is used the same way. Text pasted into the link box is just text.
 - **Privacy and safety**: a fetch starts only when the person presses Use link (nothing in a card or a chat can start one). A link to a device on the home network is allowed, because the person typed it; the result is only ever used as a picture.
 - **Tested**: Rust unit tests (file types from their first bytes, which addresses are accepted, file names from addresses, no panic on odd escapes) and the app's tests against a small local web server (a wrongly labelled picture, a redirect, a web page, a missing file, refused addresses, and a link going through the positioning window to become the avatar). Not tested: the clipboard paste with a real browser copy, and real sites (some sites refuse downloads that don't come from a browser).
+## Worlds that bring a persona, a playbook and instructions
+
+Built (draft). A world can carry four more things besides its description and lorebooks. The rule: a world adds and never replaces a character's own.
+
+- **Persona**: while a chat is in a room of the world, the world's persona stands in for the person's active persona (the name and description the characters are told). Everywhere else the person's own returns. Old messages keep the names they were written with.
+- **Playbook**: used only when the chat did not choose one and none of its characters comes with one. The chat's own choice (including "none") and the character's playbook come first.
+- **Standing instructions** (up to 4,000 characters): added to what the characters are told, with a note that a character's own instructions win if they disagree.
+- **Lorebooks** already merged with the character's (unchanged).
+- A persona or playbook that is not the person's own is ignored; backups and Wi-Fi transfers carry all three (the persona and playbook are pointed at the copies that arrive).
+- The chat shows one line, for example "From this world (Harbour): you play Kai, playbook Trust test, 2 lorebooks, standing instructions".
+- **Prompt shelf**: a world lists saved prompts (up to 30, the person's own, once each); while the chat page shows a chat in that world, the Prompts menu lists them first under "From <world>". Backups and transfers point the shelf at the copies that arrive.
+- **Per-chat switch**: "Use mine here" plays as the person's own persona in that one chat (and "Use the world's" undoes it). It is kept with the chat.
+- **Tested**: a unit test of the fallback order, the persona and the instructions reaching the model, and checks in the app's tests. Not tested with a real model.
