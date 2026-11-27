@@ -449,3 +449,24 @@ Built (draft). A world can carry four more things besides its description and lo
 - **Prompt shelf**: a world lists saved prompts (up to 30, the person's own, once each); while the chat page shows a chat in that world, the Prompts menu lists them first under "From <world>". Backups and transfers point the shelf at the copies that arrive.
 - **Per-chat switch**: "Use mine here" plays as the person's own persona in that one chat (and "Use the world's" undoes it). It is kept with the chat.
 - **Tested**: a unit test of the fallback order, the persona and the instructions reaching the model, and checks in the app's tests. Not tested with a real model.
+
+
+## System tray (keep the app running)
+
+Per profile, in Settings → Customization → System tray (desktop only; hidden on phones): `tray_minimize` and `tray_close`. `src-tauri/src/tray.rs`.
+
+- **The icon** (id `main`) exists while either choice is on. Its menu: Open Desktop College Dorms, then Tokenator, Dorms (chats), Characters, Gallery and Settings (each shows the window and tells the page to open that page through the `dorms://tray-nav` event; the page only accepts those five names), then Quit (stops the app, and with it a running engine and any novel being written). Left-click shows the window, or puts it away when it is already showing. The icon is made when a choice is turned on; if the system has no tray the call fails with a message and nothing is turned on.
+- **Minimize**: a resize event that finds the window minimized hides it, and the page (which keeps running while hidden) also asks, when it notices it is hidden, whether the window is minimized, so desktops that don't send the resize still work. **Close**: the close button hides the window instead of ending the app (and so also leaves a running novel going, so the "keep writing?" question isn't asked). Neither hides the window unless the icon is really there.
+- **Never stranded**: starting the app a second time (the single-instance hand-over) always shows the window again, as does the menu or the icon. A desktop that hides tray icons (for example GNOME without the AppIndicator extension) therefore can't leave the window unreachable; it is just less convenient.
+- **The novel tray** (hide while a novel is written) is unchanged and uses its own temporary icon, unless this icon is already there.
+- **Tested**: a unit test of the menu (items, ids, pages, nothing else opens a page), and the app's tests (the choices start off, turning off always works, turning on works or says "no tray", the card and its two choices, the choice saved, the window still there). **Not tested:** anything with a real tray: the menu, clicking the icon, minimizing, closing, or a second launch. That needs a real desktop.
+## Emoji and stickers from any picture
+
+`add_emoji` no longer refuses a picture for being big: `src-tauri/src/emojiconv.rs` converts it (off the main thread, because a big animation takes a moment).
+
+- **What is accepted**: PNG, JPG, WebP or GIF, recognised by the file's first bytes (not its name), up to 40 MB, at most 16,384 pixels a side and 100 million pixels (a "decompression bomb" is refused before anything is allocated for it). Anything else is refused with "Emoji and stickers are pictures". An animated PNG or WebP uses its first picture.
+- **Emoji**: shrunk to fit 128 × 128 (never enlarged, never stretched) and centred on a see-through square, so every emoji has the same shape; a picture that is already a square no bigger than 128 and under 512 KB is kept byte for byte. **Stickers** fit 320 × 320 and keep their shape (no square); the result is at most 3 MB.
+- **Animated GIFs** stay animated and keep their timing: each frame is shrunk as it is read (so a long GIF doesn't fill the memory), at most 400 frames are kept (evenly thinned when there are more, the waiting time of the dropped frames added to the one kept), and a wait under 20 ms is raised to 20 (browsers do that anyway). If the result is over the size limit, every second frame is dropped (down to a handful), then the picture is made 25% smaller at a time (down to 48 pixels); if it still doesn't fit, it is refused with a message. A GIF with one picture is a PNG.
+- **Output** is a PNG, or a GIF for an animation; the file name still gives the name.
+- **Not built**: animated PNG/WebP, and trimming a long animation to a part of it.
+- **Tested**: Rust unit tests (huge pictures, shapes, no stretching or enlarging, kept exactly when already fine, JPG, animated GIFs that fit and ones that are lightened, one-frame GIFs, stickers, things that are not pictures, a fake huge PNG) and the app's tests (a 2400 × 1800 noise PNG, a 40-frame GIF, a JPG, a wide sticker, junk refused, a small picture kept as it is). Not tested: very large GIFs on a phone (memory and time), and WebP with transparency in a real run.
