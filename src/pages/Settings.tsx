@@ -1,4 +1,5 @@
 import { sdel } from "../lib/scoped";
+import { useScrollSize } from "../lib/scrollSize";
 import { useLinkFiles } from "../lib/galleryLink";
 import { useTextScale, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
 import { DEFAULT_NAMES, WIDGETS, useWidgetNames, useWidgetPrefs } from "../components/SideWidgets";
@@ -429,6 +430,8 @@ function Look({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void
       </div>
       <h3 style={{ marginTop: 22 }}>Side bar extras</h3>
       <SideExtras />
+      <h3 style={{ marginTop: 22 }}>Scroll bars</h3>
+      <ScrollBarSetting />
       <h3 style={{ marginTop: 22 }}>Text size in chats</h3>
       <TextSizeSetting />
       <GalleryLinkSetting />
@@ -454,6 +457,19 @@ function SideExtras() {
       ))}
       <div className="row"><button className="btn sm" onClick={resetNames}>Use the usual names</button><span className="hint">You can also double-click a section's name in the side bar, or press its ✎, to rename it. Kept on this device.</span></div>
       <div className="hint">Recent chats, the characters you've marked as favorites (as many as you like), the ones you talk to most, and a picture frame that shows the character you talked to last (click it to go back to that chat).</div>
+    </div>
+  );
+}
+
+/** Wide scroll bars (easier to grab) or the thinner size they used to be. Either way the handle thickens when the pointer is near it. Kept for the profile. */
+function ScrollBarSetting() {
+  const [size, set] = useScrollSize();
+  return (
+    <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+      <label className="row" style={{ gap: 8, cursor: "pointer" }}>
+        <input type="checkbox" style={{ width: "auto", minHeight: 0 }} checked={size === "wide"} data-testid="scroll-wide" onChange={(e) => set(e.target.checked ? "wide" : "slim")} /> Wider scroll bars
+      </label>
+      <div className="hint">Makes the strip you click and drag easier to hit. Turn it off for the thinner size they used to have. Either way, a scroll bar's handle gets thicker and brighter when the pointer is on it or near it. Kept for your profile.</div>
     </div>
   );
 }

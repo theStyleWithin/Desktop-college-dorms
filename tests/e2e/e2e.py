@@ -1389,6 +1389,44 @@ try:
     sc_id_ = [p_["id"] for p_ in invoke("session_state")["profiles"] if p_["handle"] == "Scoped"]
     if sc_id_:
         invoke("sign_in", {"profileId": sc_id_[0], "passcode": None}); invoke("delete_profile", {"confirm": "scoped"}); invoke("sign_in", {"profileId": None}); reload_ui(); time.sleep(0.8)
+    # scroll bars: the handle thickens when the pointer is near it
+    nav("Settings"); time.sleep(1.0)
+    # (a scrolling box of our own, so the check does not depend on which pages happen to be long)
+    box_ = d.execute_script("""document.getElementById('sb-test')?.remove();
+      const b=document.createElement('div'); b.id='sb-test'; b.style.cssText='position:fixed;right:40px;top:80px;width:420px;height:260px;overflow:auto;z-index:99999;background:#222';
+      const t=document.createElement('div'); t.style.height='1200px'; t.textContent='scroll test'; b.appendChild(t); document.body.appendChild(b);
+      const r=b.getBoundingClientRect(); return {right:r.right,top:r.top,left:r.left,h:r.height};""")
+    check("there is a scrolling box to test with", box_ is not None)
+    if box_:
+        move_ = lambda x, y: d.execute_script("window.dispatchEvent(new MouseEvent('mousemove',{clientX:arguments[0],clientY:arguments[1],bubbles:true}))", x, y)
+        near_ = lambda: d.execute_script("return document.querySelectorAll('.sb-near').length")
+        move_(box_["right"] - 30, box_["top"] + box_["h"] / 2); time.sleep(0.4)
+        check("moving the pointer near a scroll bar marks it so its handle can thicken", near_() == 1)
+        move_(box_["left"] + 60, box_["top"] + box_["h"] / 2); time.sleep(0.4)
+        check("and moving away unmarks it", near_() == 0)
+        check("the scroll bar strip is wide enough to hit (about 16 px)", 14 <= d.execute_script("const e=document.getElementById('sb-test'); return e.offsetWidth - e.clientWidth") <= 24)
+    # the setting that brings back the thinner scroll bars
+    d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Customization').click()"); time.sleep(0.8)
+    width_ = lambda: d.execute_script("const e=document.getElementById('sb-test'); return e ? e.offsetWidth - e.clientWidth : -1")
+    check("Customization has a Wider scroll bars switch, on by default", d.execute_script("const c=document.querySelector('[data-testid=scroll-wide]');return !!c && c.checked") and d.execute_script("return document.documentElement.dataset.scrollbar") == "wide")
+    d.execute_script("document.querySelector('[data-testid=scroll-wide]').click()"); time.sleep(0.5)
+    check("turning it off brings back the thinner size (and it is remembered)", d.execute_script("return document.documentElement.dataset.scrollbar") == "slim" and d.execute_script("return localStorage.getItem(arguments[0])", sk("dorms.scrollbar.size")) == "slim" and 0 < width_() <= 12, str(width_()))
+    if box_:
+        move_(box_["right"] - 30, box_["top"] + box_["h"] / 2); time.sleep(0.4)
+        check("the handle still lights up near the pointer with the thinner bars", near_() >= 1)
+        move_(box_["left"] + 60, box_["top"] + box_["h"] / 2); time.sleep(0.3)
+    d.execute_script("document.querySelector('[data-testid=scroll-wide]').click()"); time.sleep(0.5)
+    check("turning it back on makes them wide again", d.execute_script("return document.documentElement.dataset.scrollbar") == "wide" and width_() >= 14)
+    # the choice belongs to the profile that made it
+    d.execute_script("document.querySelector('[data-testid=scroll-wide]').click()"); time.sleep(0.4)
+    invoke("create_profile", {"handle": "Slimmer", "displayName": None, "passcode": None}); reload_ui(); time.sleep(1.2)
+    check("another profile starts with the usual (wide) scroll bars", d.execute_script("return document.documentElement.dataset.scrollbar") == "wide")
+    invoke("sign_in", {"profileId": None}); reload_ui(); time.sleep(1.2)
+    check("the guest space kept its own choice (thin)", d.execute_script("return document.documentElement.dataset.scrollbar") == "slim")
+    d.execute_script("localStorage.removeItem(arguments[0])", sk("dorms.scrollbar.size")); reload_ui(); time.sleep(0.8)
+    sl_id_ = [p_["id"] for p_ in invoke("session_state")["profiles"] if p_["handle"] == "Slimmer"]
+    if sl_id_:
+        invoke("sign_in", {"profileId": sl_id_[0], "passcode": None}); invoke("delete_profile", {"confirm": "slimmer"}); invoke("sign_in", {"profileId": None}); reload_ui(); time.sleep(0.8)
     # Add to Steam (against the pretend Steam folder)
     sv_ = invoke("steam_status")
     check("Steam is found, with its accounts (named when Steam knows the name)", sv_["supported"] and sv_["found"] and sv_["running"] is False and [(u_["id"], u_["name"]) for u_ in sv_["users"]] == [("12345", "Bobby"), ("67890", "")] and not any(u_["added"] for u_ in sv_["users"]), str(sv_))
