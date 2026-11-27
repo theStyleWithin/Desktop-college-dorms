@@ -41,6 +41,9 @@ pub struct GalleryItem {
     /// Moods from `GALLERY_MOODS` this picture shows (empty: it fits no particular mood).
     #[serde(default)]
     pub moods: Vec<String>,
+    /// For a file the person linked instead of copying (a big video, say): where it is on their computer (then `file` is empty). "" for a copy kept by the app.
+    #[serde(default)]
+    pub link: String,
 }
 
 /// The moods a gallery picture can be tagged with (and the mood detector can pick).
@@ -2142,7 +2145,7 @@ mod tests {
         let c = fresh();
         let a = me("a");
         let mut x = ch("x", "X");
-        x.gallery = vec![GalleryItem { id: "g1".into(), file: "media/x-gal-1.png".into(), kind: "image".into(), moods: vec!["happy".into(), "laughing".into()] }];
+        x.gallery = vec![GalleryItem { id: "g1".into(), file: "media/x-gal-1.png".into(), kind: "image".into(), moods: vec!["happy".into(), "laughing".into()], link: String::new() }];
         x.gallery_mode = "mood".into();
         save_character(&c, &x, &a).unwrap();
         let got = get_character(&c, "x", &a).unwrap().unwrap();

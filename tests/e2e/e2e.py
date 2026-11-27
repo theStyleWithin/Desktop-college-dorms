@@ -2863,6 +2863,17 @@ try:
     check("and the new picture shows in the sub folder at once", "%d pictures" % (n_gal_ + 1) in d.execute_script("const b=document.querySelector('[data-gallery-sub=gallery]'); return b ? b.textContent : ''"))
     set_value("[data-testid=gallery-folder-link-input]", "http://127.0.0.1:18997/page"); d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-folder-link-use]").click(); time.sleep(1.5)
     check("a link to a web page adds nothing", len(invoke("get_character", {"id": art_["id"]}).get("gallery", [])) == n_gal_ + 1)
+    # a file can be linked in place instead of copied
+    clip_ = os.path.realpath(os.path.join(FIX, "clip.mp4"))
+    lk_ = invoke("link_gallery_file", {"id": art_["id"], "path": clip_})
+    li_ = [g_ for g_ in lk_["gallery"] if g_.get("link")]
+    check("a file can be linked without copying it", len(li_) == 1 and li_[0]["link"] == clip_ and li_[0]["kind"] == "video" and li_[0]["file"] == "", str(li_))
+    check("the screens are given the file's own place to read it from", [p_["path"] for p_ in lk_["gallery_paths"] if p_["id"] == li_[0]["id"]] == [clip_])
+    check("the same file can't be linked twice", "already" in (inv_err("link_gallery_file", {"id": art_["id"], "path": clip_}) or ""))
+    check("only pictures, GIFs and videos can be linked, and only real files", bool(inv_err("link_gallery_file", {"id": art_["id"], "path": os.path.join(FIX, "loose.json")})) and bool(inv_err("link_gallery_file", {"id": art_["id"], "path": FIX})) and bool(inv_err("link_gallery_file", {"id": art_["id"], "path": "/no/such/file.mp4"})) and bool(inv_err("link_gallery_file", {"id": art_["id"], "path": os.path.join(FIX, "sample.vrm")})))
+    check("a file inside the app's own data folder isn't linked", "data folder" in (inv_err("link_gallery_file", {"id": art_["id"], "path": os.path.join(DATA, "media", os.listdir(os.path.join(DATA, "media"))[0])}) or "") or bool(inv_err("link_gallery_file", {"id": art_["id"], "path": os.path.join(DATA, "media", os.listdir(os.path.join(DATA, "media"))[0])})))
+    after_rm_ = invoke("remove_gallery_item", {"id": art_["id"], "itemId": li_[0]["id"]})
+    check("removing a linked file from the gallery never deletes the file itself", os.path.isfile(clip_) and not any(g_.get("link") for g_ in after_rm_["gallery"]))
     d.execute_script("[...document.querySelectorAll('[data-testid=gallery-crumbs] button')].find(b=>b.textContent.includes('Gallery')).click()"); time.sleep(0.5)
     # folders from the computer: only to look at, nothing to do with any character
     vroot_ = os.path.join(WORK, "view-art")

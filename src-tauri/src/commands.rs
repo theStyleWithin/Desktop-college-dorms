@@ -7,7 +7,7 @@ use dorms_core::{CardError, CardSpec};
 use serde::Serialize;
 use serde_json::json;
 use tauri::ipc::{InvokeBody, Request, Response};
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 use tokio::sync::Notify;
 
 use crate::db::{self, ApiProfile, Character, Chat, Media, Message, Settings};
@@ -107,7 +107,12 @@ fn out(st: &AppState, c: Character) -> CharacterOut {
     let worn = c.outfit.as_ref().and_then(|id| c.outfits.iter().find(|o| &o.id == id));
     let media_path = worn.map(|o| abs(&o.file)).or_else(|| c.media.as_ref().map(|m| abs(&m.file)));
     let outfit_paths = c.outfits.iter().map(|o| OutfitOut { id: o.id.clone(), name: o.name.clone(), path: abs(&o.file) }).collect();
-    let gallery_paths = c.gallery.iter().map(|g| GalleryPath { id: g.id.clone(), path: abs(&g.file) }).collect();
+    let scope = st.app.asset_protocol_scope();
+    let gallery_paths = c.gallery.iter().map(|g| {
+        // a linked file is read from where it is (the web view may read just that file)
+        if !g.link.is_empty() { let _ = scope.allow_file(&g.link); return GalleryPath { id: g.id.clone(), path: g.link.clone() }; }
+        GalleryPath { id: g.id.clone(), path: abs(&g.file) }
+    }).collect();
     CharacterOut { c, media_path, outfit_paths, gallery_paths }
 }
 
@@ -240,7 +245,7 @@ pub fn delete_character(state: State<'_, Shared>, id: String) -> R<()> {
         for f in &c.outfits {
             let _ = std::fs::remove_file(state.data_dir.join(&f.file));
         }
-        for g in &c.gallery {
+        for g in c.gallery.iter().filter(|g| g.link.is_empty()) {
             let _ = std::fs::remove_file(state.data_dir.join(&g.file));
         }
     }
@@ -411,7 +416,31 @@ pub fn add_gallery_image(request: Request<'_>, state: State<'_, Shared>) -> R<Ch
     let item_id = uid();
     let rel = format!("media/{id}-gal-{item_id}.{ext}");
     std::fs::write(state.data_dir.join(&rel), bytes).map_err(e)?;
-    c.gallery.push(db::GalleryItem { id: item_id, file: rel, kind: kind.into(), moods: vec![] });
+    c.gallery.push(db::GalleryItem { id: item_id, file: rel, kind: kind.into(), moods: vec![], link: String::new() });
+    c.updated_at = db::now();
+    db::save_character(&db, &c, &o).map_err(e)?;
+    Ok(out(&state, c))
+}
+
+/// Adds a picture, GIF or video to the character's gallery by remembering where the file is on this computer, instead of making a copy (for a big video).
+/// The file is never changed, moved or deleted; if it is moved or deleted later, the gallery just can't show it. Desktop only.
+#[tauri::command]
+pub fn link_gallery_file(state: State<'_, Shared>, id: String, path: String) -> R<CharacterOut> {
+    if cfg!(target_os = "android") { return Err("A phone can't link to files in place; add the file itself.".into()); }
+    let real = std::path::Path::new(&path).canonicalize().map_err(|_| "I couldn't find that file.".to_string())?;
+    if !real.is_file() { return Err("That isn't a file.".into()); }
+    let real_s = { let t = real.to_string_lossy().into_owned(); t.strip_prefix(r"\\?\").map(str::to_string).unwrap_or(t) };
+    let name = real.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let (kind, _ext) = media_kind(&name)?;
+    if kind == "vrm" { return Err("A gallery holds pictures, GIFs and videos. (A 3D model is the character's main model.)".into()); }
+    if state.data_dir.canonicalize().map(|d| real.starts_with(d)).unwrap_or(false) || real.starts_with(&state.data_dir) { return Err("That file is inside the app's own data folder; add it as a file instead.".into()); }
+    let o = owner(&state)?;
+    let db = state.db.lock().unwrap();
+    let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Save the character first")?;
+    if c.gallery.len() >= MAX_GALLERY { return Err(format!("That's the most pictures one gallery can hold ({MAX_GALLERY}). Remove some first.")); }
+    if c.gallery.iter().any(|g| g.link == real_s) { return Err("That file is already in this gallery.".into()); }
+    let _ = state.app.asset_protocol_scope().allow_file(&real);
+    c.gallery.push(db::GalleryItem { id: uid(), file: String::new(), kind: kind.into(), moods: vec![], link: real_s });
     c.updated_at = db::now();
     db::save_character(&db, &c, &o).map_err(e)?;
     Ok(out(&state, c))
@@ -444,7 +473,7 @@ pub fn remove_gallery_item(state: State<'_, Shared>, id: String, item_id: String
     if let Some(i) = c.gallery.iter().position(|g| g.id == item_id) {
         let gone = c.gallery.remove(i);
         let _ = db::delete_gallery_comments_under(&db, &o, &format!("char:{id}:{}", gone.id));
-        let _ = std::fs::remove_file(state.data_dir.join(&gone.file));
+        if gone.link.is_empty() { let _ = std::fs::remove_file(state.data_dir.join(&gone.file)); }   // a linked file is the person's own: never deleted
         c.updated_at = db::now();
         db::save_character(&db, &c, &o).map_err(e)?;
     }

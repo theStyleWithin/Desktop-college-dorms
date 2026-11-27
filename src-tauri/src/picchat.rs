@@ -80,6 +80,9 @@ fn pic_file(st: &crate::AppState, o: &db::Owner, key: &str) -> R<PathBuf> {
     let rest = key.strip_prefix("char:").ok_or("That isn't a Gallery picture.")?;
     let (id, item) = rest.split_once(':').ok_or("That isn't a Gallery picture.")?;
     let c = db::get_character(&db, id, o).map_err(e)?.ok_or("That character isn't here any more.")?;
+    if item != "profile" {
+        if let Some(g) = c.gallery.iter().find(|g| g.id == item).filter(|g| !g.link.is_empty()) { return Ok(PathBuf::from(&g.link)); }   // a file linked in place
+    }
     let rel = if item == "profile" { c.media.as_ref().map(|m| m.file.clone()) } else { c.gallery.iter().find(|g| g.id == item).map(|g| g.file.clone()) };
     Ok(st.data_dir.join(rel.ok_or("That picture isn't here any more.")?))
 }

@@ -323,6 +323,7 @@ pub fn run() {
             commands::test_voice,
             commands::clear_media,
             commands::add_gallery_image,
+            commands::link_gallery_file,
             commands::set_gallery_moods,
             commands::remove_gallery_item,
             commands::set_gallery_mode,

@@ -63,7 +63,7 @@ export const DEFAULT_FRAME: Frame = { x: 0.5, y: 0.5, zoom: 1 };
 export interface Lorebook { id: string; name: string; book: CharacterBook; created_at: number; updated_at: number }
 export interface Folder { id: string; name: string; cover: string | null; frame: Frame | null; created_at: number; cover_path?: string | null; /** the folder this one sits inside (null = top level) */ parent?: string | null; /** a character whose picture stands in when the folder has none */ cover_char?: string | null }
 
-export interface GalleryItem { id: string; file: string; kind: "image" | "gif" | "video"; moods: string[] }
+export interface GalleryItem { id: string; file: string; kind: "image" | "gif" | "video"; moods: string[]; /** where a linked file is on this computer ("" for a copy kept by the app) */ link?: string }
 export type GalleryMode = "fixed" | "random" | "mood";
 
 export interface Character {
@@ -346,6 +346,7 @@ export const api = {
   /** Sends a WAV recording to the voice server from Settings → Voice and returns what was said. */
   transcribe: (wav: Uint8Array) => bin("transcribe_audio", wav, {}) as Promise<string>,
   testVoice: () => invoke<string>("test_voice"),
+  linkGalleryFile: (id: string, path: string) => invoke<Character>("link_gallery_file", { id, path }),
   async addGalleryImage(id: string, file: File): Promise<Character> {
     return bin("add_gallery_image", new Uint8Array(await file.arrayBuffer()), { "x-char-id": id, "x-file-name": enc(file.name) });
   },

@@ -752,6 +752,7 @@ pub(crate) fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, 
     for c in media_chars.iter_mut() {
         let mut keep = Vec::new();
         for (k, g) in c.gallery.clone().into_iter().enumerate() {
+            if !g.link.is_empty() { continue; }   // a file that was linked, not copied, stays where it is; it isn't in the backup
             let Ok(bytes) = std::fs::read(st.data_dir.join(&g.file)) else { continue }; // the file is gone; don't promise it
             let ext = std::path::Path::new(&g.file).extension().and_then(|x| x.to_str()).unwrap_or("png").to_lowercase();
             let base = format!("{}-gal-{k}.{ext}", c.id.chars().filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-').collect::<String>());
@@ -760,7 +761,7 @@ pub(crate) fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, 
                 zip.write_all(&bytes).map_err(e)?;
                 media_count += 1;
             }
-            keep.push(db::GalleryItem { id: g.id, file: format!("media/{base}"), kind: g.kind, moods: g.moods });
+            keep.push(db::GalleryItem { id: g.id, file: format!("media/{base}"), kind: g.kind, moods: g.moods, link: String::new() });
         }
         c.gallery = keep;
     }
@@ -1013,7 +1014,7 @@ fn remove_owner_data(st: &AppState, o: &Owner) -> R<()> {
     let (settings, media_files) = {
         let db = st.db.lock().unwrap();
         let settings = db::get_settings(&db, o);
-        let mut files: Vec<String> = db::list_characters(&db, o).map_err(e)?.into_iter().flat_map(|c| c.media.map(|m| m.file).into_iter().chain(c.outfits.into_iter().map(|x| x.file)).chain(c.gallery.into_iter().map(|g| g.file))).collect();
+        let mut files: Vec<String> = db::list_characters(&db, o).map_err(e)?.into_iter().flat_map(|c| c.media.map(|m| m.file).into_iter().chain(c.outfits.into_iter().map(|x| x.file)).chain(c.gallery.into_iter().filter(|g| g.link.is_empty()).map(|g| g.file))).collect();
         files.extend(db::list_folders(&db, o).map_err(e)?.into_iter().filter_map(|f| f.cover));
         files.extend(db::list_personas(&db, o).map_err(e)?.into_iter().filter_map(|p| p.avatar));
         if let Some(pid) = o { files.extend(db::get_profile_avatar(&db, pid).map(|(f, _)| f)); }
@@ -1291,7 +1292,7 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
                     let abs = st.data_dir.join(&rel);
                     std::fs::write(&abs, bytes).map_err(e)?;
                     written.push(abs);
-                    g.file = rel; g.kind = kind.into();
+                    g.file = rel; g.kind = kind.into(); g.link.clear();
                     g.moods.retain(|m| db::GALLERY_MOODS.contains(&m.as_str()));
                     gal.push(g);
                 }
