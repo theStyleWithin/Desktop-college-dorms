@@ -2950,6 +2950,14 @@ try:
     invoke("remove_view_folder", {"id": vf2_["id"]})
     check("taking a folder off the Gallery forgets it", invoke("list_view_folders") == [] and d.execute_script("return !document.querySelector('[data-gallery-disk-folder]')"))
     check("and nothing on the computer is touched", all(os.path.exists(os.path.join(vroot_, r_)) for r_ in ("a.png", "b.png", "sub/c.png", "notes.txt")))
+    # the setting that makes adding gallery files link them instead of copying
+    nav("Settings"); d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Customization').click()"); time.sleep(0.8)
+    check("Customization has a switch to link gallery files instead of copying them, off by default", d.execute_script("const c=document.querySelector('[data-testid=gallery-link-toggle]');return !!c && !c.checked"))
+    d.execute_script("document.querySelector('[data-testid=gallery-link-toggle]').click()"); time.sleep(0.4)
+    check("turning it on is remembered for this profile", d.execute_script("return localStorage.getItem('dorms.gallery.linkfiles.guest')") == "1" and d.execute_script("return document.querySelector('[data-testid=gallery-link-toggle]').checked"))
+    d.execute_script("document.querySelector('[data-testid=gallery-link-toggle]').click()"); time.sleep(0.4)
+    check("and turning it off clears it", d.execute_script("return localStorage.getItem('dorms.gallery.linkfiles.guest')") is None)
+    nav("Gallery"); time.sleep(1.0)
     # gallery folders made in the app, the Add folder menu, arranging folders and keeping everything in one place
     own_ = invoke("create_gallery_folder", {"name": "  Fan art  "})
     check("a gallery folder can be made in the app (named, trimmed, marked as the app's)", own_["name"] == "Fan art" and own_["own"] is True and own_["exists"] is True and os.path.isdir(own_["path"]) and os.path.join(DATA, "gallery-folders") in own_["path"], str(own_))

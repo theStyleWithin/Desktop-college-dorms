@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { open as pickFiles } from "@tauri-apps/plugin-dialog";
 import { useStore } from "../store";
+import { useLinkFiles } from "../lib/galleryLink";
 import { api, galleryUrl, type Character, type GalleryMode } from "../api";
 import { MOODS, detectMood } from "../lib/mood";
 import { errText } from "../lib/util";
@@ -20,6 +21,8 @@ const MODES: { id: GalleryMode; label: string; hint: string }[] = [
 export default function GalleryEditor({ char, onChanged }: { char: Character | null; onChanged: (c: Character) => void }) {
   const toast = useToast();
   const { info } = useStore();
+  const [linkOn] = useLinkFiles();
+  const canLink = info?.platform !== "android";
   const [busy, setBusy] = useState("");
   const [sample, setSample] = useState("");
   const file = useRef<HTMLInputElement>(null);
@@ -83,12 +86,14 @@ export default function GalleryEditor({ char, onChanged }: { char: Character | n
             </div>
           );
         })}
-        <button type="button" className="gal-add" disabled={!!busy} onClick={() => file.current?.click()}>＋<span>Add pictures</span></button>
+        <button type="button" className="gal-add" disabled={!!busy} data-testid="gallery-add" onClick={() => (linkOn && canLink ? void linkFiles() : file.current?.click())}>＋<span>{linkOn && canLink ? "Link pictures" : "Add pictures"}</span></button>
       </div>
-      {info?.platform !== "android" ? (
+      {canLink ? (
         <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center", margin: "6px 0" }}>
-          <button type="button" className="btn" disabled={!!busy} data-testid="gallery-link-file" onClick={() => void linkFiles()}>🔗 Link a file without copying…</button>
-          <small className="muted">For big videos: the app remembers where the file is and never copies, changes or deletes it. If you move it, it stops showing here. Linked files aren't in backups.</small>
+          {linkOn
+            ? <button type="button" className="btn" disabled={!!busy} data-testid="gallery-copy-file" onClick={() => file.current?.click()}>Copy a file in instead…</button>
+            : <button type="button" className="btn" disabled={!!busy} data-testid="gallery-link-file" onClick={() => void linkFiles()}>🔗 Link a file without copying…</button>}
+          <small className="muted">{linkOn ? "Adding files here links them (the app remembers where they are). " : "For big videos: the app remembers where the file is and never copies, changes or deletes it. "}If you move a linked file it stops showing here. Linked files aren't in backups. You can make linking the usual way in Settings → Customization.</small>
         </div>
       ) : null}
       <PictureLinkBox testid="gallery-link" busy={!!busy} onFile={(f) => addFiles([f])} placeholder="…or paste a picture link to add it (https://…)" />
