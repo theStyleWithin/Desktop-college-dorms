@@ -1,3 +1,4 @@
+import { sget, sset } from "../lib/scoped";
 import TokenatorHelper from "../components/TokenatorHelper";
 import { useEffect, useRef, useState } from "react";
 import { api, displayName, type Room, type RoomKind } from "../api";
@@ -30,14 +31,14 @@ export default function Rooms({ edit, world }: { edit?: number | "new"; world?: 
   const { rooms: allRooms, worlds, dorms, characters, go, refresh } = useStore();
   const toast = useToast();
   const [starting, setStarting] = useState<Room | null>(null);
-  const [view, setView] = useState<"cards" | "map">(() => { try { return localStorage.getItem("dorms.rooms.view") === "map" ? "map" : "cards"; } catch { return "cards"; } });
+  const [view, setView] = useState<"cards" | "map">(() => { try { return sget("dorms.rooms.view") === "map" ? "map" : "cards"; } catch { return "cards"; } });
   // the pathways editor keeps changes as a draft until Save pathways: leaving it asks first
   const [mapDirty, setMapDirty] = useState(false);
   const leave = (fn: () => void) => { if (!mapDirty || window.confirm("You have changes in the pathways editor that aren't saved. Leave without saving them?")) fn(); };
-  const pickView = (v: "cards" | "map") => leave(() => { setView(v); try { localStorage.setItem("dorms.rooms.view", v); } catch { /* storage unavailable */ } });
+  const pickView = (v: "cards" | "map") => leave(() => { setView(v); try { sset("dorms.rooms.view", v); } catch { /* storage unavailable */ } });
   // which world is being looked at (kept for next time), and so which rooms are shown
-  const [sel, setSel] = useState<WorldSel>(() => { if (world != null) return world; try { const v = localStorage.getItem("dorms.rooms.world"); return v === "none" ? "none" : v && /^\d+$/.test(v) ? Number(v) : "all"; } catch { return "all"; } });
-  const pickWorld = (w: WorldSel) => leave(() => { setSel(w); try { localStorage.setItem("dorms.rooms.world", String(w)); } catch { /* storage unavailable */ } });
+  const [sel, setSel] = useState<WorldSel>(() => { if (world != null) return world; try { const v = sget("dorms.rooms.world"); return v === "none" ? "none" : v && /^\d+$/.test(v) ? Number(v) : "all"; } catch { return "all"; } });
+  const pickWorld = (w: WorldSel) => leave(() => { setSel(w); try { sset("dorms.rooms.world", String(w)); } catch { /* storage unavailable */ } });
   const shown: WorldSel = typeof sel === "number" && !worlds.some((w) => w.id === sel) ? "all" : sel;
   const rooms = allRooms.filter((r) => shown === "all" || (shown === "none" ? r.world_id == null : r.world_id === shown));
   if (edit !== undefined) return <RoomForm id={edit === "new" ? null : edit} world={world ?? null} />;

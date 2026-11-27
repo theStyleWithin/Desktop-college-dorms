@@ -1,3 +1,4 @@
+import { sget, sset } from "./scoped";
 import * as THREE from "three";
 
 /**
@@ -77,8 +78,8 @@ export function setAccessoryVisible(a: Accessory, visible: boolean) {
 
 const storeKey = (model: string) => `dorms.vrm.hidden:${model.replace(/[?#].*$/, "")}`;
 export function loadHidden(model: string): Set<string> {
-  try { return new Set(JSON.parse(localStorage.getItem(storeKey(model)) ?? "[]") as string[]); } catch { return new Set(); }
+  try { return new Set(JSON.parse(sget(storeKey(model)) ?? "[]") as string[]); } catch { return new Set(); }
 }
 export function saveHidden(model: string, hidden: Set<string>) {
-  try { localStorage.setItem(storeKey(model), JSON.stringify([...hidden])); } catch { /* storage unavailable */ }
+  try { sset(storeKey(model), JSON.stringify([...hidden])); } catch { /* storage unavailable */ }
 }

@@ -809,10 +809,10 @@ try:
     invoke("delete_shelf_folder", {"id": fb["id"]})
     sh = invoke("get_shelf", {"kind": "playbooks"})
     check("deleting a folder moves what is inside up, and deletes nothing", sh["items"].get(pbs["id"]) == fa["id"] and any(x["id"] == pbs["id"] for x in invoke("list_playbooks")), str(sh))
-    d.execute_script("localStorage.setItem('dorms.rooms.view','cards')"); reload_ui(); nav("Lorebooks"); time.sleep(1.2)
+    d.execute_script("localStorage.setItem('dorms.rooms.view.guest','cards')"); reload_ui(); nav("Lorebooks"); time.sleep(1.2)
     check("the Lorebooks list shows the folder with the book inside it", d.execute_script("const f=document.querySelector('[data-shelf=lorebooks] [data-shelf-folder=\"World books\"]');return !!f && !!f.querySelector('[data-shelf-item]')"), page_text()[:200])
     invoke("delete_shelf_folder", {"id": fl["id"]})
-    d.execute_script("localStorage.setItem('dorms.rooms.view','cards')"); reload_ui(); nav("Playbooks"); time.sleep(1.2)
+    d.execute_script("localStorage.setItem('dorms.rooms.view.guest','cards')"); reload_ui(); nav("Playbooks"); time.sleep(1.2)
     check("the Playbooks page lists playbooks and the starters", d.execute_script("return !!document.querySelector('[data-testid=playbooks-page]') && !!document.querySelector('[data-pb=\"%s\"]') && document.querySelectorAll('[data-starter]').length===4" % pbs["id"]), page_text()[:300])
     d.execute_script("document.querySelector('[data-testid=pb-new]').click()"); time.sleep(0.8)
     set_value("input[aria-label='Playbook name']", "Built in the UI")
@@ -854,7 +854,7 @@ try:
     check("it writes the chapters that fit and finishes", "finished" in ms2_[-1]["swipes"][0] and len([m for m in ms2_ if m["role"] == "character" and m["swipes"][0].startswith("Chapter")]) == 6, str([(m["role"], m["swipes"][0][:50]) for m in ms2_[-4:]]))
     check("with the allowance spent, a new novel is refused with the reason", "used up" in (inv_err("novel_start", {"chatId": nchat["id"], "plot": "", "tone": "", "pov": "", "chapters": 2, "chapterTokens": 800, "resume": False}) or ""))
     st = invoke("get_settings"); st["novel_daily_limit"] = 0; invoke("save_settings", {"settings": st})
-    d.execute_script("localStorage.setItem('dorms.rooms.view','cards'); localStorage.removeItem('dorms.rooms.world')")
+    d.execute_script("localStorage.setItem('dorms.rooms.view.guest','cards'); localStorage.removeItem('dorms.rooms.world.guest')")
     reload_ui(); nav("Rooms"); time.sleep(1.2)
     check("the Rooms page has a bar of worlds", d.execute_script("return !!document.querySelector('[data-testid=worlds-bar]') && !!document.querySelector('[data-testid=world-chip-%d]')" % w1["id"]))
     d.execute_script("document.querySelector('[data-testid=world-chip-%d]').click()" % w1["id"]); time.sleep(0.8)
@@ -895,7 +895,7 @@ try:
     check("deleting a world keeps its rooms", all(w["id"] != w3_[0]["id"] for w in invoke("list_worlds")) and any(r["name"] == "Mondstadt" for r in invoke("list_rooms")))
     for nm_ in ("Mondstadt", "Home sweet home", "Windrise", "Statue", "Dragon cave"): invoke("delete_room", {"id": [r for r in invoke("list_rooms") if r["name"] == nm_][0]["id"]})
     invoke("delete_world", {"id": w1["id"]}); invoke("delete_world", {"id": w2["id"]}); invoke("delete_lorebook", {"id": wlb["id"]})
-    d.execute_script("localStorage.setItem('dorms.rooms.view','map')")
+    d.execute_script("localStorage.setItem('dorms.rooms.view.guest','map')")
 
     pack_json = json.dumps({"name": "Heartbeat", "description": "Two numbers.", "entries": [
         {"id": "e1", "name": "Stages", "content": "HEARTBEAT-LORE: read affection like this.", "alwaysSend": True},
@@ -1354,6 +1354,30 @@ try:
     d.execute_script("document.querySelector('[data-testid=me-row]').scrollIntoView()"); ctx_me(); d.execute_script("document.querySelector('[data-testid=pm-switch]').click()"); time.sleep(1.2)
     check("Switch accounts goes back to choosing an account", "Welcome" in page_text() or d.execute_script("return !document.querySelector('[data-testid=me-row]')"), page_text()[:200])
     invoke("sign_in", {"profileId": None}); reload_ui(); time.sleep(0.8)
+    # the side bar's section names belong to the profile that set them (each profile, and the guest space, has its own)
+    def side_title(sec): return d.execute_script("const b=document.querySelector('[data-testid=side-%s] .sw-title');return b?b.textContent.replace(/[0-9]+$/,'').replace(/^[^A-Za-z]+/,'').trim():null" % sec)
+    def side_rename(sec, name):
+        d.execute_script("document.querySelector('[data-testid=side-%s-rename]').click()" % sec); time.sleep(0.3)
+        set_value("[data-testid=side-%s-name]" % sec, name); d.execute_script("document.querySelector('[data-testid=side-%s-name]').blur()" % sec); time.sleep(0.4)
+    nav("Characters"); time.sleep(1.0)
+    check("the side bar has its Recent chats section", side_title("recent") == "Recent chats", str(side_title("recent")))
+    side_rename("recent", "Guest picks")
+    check("renaming a section changes its title", side_title("recent") == "Guest picks", str(side_title("recent")))
+    invoke("create_profile", {"handle": "Scoped", "displayName": None, "passcode": None}); reload_ui(); nav("Characters"); time.sleep(1.2)
+    check("another profile does not get the guest's names", side_title("recent") == "Recent chats", str(side_title("recent")))
+    side_rename("recent", "Scoped picks")
+    check("and can name its own", side_title("recent") == "Scoped picks")
+    # a chat with Tokenator is private to the profile that had it
+    d.execute_script("localStorage.setItem('dorms.tokenator.chat.guest', JSON.stringify([{role:'user',text:'guest secret plan'}]))")
+    reload_ui(); nav("Tokenator"); time.sleep(1.0)
+    check("another profile can't see the guest's chat with Tokenator", "guest secret plan" not in page_text())
+    d.execute_script("localStorage.removeItem('dorms.tokenator.chat.guest')")
+    invoke("sign_in", {"profileId": None}); reload_ui(); nav("Characters"); time.sleep(1.2)
+    check("the guest space keeps its own name", side_title("recent") == "Guest picks", str(side_title("recent")))
+    side_rename("recent", "")
+    sc_id_ = [p_["id"] for p_ in invoke("session_state")["profiles"] if p_["handle"] == "Scoped"]
+    if sc_id_:
+        invoke("sign_in", {"profileId": sc_id_[0], "passcode": None}); invoke("delete_profile", {"confirm": "scoped"}); invoke("sign_in", {"profileId": None}); reload_ui(); time.sleep(0.8)
     # hiding an account: off the start screen, into Settings' list of hidden accounts, with a prompt to make another or use the guest space
     invoke("create_profile", {"handle": "Hider", "displayName": None, "passcode": None}); reload_ui(); time.sleep(1.0)
     ctx_me()
@@ -1494,7 +1518,7 @@ try:
     tchat([um("hi")], "Talk like a pirate."); sys5_ = seen["body"]["messages"][0]["content"]
     check("a personality changes how it talks, and the rules still come first", "<personality>" in sys5_ and "Talk like a pirate." in sys5_ and "only HOW you talk" in sys5_ and sys5_.index("Rules you always follow") < sys5_.index("<personality>"))
     check("an empty chat is refused", "first" in str(inv_err("tokenator_chat", {"messages": [], "personality": None})).lower())
-    d.execute_script("localStorage.removeItem('dorms.tokenator.chat');localStorage.removeItem('dorms.tokenator.personality');localStorage.removeItem('dorms.tokenator.sees.fake-model')")
+    d.execute_script("localStorage.removeItem('dorms.tokenator.chat.guest');localStorage.removeItem('dorms.tokenator.personality.guest');localStorage.removeItem('dorms.tokenator.sees.fake-model')")
     reload_ui(); nav("Tokenator"); time.sleep(1.0)
     check("the Tokenator section opens a chat from the side bar", d.execute_script("return !!document.querySelector('[data-testid=tokenator-chat]')"))
     check("it says which model is in use, and offers a switch for pictures when it cannot tell", "fake-model" in d.execute_script("return document.querySelector('[data-testid=tchat-model]').innerText") and d.execute_script("return !!document.querySelector('[data-testid=tchat-sees]')"))
@@ -1523,7 +1547,7 @@ try:
     seen["pieces"] = ["Hello."]
     send_("hello again")
     check("and 'back to normal' takes it away", "<personality>" not in seen["body"]["messages"][0]["content"])
-    d.execute_script("localStorage.removeItem('dorms.tokenator.chat');localStorage.removeItem('dorms.tokenator.personality');localStorage.removeItem('dorms.tokenator.sees.fake-model')")
+    d.execute_script("localStorage.removeItem('dorms.tokenator.chat.guest');localStorage.removeItem('dorms.tokenator.personality.guest');localStorage.removeItem('dorms.tokenator.sees.fake-model')")
     seen["pieces"] = None
     pc_ = invoke("phone_check")
     check("the phone check works on any device and, away from a phone, says it is not one", pc_["is_android"] is False and pc_["ram_gb"] > 0 and len(pc_["options"]) == 3 and isinstance(pc_["summary"], str) and pc_["summary"] != "")
@@ -1710,7 +1734,7 @@ try:
     check("a room made without any decorations has none", invoke("create_room", {"room": dict(room_in, name="Plain room", owner_kind="self", character_id=None, id=0, created_at=0)})["deco"]["tag"] == "")
     rd_ = invoke("update_room", {"room": dict(rd_, deco=dict(rd_["deco"], plate="tide"))})
     check("a room's look can be changed", rd_["deco"]["plate"] == "tide" and rd_["deco"]["wreath"] == "lotus")
-    d.execute_script("localStorage.setItem('dorms.rooms.view','cards')")
+    d.execute_script("localStorage.setItem('dorms.rooms.view.guest','cards')")
     reload_ui(); nav("Rooms"); time.sleep(1.2)
     check("the room's card shows its tag, its wreath and its moving background", d.execute_script("const t=[...document.querySelectorAll('[data-testid=room-title]')].find(x=>x.textContent.includes('Deco room'));return !!t && t.dataset.plate==='tide' && !!t.querySelector('.srv-tag') && t.querySelector('.srv-tag').textContent.includes('INN') && !!t.querySelector('.dw[data-wreath=lotus]')") and d.execute_script("return !!document.querySelector('.room-art .deco-bg[data-bg=boba]')"))
     rdorm_ = invoke("create_dorm", {"name": "Deco dorm", "roomId": rd_["id"]}); rchat_ = invoke("create_chat", {"dormId": rdorm_["id"], "name": "in the deco room", "kind": "dm", "characterIds": [dcid]})
@@ -1921,12 +1945,12 @@ try:
     nav("Settings"); time.sleep(0.6); click_text("button[role=tab]", "Customization"); time.sleep(0.6)
     click_text("button", "Reset the side bar order"); time.sleep(0.5)
     check("the order can be reset from Settings, Appearance", labels() == order0, str(labels()))
-    d.execute_script("localStorage.setItem('dorms.nav.order', JSON.stringify(['settings','home','lorebooks','notes','rooms','chat','decor','library','playbooks']))"); reload_ui(); time.sleep(0.8)
+    d.execute_script("localStorage.setItem('dorms.nav.order.guest', JSON.stringify(['settings','home','lorebooks','notes','rooms','chat','decor','library','playbooks']))"); reload_ui(); time.sleep(0.8)
     check("for someone who already arranged their side bar, Tokenator appears at the top, the Gallery right after Characters, and their order is kept", labels()[0] == "Tokenator" and labels()[1:] == ["Settings", "Home", "Lorebooks", "Notes", "Rooms", "Dorms", "Decorations", "Characters", "Gallery", "Playbooks"], str(labels()))
     d.execute_script(drag_nav, "tokenator", "home", True); time.sleep(0.5)
     reload_ui(); time.sleep(0.8)
     check("Tokenator can be moved like any other item, and the place is remembered", labels()[:3] == ["Settings", "Home", "Tokenator"], str(labels()))
-    d.execute_script("localStorage.removeItem('dorms.nav.order')"); reload_ui(); time.sleep(0.6)
+    d.execute_script("localStorage.removeItem('dorms.nav.order.guest')"); reload_ui(); time.sleep(0.6)
 
     # -- side bar extras: recent chats, favorites (as many as you like), most used, and a picture frame
     all_chars = invoke("list_characters")
