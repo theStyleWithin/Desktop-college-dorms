@@ -40,6 +40,7 @@ jobs:
         run: |
           node tests/deco-check.mjs
           node tests/deco-pack-check.mjs
+          bash tests/packaging-handoff-check.sh
       - run: cargo test --workspace
 
   # --------------------------------------------------------------------- linux
@@ -320,10 +321,22 @@ jobs:
       # the checkout comes first: it clears the folder, so it must not come after the packages are downloaded
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: docs
+          sparse-checkout: |
+            docs
+            packaging
+            scripts
+            LICENSE
       - uses: actions/download-artifact@v4
         with: { path: artifacts, pattern: "*-packages", merge-multiple: true }
       - run: ls -la artifacts
+      # The owner does not submit to Flathub or the AUR; this makes a bundle (manifest, PKGBUILDs, instructions) with this release's version and
+      # checksum filled in, published beside the release for whoever wants to. If it fails, the release itself still goes out.
+      - name: Hand-off bundle for Flathub and the AUR
+        continue-on-error: true
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          scripts/make-packaging-handoff.sh "$VERSION" "artifacts/desktop-college-dorms-${VERSION}-linux-x86_64.tar.gz.sha256" artifacts
+          ls -la artifacts
       - name: Use the release notes written for this version, if there are some
         id: notes
         run: |

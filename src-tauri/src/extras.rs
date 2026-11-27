@@ -107,7 +107,7 @@ fn room_out(st: &AppState, room: Room) -> RoomOut {
     let backdrop_path = room.backdrop.strip_prefix("file:").map(|f| st.data_dir.join(f).to_string_lossy().to_string());
     let music_path = Some(room.music.as_str()).filter(|m| !m.is_empty()).map(|m| st.data_dir.join(m).to_string_lossy().to_string());
     let model_path = Some(room.model.as_str()).filter(|m| !m.is_empty()).map(|m| st.data_dir.join(m).to_string_lossy().to_string());
-    let gallery_paths = room.gallery.iter().map(|p| crate::commands::GalleryPath { id: p.id.clone(), path: st.data_dir.join(&p.file).to_string_lossy().to_string() }).collect();
+    let gallery_paths = room.gallery.iter().map(|p| crate::commands::GalleryPath { id: p.id.clone(), path: st.data_dir.join(&p.file).to_string_lossy().to_string(), missing: false }).collect();
     let backdrop_still_path = room.backdrop.strip_prefix("file:").and_then(|f| ensure_still(&st.data_dir, f));
     RoomOut { room, backdrop_path, backdrop_still_path, music_path, model_path, gallery_paths }
 }

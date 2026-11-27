@@ -10,8 +10,9 @@ What the project builds itself (CI, see `.github/workflows/build.yml`) and what 
 | Windows installer (NSIS, per-user, no admin) | yes | same |
 | Windows portable single `.exe` | yes | same |
 | Android APK (arm64 + armv7) | yes | same |
-| **Flatpak** | no, hand-off | `packaging/flatpak/` |
-| **AUR** (`-bin` and `-git`) | no, hand-off | `packaging/aur/` |
+| **Hand-off bundle** (`desktop-college-dorms-packaging-<version>.tar.gz`) | yes, on every release | GitHub release: the Flatpak manifest and the AUR packages with that release's version and checksum filled in, plus `HANDOFF.md` with the steps |
+| **Flatpak** | no, hand-off | `packaging/flatpak/` (template), the filled-in copy is in the bundle |
+| **AUR** (`-bin` and `-git`) | no, hand-off | `packaging/aur/` (templates), the filled-in copies are in the bundle |
 
 ## Hand-off packages
 
@@ -19,13 +20,19 @@ The Flatpak manifest and the two AUR `PKGBUILD`s are ready for someone else to t
 The project owner does not want to maintain store submissions and **has given full consent for anyone to package and
 publish this app** (it is MIT licensed, see `LICENSE`). You do not need to ask.
 
+**Take the bundle from the release, not these files.** Every release publishes `desktop-college-dorms-packaging-<version>.tar.gz`
+(made by `scripts/make-packaging-handoff.sh` in the release workflow): the Flatpak manifest and the AUR packages with that release's
+version and checksum already filled in, the AUR `-bin` `.SRCINFO`, and `HANDOFF.md`, which walks whoever submits through trying the
+package and sending it to Flathub / the AUR. The copies in this folder are templates (their version and checksum are placeholders).
+Everything is made from the release's Linux tarball, which holds the program, the two bundled engines, the license, the desktop entry,
+the metadata and the icons, so a package needs nothing else.
+
 These files have **not been built or tested by the author** (no Flatpak runtime or Arch environment was available).
 Expect small fixes. Things to check:
 
-- **Flatpak**: fill in `sha256` and `commit` after a release exists; confirm the `org.gnome.Platform` runtime version
-  is still current; add screenshots to the metainfo; review the OARS content rating.
-- **AUR `-bin`**: replace `sha256sums=('SKIP' 'SKIP')` using the `.sha256` published beside the release tarball; generate
-  `.SRCINFO` with `makepkg --printsrcinfo > .SRCINFO`.
+- **Flatpak**: confirm the `org.gnome.Platform` runtime version is still current; add screenshots to the metainfo; review the OARS content rating
+  and the app id with Flathub.
+- **AUR `-bin`**: ready as it comes in the bundle (the `.SRCINFO` is made from the `PKGBUILD`); run `makepkg --printsrcinfo > .SRCINFO` again if you change it.
 - **AUR `-git`**: builds the engine with Vulkan; `shaderc`, `vulkan-headers` and `vulkan-icd-loader` are build deps.
   If you'd rather depend on the system `llama.cpp`, the app falls back to `llama-server` on `$PATH`.
 
