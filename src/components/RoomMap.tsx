@@ -1,3 +1,4 @@
+import { sget, sset } from "../lib/scoped";
 import { useEffect, useRef, useState } from "react";
 import { api, type Room } from "../api";
 import { MAX_EXITS, kindLabel, roomBackground } from "../lib/rooms";
@@ -10,8 +11,8 @@ const KEY = "dorms.rooms.map";
 const W = 240, H = 170;
 type Pos = { x: number; y: number };
 
-const loadPos = (): Record<string, Pos> => { try { return JSON.parse(localStorage.getItem(KEY) || "{}") as Record<string, Pos>; } catch { return {}; } };
-const savePos = (p: Record<string, Pos>) => { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* storage unavailable */ } };
+const loadPos = (): Record<string, Pos> => { try { return JSON.parse(sget(KEY) || "{}") as Record<string, Pos>; } catch { return {}; } };
+const savePos = (p: Record<string, Pos>) => { try { sset(KEY, JSON.stringify(p)); } catch { /* storage unavailable */ } };
 
 /**
  * The pathways editor: the rooms as cards on a canvas. Each room is a card with a round handle: drag from the handle onto another room to draw an exit

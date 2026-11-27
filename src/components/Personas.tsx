@@ -5,6 +5,7 @@ import { ProfileAvatar } from "./ProfileForms";
 import { Modal, useToast } from "./ui";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
+import SendToDevice from "./SendToDevice";
 
 const PIC_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp";
 
@@ -119,6 +120,7 @@ export function PersonasTab() {
               <div className="row" style={{ marginTop: 10 }}>
                 {on ? <span className="chip on">Active</span> : <button className="btn sm" onClick={() => void activate(p.id)}>Use this persona</button>}
                 <button className="btn sm" onClick={() => setEditing(p)}>Edit</button>
+                <SendToDevice item={{ kind: "persona", id: p.id }} name={p.name} className="btn ghost sm" />
                 <button className="btn ghost sm" onClick={() => void remove(p)} aria-label={`Delete ${p.name}`}>🗑</button>
               </div>
             </div>

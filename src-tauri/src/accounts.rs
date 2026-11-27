@@ -667,7 +667,7 @@ pub struct ExportInfo {
 }
 
 pub(crate) fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, String)> {
-    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji, worlds) = {
+    let (characters, dorms, chats, messages, settings, profile, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, profile_avatar, char_deco, emoji, mut worlds) = {
         let db = st.db.lock().unwrap();
         let characters = db::list_characters(&db, o).map_err(e)?;
         let dorms = db::list_dorms(&db, o).map_err(e)?;
@@ -877,6 +877,22 @@ pub(crate) fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, 
             }
         }
     }
+    // a world's cover picture travels with it
+    for w in worlds.iter_mut() {
+        if w.cover.is_empty() { continue; }
+        let base = std::path::Path::new(&w.cover).file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+        match std::fs::read(st.data_dir.join(&w.cover)) {
+            Ok(bytes) if safe_media_name(&base) => {
+                if seen.insert(base.clone()) {
+                    zip.start_file(format!("media/{base}"), stored).map_err(e)?;
+                    zip.write_all(&bytes).map_err(e)?;
+                    media_count += 1;
+                }
+                w.cover = format!("media/{base}");
+            }
+            _ => w.cover.clear(),
+        }
+    }
     let counts = Counts { characters: characters.len(), dorms: dorms.len(), chats: chats.len(), messages: messages.len(), media: media_count };
     let manifest = Manifest {
         format: EXPORT_FORMAT.into(),
@@ -976,6 +992,46 @@ pub fn save_export(state: State<'_, Shared>, token: String, path: String) -> R<S
     Ok(SaveOut { size: back.len(), path })
 }
 
+/// The address Android's save dialog gives for the file the person chose: a `content://` address, nothing else.
+pub fn check_content_uri(uri: &str) -> R<reqwest::Url> {
+    let u = reqwest::Url::parse(uri.trim()).map_err(|_| "That isn't a place the file can be saved to.".to_string())?;
+    if u.scheme() != "content" { return Err("This location needs the other save method.".into()); }
+    Ok(u)
+}
+
+/// Android: write the export to the `content://` address the save dialog gave, from here, then read it back from that address and compare every byte.
+/// (The web view used to carry the file there, but a big file between the web view and the app is not reliable on Android: see the profile import, which brings
+/// a file in small pieces for the same reason. Here nothing but the address crosses.)
+#[tauri::command]
+pub fn save_export_to_uri(state: State<'_, Shared>, token: String, uri: String) -> R<SaveOut> {
+    use std::io::{Read, Write};
+    use tauri_plugin_fs::{FilePath, FsExt, OpenOptions};
+    let url = check_content_uri(&uri)?;
+    let mut g = state.pending_export.lock().unwrap();
+    let p = match g.as_mut() {
+        Some(p) if p.token == token => p,
+        _ => return Err("That export is no longer available. Start again.".into()),
+    };
+    let fs = state.app.fs();
+    let mut w = OpenOptions::new();
+    w.write(true).truncate(true).create(true);
+    let mut f = fs.open(FilePath::Url(url.clone()), w).map_err(|err| format!("Could not open the file to save into: {err}"))?;
+    f.write_all(&p.bytes).and_then(|_| f.flush()).map_err(|err| format!("Could not save the file: {err}"))?;
+    let _ = f.sync_all();
+    drop(f);
+    let mut r = OpenOptions::new();
+    r.read(true);
+    let mut back = Vec::with_capacity(p.bytes.len());
+    fs.open(FilePath::Url(url), r)
+        .and_then(|mut f| f.read_to_end(&mut back))
+        .map_err(|err| format!("The file was written, but it could not be read back to check it ({err}), so it isn't counted as saved. Try another location."))?;
+    if Sha256::digest(&back) != Sha256::digest(&p.bytes) {
+        return Err(format!("The saved file didn't match what was meant to be saved ({} bytes were found, {} expected), so it isn't counted as saved. Try another location.", back.len(), p.bytes.len()));
+    }
+    p.saved = true;
+    Ok(SaveOut { size: back.len(), path: uri })
+}
+
 /// The web view saved the file itself (Android) and checked its size; record that.
 #[tauri::command]
 pub fn confirm_export_saved(state: State<'_, Shared>, token: String, size: usize) -> R<()> {
@@ -1002,6 +1058,7 @@ fn remove_owner_data(st: &AppState, o: &Owner) -> R<()> {
         files.extend(db::list_personas(&db, o).map_err(e)?.into_iter().filter_map(|p| p.avatar));
         if let Some(pid) = o { files.extend(db::get_profile_avatar(&db, pid).map(|(f, _)| f)); }
         files.extend(db::list_rooms(&db, o).map_err(e)?.into_iter().flat_map(|r| r.backdrop.strip_prefix("file:").map(str::to_string).into_iter().chain(Some(r.music).filter(|m| !m.is_empty())).chain(Some(r.model).filter(|m| !m.is_empty())).chain(r.gallery.into_iter().map(|g| g.file))));
+        files.extend(db::list_worlds(&db, o).map_err(e)?.into_iter().filter(|w| !w.cover.is_empty()).map(|w| w.cover));
         files.extend(db::list_dorms(&db, o).map_err(e)?.into_iter().filter(|d| !d.music.is_empty()).map(|d| d.music));
         files.extend(db::list_decor(&db, o).map_err(e)?.into_iter().map(|d| d.file));
         files.extend(db::list_emoji(&db, o).map_err(e)?.into_iter().map(|d| d.file));
@@ -1332,6 +1389,18 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             db::update_world(&db, nw.id, &nw.name, &nw.description, &w.lore.replace('\r', "").chars().take(20_000).collect::<String>(), &books, &o).map_err(e)?;
             let (wp, wb) = (persona_map.get(&w.persona).cloned().unwrap_or_default(), playbook_map.get(&w.playbook).cloned().unwrap_or_default());
             db::set_world_setup(&db, nw.id, &wp, &wb, &w.instructions.replace('\r', "").trim().chars().take(4000).collect::<String>(), &[], &o).map_err(e)?;
+            if let Some(base) = w.cover.strip_prefix("media/").filter(|b| safe_media_name(b)) {
+                if let Some(bytes) = parsed.media.get(base) {
+                    let ext = std::path::Path::new(base).extension().and_then(|x| x.to_str()).unwrap_or("png").to_lowercase();
+                    if ["png", "jpg", "jpeg", "webp", "gif", "avif", "bmp"].contains(&ext.as_str()) {
+                        let rel = format!("media/world-{}-{}.{ext}", nw.id, db::now());
+                        let abs = st.data_dir.join(&rel);
+                        std::fs::write(&abs, bytes).map_err(e)?;
+                        written.push(abs);
+                        db::set_world_cover(&db, nw.id, &rel, &o).map_err(e)?;
+                    }
+                }
+            }
             world_map.insert(w.id, nw.id);
             world_shelves.push((nw.id, w.prompts.clone()));
         }
@@ -1580,9 +1649,10 @@ pub fn stage_chunk(state: State<'_, Shared>, token: String, data: String) -> R<u
 #[tauri::command]
 pub fn stage_clear(state: State<'_, Shared>) {
     *state.staged.lock().unwrap() = None;
+    crate::transfer::clear_receive(&state);   // what had arrived over Wi-Fi is thrown away with it
 }
 
-fn staged_bytes(st: &AppState, token: &str) -> R<Arc<Vec<u8>>> {
+pub(crate) fn staged_bytes(st: &AppState, token: &str) -> R<Arc<Vec<u8>>> {
     match &*st.staged.lock().unwrap() {
         Some((t, b)) if t == token && !b.is_empty() => Ok(b.clone()),
         _ => Err("The file isn't here any more. Choose it again.".into()),
@@ -1661,6 +1731,12 @@ async fn profile_op(st: Shared, bytes: Arc<Vec<u8>>, mode: &str, handle: String,
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_a_content_address_is_saved_to_from_android() {
+        assert!(check_content_uri("content://com.android.providers.downloads.documents/document/msf%3A12").is_ok());
+        for bad in ["", "file:///sdcard/a.dorms", "/sdcard/a.dorms", "https://example.com/a", "javascript:alert(1)", "content"] { assert!(check_content_uri(bad).is_err(), "{bad:?}"); }
+    }
+
     use super::*;
 
     fn zip_with(files: &[(&str, &[u8])]) -> Vec<u8> {

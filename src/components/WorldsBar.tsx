@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { api, type Lorebook, type Playbook, type Room, type SavedPrompt } from "../api";
 import TokenatorHelper from "./TokenatorHelper";
 import { errText } from "../lib/util";
 import { useStore } from "../store";
 import { useToast } from "./ui";
 import WorldOverview from "./WorldOverview";
+import PictureLinkBox from "./PictureLinkBox";
 
 export type WorldSel = "all" | "none" | number;
 
@@ -20,6 +22,8 @@ export default function WorldsBar({ rooms, sel, onSelect, onStart, onEdit, onMap
   const toast = useToast();
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newCover, setNewCover] = useState<File | null>(null);
+  const coverInput = useRef<HTMLInputElement>(null), newCoverInput = useRef<HTMLInputElement>(null);
   const [books, setBooks] = useState<Lorebook[]>([]);
   const world = typeof sel === "number" ? worlds.find((w) => w.id === sel) : undefined;
   const [name, setName] = useState(world?.name ?? ""), [desc, setDesc] = useState(world?.description ?? ""), [lore, setLore] = useState(world?.lore ?? "");
@@ -40,8 +44,12 @@ export default function WorldsBar({ rooms, sel, onSelect, onStart, onEdit, onMap
   const unfiled = rooms.filter((r) => r.world_id == null).length;
 
   const create = async () => {
-    try { const w = await api.createWorld(newName, ""); await refresh(); setNewName(""); setAdding(false); onSelect(w.id); toast(`Made the world "${w.name}".`, "ok"); }
+    try { const w = await api.createWorld(newName, ""); if (newCover) { try { await api.setWorldCover(w.id, newCover); } catch (e) { toast(`The world was made, but its cover wasn't added: ${errText(e)}`, "err"); } } await refresh(); setNewName(""); setNewCover(null); setAdding(false); onSelect(w.id); toast(`Made the world "${w.name}".`, "ok"); }
     catch (e) { toast(errText(e), "err"); }
+  };
+  const setCover = async (f: File) => {
+    if (!world) return;
+    try { await api.setWorldCover(world.id, f); await refresh(); } catch (e) { toast(errText(e), "err"); }
   };
   const save = async (patch: { name?: string; description?: string; lore?: string; lorebooks?: string[] }) => {
     if (!world) return;
@@ -96,6 +104,17 @@ export default function WorldsBar({ rooms, sel, onSelect, onStart, onEdit, onMap
           </span>
         ) : <button type="button" className="chip" data-testid="new-world" onClick={() => setAdding(true)}>＋ New world</button>}
       </div>
+      {adding && (
+        <div className="card" data-testid="new-world-cover" style={{ display: "grid", gap: 8, margin: "8px 0" }}>
+          <span>Cover picture <small className="muted">(optional)</small></span>
+          {newCover ? <div className="row" style={{ gap: 8 }}><span data-testid="new-world-cover-name">🖼️ {newCover.name}</span><button className="btn ghost sm" onClick={() => setNewCover(null)}>Remove</button></div> : null}
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => newCoverInput.current?.click()}>Upload…</button>
+            <input ref={newCoverInput} type="file" hidden accept="image/*" aria-label="Upload a cover picture" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) setNewCover(f); }} />
+          </div>
+          <PictureLinkBox testid="new-world-link" placeholder="…or paste a picture link (https://…)" onFile={(f) => setNewCover(f)} />
+        </div>
+      )}
       {worlds.length === 0 && !adding && <p className="hint" style={{ margin: "4px 0 0" }}>A <b>world</b> is a folder of connected rooms, kept apart from your other worlds, with lorebooks that shape how characters roleplay anywhere in it.</p>}
       {world && (
         <div className="world-panel card" data-testid="world-panel">
@@ -104,6 +123,15 @@ export default function WorldsBar({ rooms, sel, onSelect, onStart, onEdit, onMap
             <button className="btn" data-testid="world-read" onClick={() => setReading(true)}>📖 Read about this world</button>
             <button className="btn primary" data-testid="world-make-room" onClick={() => go({ page: "rooms", edit: "new", world: world.id })}>＋ Make a room in this world</button>
             <button className="btn danger" data-testid="world-delete" onClick={() => void remove()}>Delete world</button>
+          </div>
+          <div className="field" data-testid="world-cover"><span>Cover picture</span>
+            <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              {world.cover_path ? <img src={convertFileSrc(world.cover_path)} alt="" data-testid="world-cover-img" style={{ width: 120, height: 72, objectFit: "cover", borderRadius: 8 }} /> : <span className="hint">No cover yet</span>}
+              <button className="btn" onClick={() => coverInput.current?.click()}>Upload…</button>
+              {world.cover_path ? <button className="btn ghost" data-testid="world-cover-remove" onClick={async () => { try { await api.clearWorldCover(world.id); await refresh(); } catch (e) { toast(errText(e), "err"); } }}>Remove</button> : null}
+              <input ref={coverInput} type="file" hidden accept="image/*" aria-label="Upload a world cover" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void setCover(f); }} />
+            </div>
+            <PictureLinkBox testid="world-cover-link" placeholder="…or paste a picture link (https://…)" onFile={setCover} />
           </div>
           <label className="field"><span>What this world is like</span>
             <textarea rows={3} value={desc} maxLength={4000} data-testid="world-desc" placeholder="Told to the characters in every chat in this world: its history, its feel, its rules." onChange={(e) => setDesc(e.target.value)} onBlur={() => desc !== world.description && void save({ description: desc })} /></label>

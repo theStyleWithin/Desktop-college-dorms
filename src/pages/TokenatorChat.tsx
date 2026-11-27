@@ -1,3 +1,4 @@
+import { sdel, sget, sset } from "../lib/scoped";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import MicButton from "../components/MicButton";
@@ -10,10 +11,10 @@ import { useStore } from "../store";
 
 type Msg = { role: "user" | "assistant" | "note"; text: string; files?: string[]; thumbs?: string[]; sources?: string[] };
 const KEY = "dorms.tokenator.chat";
-const load = (): Msg[] => { try { const a = JSON.parse(localStorage.getItem(KEY) || "[]"); return Array.isArray(a) ? a.slice(-60) : []; } catch { return []; } };
+const load = (): Msg[] => { try { const a = JSON.parse(sget(KEY) || "[]"); return Array.isArray(a) ? a.slice(-60) : []; } catch { return []; } };
 const PKEY = "dorms.tokenator.personality";
 type Persona = { title: string; body: string };
-const loadPersona = (): Persona | null => { try { const v = JSON.parse(localStorage.getItem(PKEY) || "null"); return v && typeof v.body === "string" && v.body.trim() ? { title: String(v.title ?? "a prompt"), body: v.body } : null; } catch { return null; } };
+const loadPersona = (): Persona | null => { try { const v = JSON.parse(sget(PKEY) || "null"); return v && typeof v.body === "string" && v.body.trim() ? { title: String(v.title ?? "a prompt"), body: v.body } : null; } catch { return null; } };
 const SUGGESTIONS = ["How do playbooks work?", "Help me plan a story idea", "How do I use a model that runs offline?", "Explain a picture I attach"];
 
 /** The Tokenator chat: a helper that is not a character. It answers general questions and questions about the app (from the guide built into the app), takes pictures, gifs and videos if the selected model can see them, and can be spoken to. */
@@ -32,12 +33,12 @@ export default function TokenatorChat() {
   const [over, setOver] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const pick = useRef<HTMLInputElement>(null);
-  useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(msgs.slice(-60).map(({ thumbs: _t, ...m }) => m))); } catch { /* storage unavailable */ } }, [msgs]);
+  useEffect(() => { try { sset(KEY, JSON.stringify(msgs.slice(-60).map(({ thumbs: _t, ...m }) => m))); } catch { /* storage unavailable */ } }, [msgs]);
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [msgs, busy]);
 
   const choose = (p: Persona | null) => {
     setPersona(p);
-    try { if (p) localStorage.setItem(PKEY, JSON.stringify(p)); else localStorage.removeItem(PKEY); } catch { /* storage unavailable */ }
+    try { if (p) sset(PKEY, JSON.stringify(p)); else sdel(PKEY); } catch { /* storage unavailable */ }
     setMsgs((cur) => [...cur, { role: "note", text: p ? `Personality changed to “${p.title}”. I'm still Tokenator, your helper; only my way of talking changes.` : "Back to my normal self." }]);
   };
   const isPrompt = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes(PROMPT_DRAG);

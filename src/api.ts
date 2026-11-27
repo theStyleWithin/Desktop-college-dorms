@@ -1,7 +1,7 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
-import { stat, writeFile } from "@tauri-apps/plugin-fs";
+import { writeFile } from "@tauri-apps/plugin-fs";
 import DecoCore from "./lib/decoCore";
 
 export type MediaKind = "image" | "gif" | "video" | "vrm";
@@ -220,7 +220,10 @@ export interface Settings {
 }
 
 export interface Preset { id: string; label: string; blurb: string; file: string; url: string; size_gb: number; min_ram_gb: number }
-export interface TransferStatus { phase: "idle" | "waiting" | "connected" | "sending" | "receiving" | "arrived" | "done" | "failed" | "cancelled" | ""; role: string; message: string; done: number; total: number; addr: string; code: string; qr_svg: string; expires_in: number; token: string | null; name: string }
+export interface TransferStatus { phase: "idle" | "waiting" | "connected" | "sending" | "receiving" | "arrived" | "done" | "failed" | "cancelled" | ""; role: string; message: string; done: number; total: number; addr: string; code: string; qr_svg: string; expires_in: number; token: string | null; name: string; kind: string }
+/** One thing sent on its own over Wi-Fi: a character, persona, lorebook, note or saved prompt. */
+export interface SendItem { kind: "character" | "persona" | "lorebook" | "note" | "prompt"; id: string }
+export interface ArrivedItem { kind: string; name: string; detail: string }
 export interface PhoneOption { id: string; label: string; size_gb: number; min_ram_gb: number; fits: boolean; note: string | null }
 export interface PhoneCheck { is_android: boolean; arm64: boolean; ram_gb: number; free_gb: number | null; options: PhoneOption[]; can_run_any: boolean; engine_ready: boolean; download_allowed: boolean; summary: string }
 export interface Hardware { total_ram_gb: number; recommended: string; presets: Preset[]; engine_available: boolean }
@@ -264,7 +267,7 @@ export interface CustomDeco {
 }
 export interface CharDeco { character_id: string; plate: string; bg: string; wreath: string; source: "ai" | "user"; updated_at: number }
 /** A world: a folder of connected rooms, kept apart from other worlds, with lorebooks attached that apply to every chat in it. */
-export interface World { id: number; name: string; description: string; /** background lore written to be read (not sent to the model) */ lore: string; lorebooks: string[]; /** a persona that stands in for yours while a chat is in this world ("" for none) */ persona: string; /** a playbook used when neither the chat nor its characters choose one */ playbook: string; /** standing instructions for every chat in this world */ instructions: string; /** saved prompts (ids) shown first in the Prompts menu in chats of this world */ prompts: string[]; created_at: number }
+export interface World { id: number; name: string; description: string; /** background lore written to be read (not sent to the model) */ lore: string; lorebooks: string[]; /** a persona that stands in for yours while a chat is in this world ("" for none) */ persona: string; /** a playbook used when neither the chat nor its characters choose one */ playbook: string; /** standing instructions for every chat in this world */ instructions: string; /** saved prompts (ids) shown first in the Prompts menu in chats of this world */ prompts: string[]; /** the cover picture (a path inside the data folder) and where to show it from */ cover?: string; cover_path?: string | null; created_at: number }
 export interface RoomDeco { plate: string; bg: string; wreath: string; tag: string; tag_color: string; tag_glyph: string }
 export const DEFAULT_ROOM_DECO: RoomDeco = { plate: "none", bg: "", wreath: "", tag: "", tag_color: "#5865f2", tag_glyph: "" };
 export interface UserDeco { plate: string; bg: string; wreath: string; animate: boolean; tag: string; tag_color: string; tag_glyph: string; banner: string; ai_pick: boolean }
@@ -323,7 +326,9 @@ const bin = (cmd: string, bytes: Uint8Array, headers: Record<string, string>) =>
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
   phoneCheck: () => invoke<PhoneCheck>("phone_check"),
-  transferSendStart: (code: string, passcode: string | null) => invoke<TransferStatus>("transfer_send_start", { code, passcode }),
+  transferSendStart: (code: string, passcode: string | null, item: SendItem | null = null) => invoke<TransferStatus>("transfer_send_start", { code, passcode, item }),
+  inspectStagedItem: (token: string, kind: string) => invoke<ArrivedItem>("inspect_staged_item", { token, kind }),
+  addStagedItem: (token: string, kind: string) => invoke<ArrivedItem>("add_staged_item", { token, kind }),
   transferReceiveStart: (addr: string, code: string) => invoke<TransferStatus>("transfer_receive_start", { addr, code }),
   transferStatus: (role: "send" | "receive") => invoke<TransferStatus>("transfer_status", { role }),
   transferCancel: (role: "send" | "receive") => invoke<void>("transfer_cancel", { role }),
@@ -450,6 +455,8 @@ export const api = {
   createWorld: (name: string, description: string) => invoke<World>("create_world", { name, description }),
   setWorldSetup: (id: number, persona: string, playbook: string, instructions: string, prompts: string[]) => invoke<World>("set_world_setup", { id, persona, playbook, instructions, prompts }),
   updateWorld: (id: number, name: string, description: string, lore: string, lorebooks: string[]) => invoke<World>("update_world", { id, name, description, lore, lorebooks }),
+  setWorldCover: async (id: number, file: File) => bin("set_world_cover", new Uint8Array(await file.arrayBuffer()), { "x-world-id": String(id), "x-file-name": encodeURIComponent(file.name) }) as Promise<World>,
+  clearWorldCover: (id: number) => invoke<World>("clear_world_cover", { id }),
   deleteWorld: (id: number) => invoke<void>("delete_world", { id }),
   moveRoomsToWorld: (ids: number[], worldId: number | null) => invoke<void>("move_rooms_to_world", { ids, worldId }),
   getShelf: (kind: ShelfKind) => invoke<Shelf>("get_shelf", { kind }),
@@ -722,8 +729,8 @@ export const tagline = (c: Character) => dormsExt(c.card).tagline || c.card.crea
 
 /**
  * Save a prepared export where the user chooses. Desktop: the backend writes the file and checks it by
- * reading the bytes back. Android's save dialog hands out content:// addresses the backend can't write to,
- * so there the web view writes it and the size is checked. `verified` is what eject requires.
+ * reading the bytes back. Android's save dialog hands out content:// addresses, which the backend writes through the
+ * file plugin and then reads back from the same address to compare every byte. `verified` is what eject requires.
  * Returns null if the user cancelled.
  */
 export async function saveExportFile(info: ExportInfo): Promise<{ path: string; verified: boolean } | null> {
@@ -733,10 +740,7 @@ export async function saveExportFile(info: ExportInfo): Promise<{ path: string; 
     await invoke("save_export", { token: info.token, path });
     return { path, verified: true };
   }
-  const buf = await invoke<ArrayBuffer>("read_export", { token: info.token });
-  await writeFile(path, new Uint8Array(buf));
-  let verified = false;
-  try { verified = (await stat(path)).size === info.size; } catch { /* some locations can't be inspected */ }
-  if (verified) await invoke("confirm_export_saved", { token: info.token, size: info.size });
-  return { path, verified };
+  // the app writes it to that address itself and reads it back to compare every byte (a big file between the web view and the app isn't reliable on Android)
+  await invoke("save_export_to_uri", { token: info.token, uri: path });
+  return { path, verified: true };
 }

@@ -263,8 +263,22 @@ jobs:
           grep -q RECORD_AUDIO "$M" || sed -i '0,/<uses-permission/s||<uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission|' "$M"
           grep -n "uses-permission" "$M"
           grep -q RECORD_AUDIO "$M"
+      - name: Build the engine for 64-bit Android phones (llama.cpp, CPU)
+        run: node scripts/build-llama-android.mjs
+      - name: Let the engine be unpacked from the app (Android only runs programs from the native library folder)
+        run: |
+          G=src-tauri/gen/android/app/build.gradle.kts
+          grep -q useLegacyPackaging "$G" || sed -i '0,/^android {/s||android {\n    packaging { jniLibs { useLegacyPackaging = true } }|' "$G"
+          grep -q useLegacyPackaging "$G"
+          grep -n "useLegacyPackaging" "$G"
       - name: Build release APK (arm64 + armv7)
         run: npx tauri android build --apk --target aarch64 --target armv7
+      - name: Check the engine is in the app and will be unpacked
+        run: |
+          APK=$(find src-tauri/gen/android -name '*-unsigned.apk' | head -n1)
+          unzip -l "$APK" | grep -E 'lib/arm64-v8a/libdorms_engine\.so'
+          unzip -l "$APK" | grep -E 'lib/arm64-v8a/libdorms_lib\.so'
+          "$ANDROID_HOME/build-tools/34.0.0/aapt2" dump xmltree --file AndroidManifest.xml "$APK" | grep -i extractNativeLibs | tee /dev/stderr | grep -Eq 'true|0xffffffff'
       - name: Sign
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

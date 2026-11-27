@@ -33,7 +33,8 @@ A world already carries lorebooks. Plan: also a **persona**, a default **playboo
 **Profiles** = Profile + Decorations (Decorations folded by default). **Customization** = Chat + Appearance. Old links to the Decorations tab open Profiles with that section open. Each Chat setting saves as it changes so nothing needs the Save button. Update the tests that click tabs by name and the README mentions.
 
 ## 5. A built-in model on Android phones
-- Today Android has no engine (it cannot launch the helper program), so it uses cloud or network models.
+- **Built, not yet proven on a real phone:** the engine (llama.cpp's server program, 64-bit ARM, CPU only) is packaged into the phone app as a native library and started like the desktop one. Next: a real phone test, then a tuned build (dot-product / i8mm) if it is too slow.
+- (Before this, Android had no engine: it cannot launch a helper from the usual place, so it used cloud or network models.)
 - Plan: an engine built into the app (llama.cpp as a library for 64-bit Android), the existing resumable download, and **hardware detection**: a phone that can't run a model gets **no download button**, only a plain explanation.
 - Starting thresholds (guesses, to be confirmed on real phones): Llama 3.2 1B from about 6 GB of memory, 3B from about 8 GB, bigger models about 16 GB with a warning; plus the file size and about 1 GB of free storage.
 - Checks on every start (free memory), a speed test, and a cost screen (storage, memory, heat, battery). Speed is unmeasured: possibly a few to a dozen words a second.
