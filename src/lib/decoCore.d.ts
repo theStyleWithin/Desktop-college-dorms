@@ -1,4 +1,4 @@
-export interface DecoItem { id: string; name: string; blurb: string; anim?: boolean }
+export interface DecoItem { id: string; name: string; blurb: string; anim?: boolean; custom?: boolean }
 export interface DecoTheme { id: string; name: string; blurb: string; plate: string; bg: string; wreath: string; season?: string }
 export interface DecoGroup { name?: string; /** the calendar window it opens in ("thanksgiving", "christmas", "hanukkah:3"); none means always open */ season?: string; plate?: string[]; bg?: string[]; wreath?: string[] }
 export interface DecoSeries { id: string; name: string; blurb: string; season?: string; groups: DecoGroup[] }
@@ -21,6 +21,8 @@ declare const DecoCore: {
   /** the season each locked decoration belongs to */
   LOCKS: Record<string, string>;
   hanukkahNight1(year: number): Date;
+  /** the person's own decorations join the lists while they are in use (`dkind` is plate, banner or wreath) */
+  setCustom(which: "own" | "seen", records: { id: string; dkind: string; name?: string; blurb?: string; moves?: boolean }[]): void;
   SERIES: DecoSeries[];
   seriesOfTheme(id: string): string;
   buildArt(animated: boolean): { wreath: Record<string, string>; bg: Record<string, string>; plate: Record<string, string> };

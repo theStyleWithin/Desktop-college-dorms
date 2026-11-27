@@ -547,6 +547,9 @@ struct Data {
     /// Profile decorations of the characters (the user's own are part of the settings).
     #[serde(default)]
     char_deco: Vec<db::CharDeco>,
+    /// The person's own decorations (nameplates, banners, wreaths brought in from files).
+    #[serde(default)]
+    deco_custom: Vec<db::CustomDeco>,
     /// The profile's own picture (file name inside the archive's media folder) and its framing.
     #[serde(default)]
     profile_avatar: Option<(String, Option<db::Frame>)>,
@@ -890,7 +893,8 @@ pub(crate) fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, 
         let rows: Vec<ChatPlaybookExport> = chats.iter().map(|c| ChatPlaybookExport { chat_id: c.id, row: crate::playbook::chat_row(&db, c.id) }).filter(|x| x.row != crate::playbook::ChatRow::default()).collect();
         (pbs, rows)
     };
-    let data = Data { settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, emoji, worlds, playbooks, chat_playbooks, shelf_folders, shelf_items, profile_avatar };
+    let deco_custom = db::list_custom_deco(&st.db.lock().unwrap(), o).map_err(e)?;
+    let data = Data { deco_custom, settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, emoji, worlds, playbooks, chat_playbooks, shelf_folders, shelf_items, profile_avatar };
     zip.start_file("manifest.json", deflated).map_err(e)?;
     zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(e)?).map_err(e)?;
     zip.start_file("data.json", deflated).map_err(e)?;
@@ -1285,6 +1289,16 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
             }
         }
 
+        // the person's own decorations (ids are made from the art, so what the settings and characters point at still matches)
+        {
+            let have: Vec<String> = db::list_custom_deco(&db, &o).map_err(e)?.into_iter().map(|d| d.did).collect();
+            let mut n = have.len();
+            for d in &parsed.data.deco_custom {
+                let Some(d) = crate::deco::clean_custom(d.clone()) else { continue };
+                if !have.contains(&d.did) { if n >= db::MAX_CUSTOM_DECO { break; } n += 1; }
+                db::save_custom_deco(&db, &d, &o).map_err(e)?;
+            }
+        }
         // worlds first, so each room can be put in its own (their lorebooks are the new copies)
         let mut world_map: HashMap<i64, i64> = HashMap::new();
         for w in &parsed.data.worlds {

@@ -637,6 +637,9 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
          CREATE TABLE IF NOT EXISTS char_deco(
             id TEXT PRIMARY KEY, profile_id TEXT, plate TEXT NOT NULL DEFAULT 'none', bg TEXT NOT NULL DEFAULT '', wreath TEXT NOT NULL DEFAULT '',
             source TEXT NOT NULL DEFAULT 'ai', updated_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS deco_custom(
+            did TEXT NOT NULL, profile_id TEXT, data TEXT NOT NULL, created_at INTEGER NOT NULL);
+         CREATE INDEX IF NOT EXISTS deco_custom_owner ON deco_custom(profile_id);
          CREATE TABLE IF NOT EXISTS lorebooks(
             id TEXT PRIMARY KEY, profile_id TEXT, name TEXT NOT NULL, json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS folders(
@@ -1302,6 +1305,55 @@ pub fn save_char_deco(c: &Connection, d: &CharDeco, owner: &Owner) -> R<()> {
     Ok(())
 }
 
+/// The most decorations of one's own a profile can keep.
+pub const MAX_CUSTOM_DECO: usize = 120;
+
+/// A decoration the person brought in from a file (a nameplate, profile banner or avatar decoration). The page has already rebuilt the art from
+/// an allow-list; `deco.rs` checks the shape and the sizes again before anything is stored. Kept as JSON, newest last.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Default)]
+#[serde(default)]
+pub struct CustomDeco {
+    /// `cp_`, `cb_` or `cw_` and ten hex digits: made from the art, so the same art is the same decoration everywhere.
+    pub did: String,
+    /// plate | banner | wreath
+    pub dkind: String,
+    /// svg | image | sprite (a video turned into a strip of frames)
+    pub mode: String,
+    pub name: String,
+    pub blurb: String,
+    /// The picture: SVG text, or a `data:image/...` URL.
+    pub art: String,
+    /// The same picture standing still (for when "Animate decorations" is off), if it moves.
+    pub still: String,
+    pub moves: bool,
+    pub author: String,
+    pub license: String,
+    pub pack: String,
+    pub cols: i64,
+    pub rows: i64,
+    pub frames: i64,
+    pub dur: f64,
+    /// The video, for a sprite, so it can be exported again.
+    pub src: String,
+}
+
+pub fn list_custom_deco(c: &Connection, owner: &Owner) -> R<Vec<CustomDeco>> {
+    let mut s = c.prepare("SELECT data FROM deco_custom WHERE profile_id IS ?1 ORDER BY created_at, rowid")?;
+    let rows: Vec<String> = s.query_map([owner], |r| r.get(0))?.filter_map(|r| r.ok()).collect();
+    Ok(rows.into_iter().filter_map(|j| serde_json::from_str(&j).ok()).collect())
+}
+
+pub fn save_custom_deco(c: &Connection, d: &CustomDeco, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM deco_custom WHERE did=?1 AND profile_id IS ?2", params![d.did, owner])?;
+    c.execute("INSERT INTO deco_custom(did,profile_id,data,created_at) VALUES(?1,?2,?3,?4)", params![d.did, owner, serde_json::to_string(d).unwrap_or_default(), now()])?;
+    Ok(())
+}
+
+pub fn delete_custom_deco(c: &Connection, did: &str, owner: &Owner) -> R<()> {
+    c.execute("DELETE FROM deco_custom WHERE did=?1 AND profile_id IS ?2", params![did, owner])?;
+    Ok(())
+}
+
 pub fn delete_char_deco(c: &Connection, id: &str, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM char_deco WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     Ok(())
@@ -1692,6 +1744,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM prompts WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM char_status WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM char_deco WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM deco_custom WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM emoji_items WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM playbooks WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM shelf_folders WHERE profile_id IS ?1", [owner])?;
@@ -1714,7 +1767,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "emoji_items", "worlds", "playbooks", "shelf_folders", "shelf_items"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "deco_custom", "emoji_items", "worlds", "playbooks", "shelf_folders", "shelf_items"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);

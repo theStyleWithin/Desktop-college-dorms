@@ -7,6 +7,7 @@ import { Logo, ToastProvider, useToast } from "./components/ui";
 import { ProfileAvatar } from "./components/ProfileForms";
 import { DEFAULT_DECO, personaAvatar, profileAvatar } from "./api";
 import { TagChip, Wreathed, pauseDecoWhenAway, plateProps, setDecoMotion } from "./lib/deco";
+import { reloadCustomDeco } from "./lib/decoCustom";
 import Welcome from "./pages/Welcome";
 import Home from "./pages/Home";
 import Library from "./pages/Library";
@@ -188,6 +189,7 @@ function Shell({ session, setSession, onHidden }: { session: SessionState; setSe
       const [c, ch, d, s, m, rm, fo, pe, wo] = await Promise.all([
         api.listCharacters(), api.listChats(), api.listDorms(), api.getSettings(), api.listModels(), api.listRooms(), api.listFolders(), api.listPersonas(), api.listWorlds(),
       ]);
+      void reloadCustomDeco();
       setCharacters(c); setChats(ch); setDorms(d); setRooms(rm); setWorlds(wo); setFolders(fo); setPersonas(pe); setSettingsState(s); setModelCount(m.length);
     } catch (e) {
       toast(`Could not load your data: ${errText(e)}`, "err");

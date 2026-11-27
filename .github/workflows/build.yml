@@ -37,7 +37,9 @@ jobs:
           mkdir -p src-tauri/binaries
           touch src-tauri/binaries/dorms-engine-x86_64-unknown-linux-gnu src-tauri/binaries/dorms-engine-vulkan-x86_64-unknown-linux-gnu
       - name: Decoration art and the holiday calendar
-        run: node tests/deco-check.mjs
+        run: |
+          node tests/deco-check.mjs
+          node tests/deco-pack-check.mjs
       - run: cargo test --workspace
 
   # --------------------------------------------------------------------- linux
