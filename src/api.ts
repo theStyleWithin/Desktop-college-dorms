@@ -1,7 +1,7 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
-import { stat, writeFile } from "@tauri-apps/plugin-fs";
+import { writeFile } from "@tauri-apps/plugin-fs";
 import DecoCore from "./lib/decoCore";
 
 export type MediaKind = "image" | "gif" | "video" | "vrm";
@@ -714,8 +714,8 @@ export const tagline = (c: Character) => dormsExt(c.card).tagline || c.card.crea
 
 /**
  * Save a prepared export where the user chooses. Desktop: the backend writes the file and checks it by
- * reading the bytes back. Android's save dialog hands out content:// addresses the backend can't write to,
- * so there the web view writes it and the size is checked. `verified` is what eject requires.
+ * reading the bytes back. Android's save dialog hands out content:// addresses, which the backend writes through the
+ * file plugin and then reads back from the same address to compare every byte. `verified` is what eject requires.
  * Returns null if the user cancelled.
  */
 export async function saveExportFile(info: ExportInfo): Promise<{ path: string; verified: boolean } | null> {
@@ -725,10 +725,7 @@ export async function saveExportFile(info: ExportInfo): Promise<{ path: string; 
     await invoke("save_export", { token: info.token, path });
     return { path, verified: true };
   }
-  const buf = await invoke<ArrayBuffer>("read_export", { token: info.token });
-  await writeFile(path, new Uint8Array(buf));
-  let verified = false;
-  try { verified = (await stat(path)).size === info.size; } catch { /* some locations can't be inspected */ }
-  if (verified) await invoke("confirm_export_saved", { token: info.token, size: info.size });
-  return { path, verified };
+  // the app writes it to that address itself and reads it back to compare every byte (a big file between the web view and the app isn't reliable on Android)
+  await invoke("save_export_to_uri", { token: info.token, uri: path });
+  return { path, verified: true };
 }
