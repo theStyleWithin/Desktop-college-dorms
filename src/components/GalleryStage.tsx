@@ -29,17 +29,17 @@ function FitButtons({ fit, onFit }: { fit: Fit; onFit: (f: Fit) => void }) {
   );
 }
 
-function ImageStage({ url, id, alt, fit, onFit }: { url: string; id: string; alt: string; fit: Fit; onFit: (f: Fit) => void }) {
+/** Zoom and drag for the picture or video inside a box: the wheel zooms around the pointer, drag moves, double-click toggles. */
+function useZoom(resetOn: unknown[]) {
   const box = useRef<HTMLDivElement>(null);
   const [v, setV] = useState({ z: 1, x: 0, y: 0 });
-  const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
-  useEffect(() => { setV({ z: 1, x: 0, y: 0 }); }, [id, fit]);
-
-  /** Zoom to a new level, keeping the point under (cx, cy) (measured from the middle of the box) where it is. */
+  const drag = useRef<{ x: number; y: number; px: number; py: number; moved: boolean } | null>(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setV({ z: 1, x: 0, y: 0 }); }, resetOn);
   const zoomTo = useCallback((f: (z: number) => number, cx = 0, cy = 0) => {
     setV((o) => { const nz = clamp(f(o.z), 0.1, 16); const k = nz / o.z; return { z: nz, x: cx - (cx - o.x) * k, y: cy - (cy - o.y) * k }; });
   }, []);
-  // the wheel zooms (it has to be a listener of its own: the page's own wheel handlers can't stop the page from scrolling)
+  const reset = useCallback(() => setV({ z: 1, x: 0, y: 0 }), []);
   useEffect(() => {
     const el = box.current; if (!el) return;
     const h = (e: WheelEvent) => {
@@ -55,33 +55,46 @@ function ImageStage({ url, id, alt, fit, onFit }: { url: string; id: string; alt
       if (typing(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === "+" || e.key === "=") zoomTo((z) => z * 1.25);
       else if (e.key === "-" || e.key === "_") zoomTo((z) => z / 1.25);
-      else if (e.key === "0") setV({ z: 1, x: 0, y: 0 });
+      else if (e.key === "0") reset();
     };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
-  }, [zoomTo]);
+  }, [zoomTo, reset]);
+  const handlers = {
+    onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => { if (e.button !== 0) return; drag.current = { x: e.clientX, y: e.clientY, px: v.x, py: v.y, moved: false }; e.currentTarget.setPointerCapture(e.pointerId); },
+    onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => { const d = drag.current; if (!d) return; if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 4) d.moved = true; if (d.moved) setV((o) => ({ ...o, x: d.px + e.clientX - d.x, y: d.py + e.clientY - d.y })); },
+    onPointerUp: () => { window.setTimeout(() => { drag.current = null; }, 0); },
+    onDoubleClick: (e: React.MouseEvent<HTMLDivElement>) => { const r = e.currentTarget.getBoundingClientRect(); if (v.z === 1) zoomTo(() => 2.5, e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)); else reset(); },
+  };
+  const wasDrag = () => !!drag.current?.moved;
+  return { box, v, zoomTo, reset, handlers, wasDrag };
+}
 
+function ZoomButtons({ z, zoomTo, reset }: { z: number; zoomTo: (f: (z: number) => number) => void; reset: () => void }) {
+  return (
+    <span className="stage-group" role="group" aria-label="Zoom">
+      <button type="button" className="btn sm" aria-label="Zoom out" title="Zoom out (-)" data-testid="zoom-out" onClick={() => zoomTo((x) => x / 1.25)}>−</button>
+      <button type="button" className="btn sm" title="Back to 100% (0)" data-testid="zoom-reset" onClick={reset}><span data-testid="zoom-level">{Math.round(z * 100)}%</span></button>
+      <button type="button" className="btn sm" aria-label="Zoom in" title="Zoom in (+)" data-testid="zoom-in" onClick={() => zoomTo((x) => x * 1.25)}>+</button>
+    </span>
+  );
+}
+
+function ImageStage({ url, id, alt, fit, onFit }: { url: string; id: string; alt: string; fit: Fit; onFit: (f: Fit) => void }) {
+  const { box, v, zoomTo, reset, handlers } = useZoom([id, fit]);
   const base: CSSProperties = fit === "fit" ? { maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }
     : fit === "actual" ? { maxWidth: "none", maxHeight: "none" }
     : fit === "fill" ? { width: "100%", height: "100%", objectFit: "cover" }
     : { width: "100%", height: "100%", objectFit: "fill" };
   return (
     <div className="stage" data-testid="stage-image" data-fit={fit}>
-      <div ref={box} className="stage-box" style={{ cursor: drag.current ? "grabbing" : "grab" }}
-        onPointerDown={(e) => { if (e.button !== 0) return; drag.current = { x: e.clientX, y: e.clientY, px: v.x, py: v.y }; e.currentTarget.setPointerCapture(e.pointerId); }}
-        onPointerMove={(e) => { const d = drag.current; if (d) setV((o) => ({ ...o, x: d.px + e.clientX - d.x, y: d.py + e.clientY - d.y })); }}
-        onPointerUp={() => { drag.current = null; }}
-        onDoubleClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); if (v.z === 1) zoomTo(() => 2.5, e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)); else setV({ z: 1, x: 0, y: 0 }); }}>
+      <div ref={box} className="stage-box" style={{ cursor: "grab" }} {...handlers}>
         <img src={url} alt={alt} draggable={false} data-testid="stage-img" decoding="async"
           style={{ ...base, transform: `translate(${v.x}px, ${v.y}px) scale(${v.z})`, transformOrigin: "center", userSelect: "none", willChange: "transform" }} />
       </div>
       <div className="stage-bar" data-testid="stage-bar">
         <FitButtons fit={fit} onFit={onFit} />
-        <span className="stage-group" role="group" aria-label="Zoom">
-          <button type="button" className="btn sm" aria-label="Zoom out" title="Zoom out (-)" data-testid="zoom-out" onClick={() => zoomTo((z) => z / 1.25)}>−</button>
-          <button type="button" className="btn sm" title="Back to 100% (0)" data-testid="zoom-reset" onClick={() => setV({ z: 1, x: 0, y: 0 })}><span data-testid="zoom-level">{Math.round(v.z * 100)}%</span></button>
-          <button type="button" className="btn sm" aria-label="Zoom in" title="Zoom in (+)" data-testid="zoom-in" onClick={() => zoomTo((z) => z * 1.25)}>+</button>
-        </span>
+        <ZoomButtons z={v.z} zoomTo={zoomTo} reset={reset} />
       </div>
     </div>
   );
@@ -91,6 +104,7 @@ const fmtTime = (s: number) => { if (!isFinite(s) || s < 0) s = 0; const m = Mat
 
 function VideoStage({ url, title, fit, onFit }: { url: string; title: string; fit: Fit; onFit: (f: Fit) => void }) {
   const vid = useRef<HTMLVideoElement>(null), wrap = useRef<HTMLDivElement>(null);
+  const { box, v: zv, zoomTo, reset, handlers, wasDrag } = useZoom([url, fit]);
   const [playing, setPlaying] = useState(false), [time, setTime] = useState(0), [dur, setDur] = useState(0);
   const [vol, setVol] = useState(1), [muted, setMuted] = useState(false), [rate, setRate] = useState(1), [loop, setLoop] = useState(true);
   const [size, setSize] = useState(""), [err, setErr] = useState(""), [note, setNote] = useState("");
@@ -117,9 +131,10 @@ function VideoStage({ url, title, fit, onFit }: { url: string; title: string; fi
   const objectFit = fit === "fit" ? "contain" : fit === "fill" ? "cover" : fit === "stretch" ? "fill" : "none";
   return (
     <div className="stage" ref={wrap} data-testid="stage-video" data-fit={fit}>
-      <div className="stage-box">
-        <video ref={vid} src={url} autoPlay loop={loop} playsInline preload="auto" style={{ width: "100%", height: "100%", objectFit }} data-testid="stage-vid"
-          onClick={toggle} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+      <div ref={box} className="stage-box" style={{ cursor: "grab" }} {...handlers}>
+        <video ref={vid} src={url} autoPlay loop={loop} playsInline preload="auto" data-testid="stage-vid"
+          style={{ width: "100%", height: "100%", objectFit, transform: `translate(${zv.x}px, ${zv.y}px) scale(${zv.z})`, transformOrigin: "center", willChange: "transform" }}
+          onClick={() => { if (!wasDrag()) toggle(); }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
           onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
           onLoadedMetadata={(e) => { setDur(e.currentTarget.duration); setSize(`${e.currentTarget.videoWidth}×${e.currentTarget.videoHeight}`); setErr(""); }}
           onError={() => setErr(`This video can't be played here. The player uses your system's video codecs, and ${title} may use one that isn't installed (some 4K files use HEVC / H.265 or AV1).`)} />
@@ -137,6 +152,7 @@ function VideoStage({ url, title, fit, onFit }: { url: string; title: string; fi
         </select>
         <button type="button" className={`btn sm${loop ? " primary" : ""}`} aria-pressed={loop} title="Play again when it ends" data-testid="video-loop" onClick={() => setLoop((l) => !l)}>⟲</button>
         <FitButtons fit={fit} onFit={onFit} />
+        <ZoomButtons z={zv.z} zoomTo={zoomTo} reset={reset} />
         <button type="button" className="btn sm" title="Full screen (F)" aria-label="Full screen" data-testid="video-full" onClick={() => void full()}>⛶</button>
         {size ? <span className="stage-size" data-testid="video-size" title="The video's size in pixels">{size}{/^(\d+)×/.test(size) && Number(/^(\d+)×/.exec(size)![1]) >= 3800 ? " · 4K" : ""}</span> : null}
         {note ? <span className="hint" role="status">{note}</span> : null}
