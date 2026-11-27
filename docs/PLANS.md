@@ -2,7 +2,7 @@
 
 What is planned, what state each idea is in, what has to be decided, and a suggested order. Nothing here has dates, and none of it is a promise. The longer technical write-ups are in [SPEC.md](../SPEC.md) under the "Planned:" headings.
 
-**Where things stand:** v0.15.0 (the Gobble Gobble Holiday Decor Update) adds the Thanksgiving, Christmas and Hanukkah decoration sets that open by the calendar, and your own decorations from `.asdeco` packs. Before that, v0.14.0 (the Happy Thanksgiving update: Enter Tokenator!) adds Tokenator everywhere, three starter characters, fewer Settings tabs and the Mobile College Dorms name, so items 1 and 4 below are done. The rest are still plans. Every new screen is shown as a rendered picture and approved before it is merged or released.
+**Where things stand:** v0.16.0 (the Gallery Update) adds the Gallery (an art folder per character and folders from your computer, with comments under every picture) and pictures from a link. Before that, v0.15.0 (the Gobble Gobble Holiday Decor Update) adds the Thanksgiving, Christmas and Hanukkah decoration sets that open by the calendar, and your own decorations from `.asdeco` packs. Before that, v0.14.0 (the Happy Thanksgiving update: Enter Tokenator!) adds Tokenator everywhere, three starter characters, fewer Settings tabs and the Mobile College Dorms name, so items 1 and 4 below are done. The rest are still plans. Every new screen is shown as a rendered picture and approved before it is merged or released.
 
 ## 1. Tokenator (done in 0.14.0)
 A helper in the character editor. It trims a card field to a token budget, or drafts a field from rough notes, using the person's own model (built-in, cloud, Other API or network).
