@@ -1,4 +1,5 @@
 import { setProfileScope, sget, sset } from "./lib/scoped";
+import { applyScrollSize } from "./lib/scrollSize";
 import { applyTextScale } from "./lib/textScale";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, onTrayNav, type AppInfo, type Character, type Chat, type Dorm, type Folder, type Persona, type Room, type SessionState, type Settings, type World } from "./api";
@@ -35,7 +36,7 @@ const DEFAULTS: Settings = {
   temperature: 0.8, top_p: 0.95, local_model: "", local_gpu: true, openai_base_url: "https://api.openai.com/v1",
   openai_model: "gpt-4o-mini", anthropic_model: "claude-haiku-5-5", use_card_system_prompt: true,
   default_system: "", theme: "dusk",
-  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true, active_persona: "", deco: DEFAULT_DECO, novel_daily_limit: 0, novel_reserve: 5, tray_minimize: false, tray_close: false,
+  stt_url: "https://api.openai.com/v1", stt_model: "whisper-1", stt_language: "", stt_auto_send: true, active_persona: "", gallery_order: [], gallery_merge: false, deco: DEFAULT_DECO, novel_daily_limit: 0, novel_reserve: 5, tray_minimize: false, tray_close: false,
 };
 
 const SIDE_DEF = 220, SIDE_MIN = 160, SIDE_MAX = 420;
@@ -79,7 +80,8 @@ function loadNavOrder(): Route["page"][] {
 }
 
 function Shell({ session, setSession, onHidden }: { session: SessionState; setSession: (s: SessionState) => void; onHidden: (name: string, others: number) => void }) {
-  setProfileScope(session.profile?.id ?? null);   // what the screens remember on this device is this profile's own (the screens are rebuilt per profile)
+  setProfileScope(session.profile?.id ?? null);
+  applyScrollSize();   // this profile's choice of scroll bar size   // what the screens remember on this device is this profile's own (the screens are rebuilt per profile)
   const toast = useToast();
   const [route, setRoute] = useState<Route>({ page: "home" });
   // every walk to a chat (from the side bar, say) starts the chat page fresh, even when a chat is already open

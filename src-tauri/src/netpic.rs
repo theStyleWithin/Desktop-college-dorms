@@ -11,8 +11,8 @@ use crate::Shared;
 
 type R<T> = Result<T, String>;
 
-/// The biggest picture or clip that is fetched (the same room the upload buttons give a file).
-const MAX_BYTES: usize = 40 * 1024 * 1024;
+/// The biggest picture or clip that is fetched. A video can be big, so this is generous; the place the file is then added applies its own, tighter limit for a picture.
+const MAX_BYTES: usize = 150 * 1024 * 1024;
 
 #[derive(Serialize)]
 pub struct Fetched {
@@ -77,10 +77,10 @@ pub async fn fetch_picture(state: State<'_, Shared>, url: String) -> R<Fetched> 
     let mut resp = state.http.get(u.clone()).timeout(Duration::from_secs(60)).header("Accept", "image/*,video/mp4,video/webm,*/*;q=0.5").send().await
         .map_err(|e| if e.is_timeout() { "The site took too long to answer.".to_string() } else { format!("I couldn't reach that address: {}", e.without_url()) })?;
     if !resp.status().is_success() { return Err(format!("The site said no ({}). Check the address, or save the picture and upload it.", resp.status().as_u16())); }
-    if resp.content_length().map_or(false, |n| n as usize > MAX_BYTES) { return Err("That file is too big (40 MB at most).".into()); }
+    if resp.content_length().map_or(false, |n| n as usize > MAX_BYTES) { return Err("That file is too big (150 MB at most).".into()); }
     let mut bytes: Vec<u8> = Vec::new();
     while let Some(chunk) = resp.chunk().await.map_err(|e| format!("The download stopped: {}", e.without_url()))? {
-        if bytes.len() + chunk.len() > MAX_BYTES { return Err("That file is too big (40 MB at most).".into()); }
+        if bytes.len() + chunk.len() > MAX_BYTES { return Err("That file is too big (150 MB at most).".into()); }
         bytes.extend_from_slice(&chunk);
     }
     let Some((ext, mime)) = sniff(&bytes) else {

@@ -1,8 +1,10 @@
 import { sdel } from "../lib/scoped";
+import { useScrollSize } from "../lib/scrollSize";
+import { useLinkFiles } from "../lib/galleryLink";
 import { useTextScale, TEXT_SCALE_MAX, TEXT_SCALE_MIN } from "../lib/textScale";
 import { DEFAULT_NAMES, WIDGETS, useWidgetNames, useWidgetPrefs } from "../components/SideWidgets";
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_DECO, api, newProfile, profileAvatar, onModelProgress, saveExportFile, type ApiProfile, type EngineStatus, type ExportInfo, type Hardware, type ModelFile, type ModelProgress, type Settings } from "../api";
+import { DEFAULT_DECO, api, newProfile, profileAvatar, onModelProgress, saveExportFile, type ApiProfile, type EngineStatus, type ExportInfo, type Hardware, type ModelFile, type ModelProgress, type Settings, type SteamStatus } from "../api";
 import { CreateProfileModal, PASSCODE_NOTE, ProfileAvatar } from "../components/ProfileForms";
 import { PersonasTab, ProfilePicture } from "../components/Personas";
 import { ControllerTab } from "../components/ControllerTab";
@@ -428,8 +430,12 @@ function Look({ s, patch }: { s: Settings; patch: (p: Partial<Settings>) => void
       </div>
       <h3 style={{ marginTop: 22 }}>Side bar extras</h3>
       <SideExtras />
+      <h3 style={{ marginTop: 22 }}>Scroll bars</h3>
+      <ScrollBarSetting />
       <h3 style={{ marginTop: 22 }}>Text size in chats</h3>
       <TextSizeSetting />
+      <GalleryLinkSetting />
+      <SteamSetting />
     </div>
   );
 }
@@ -451,6 +457,74 @@ function SideExtras() {
       ))}
       <div className="row"><button className="btn sm" onClick={resetNames}>Use the usual names</button><span className="hint">You can also double-click a section's name in the side bar, or press its ✎, to rename it. Kept on this device.</span></div>
       <div className="hint">Recent chats, the characters you've marked as favorites (as many as you like), the ones you talk to most, and a picture frame that shows the character you talked to last (click it to go back to that chat).</div>
+    </div>
+  );
+}
+
+/** Wide scroll bars (easier to grab) or the thinner size they used to be. Either way the handle thickens when the pointer is near it. Kept for the profile. */
+function ScrollBarSetting() {
+  const [size, set] = useScrollSize();
+  return (
+    <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+      <label className="row" style={{ gap: 8, cursor: "pointer" }}>
+        <input type="checkbox" style={{ width: "auto", minHeight: 0 }} checked={size === "wide"} data-testid="scroll-wide" onChange={(e) => set(e.target.checked ? "wide" : "slim")} /> Wider scroll bars
+      </label>
+      <div className="hint">Makes the strip you click and drag easier to hit. Turn it off for the thinner size they used to have. Either way, a scroll bar's handle gets thicker and brighter when the pointer is on it or near it. Kept for your profile.</div>
+    </div>
+  );
+}
+
+/** Gallery files: copy them in (the default) or just remember where they are. Desktop only. Kept for the profile. */
+function GalleryLinkSetting() {
+  const { info } = useStore();
+  const [on, set] = useLinkFiles();
+  if (info?.platform === "android") return null;
+  return (
+    <div data-testid="gallery-link-setting">
+      <h3 style={{ marginTop: 22 }}>Gallery files</h3>
+      <label className="row" style={{ gap: 8, cursor: "pointer", marginTop: 10 }}>
+        <input type="checkbox" style={{ width: "auto", minHeight: 0 }} checked={on} data-testid="gallery-link-toggle" onChange={(e) => set(e.target.checked)} /> Link files instead of copying them
+      </label>
+      <div className="hint" style={{ marginTop: 6 }}>When on, adding files to a character's gallery (with the picture chooser) remembers where each file is on your computer instead of making a copy, so big videos take no extra space and have no size limit. The app never changes, moves or deletes your file; if you move it, it stops showing. Linked files aren't included in backups. Pictures from a link, pasted pictures and dropped files are still copied. Kept for your profile.</div>
+    </div>
+  );
+}
+
+/** "Add to Steam": puts this app in your Steam library as a non-Steam game, so it can be started from Steam (and from a Steam Deck). Desktop only. */
+function SteamSetting() {
+  const toast = useToast();
+  const [st, setSt] = useState<SteamStatus | null>(null);
+  const [user, setUser] = useState(""), [busy, setBusy] = useState(false), [note, setNote] = useState("");
+  const load = async () => { try { const s = await api.steamStatus(); setSt(s); setUser((u) => (s.users.some((x) => x.id === u) ? u : s.users[0]?.id ?? "")); } catch { setSt(null); } };
+  useEffect(() => { void load(); }, []);
+  if (!st || !st.supported) return null;
+  const me = st.users.find((x) => x.id === user);
+  const run = async (add: boolean) => {
+    setBusy(true); setNote("");
+    try { setNote(add ? await api.steamAdd(user) : await api.steamRemove(user)); await load(); } catch (e) { toast(errText(e), "err"); } finally { setBusy(false); }
+  };
+  return (
+    <div data-testid="steam-setting">
+      <h3 style={{ marginTop: 22 }}>Steam</h3>
+      {!st.found ? <div className="hint" data-testid="steam-missing">Steam wasn't found on this computer, so there is nothing to add this app to. (Install Steam and log in once, then come back.)</div> : (
+        <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+          <div className="hint">Adds Desktop College Dorms to your Steam library as a non-Steam game, so you can start it from Steam (and from a Steam Deck). Nothing else in Steam is changed, and a copy of Steam's list is kept the first time.</div>
+          {st.users.length > 1 ? (
+            <label className="field" style={{ maxWidth: 360 }}><span>Steam account</span>
+              <select value={user} aria-label="Steam account" data-testid="steam-user" onChange={(e) => setUser(e.target.value)}>
+                {st.users.map((u) => <option key={u.id} value={u.id}>{u.name || `Account ${u.id}`}{u.added ? " (added)" : ""}</option>)}
+              </select></label>
+          ) : null}
+          {st.running === true ? <div className="banner" role="status" data-testid="steam-running">Steam is running. Close it completely first (right-click its icon and choose Exit), then press <b>Check again</b>. Steam would undo the change when it closes.</div> : null}
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button className="btn primary" disabled={busy || !user || st.running === true} data-testid="steam-add" onClick={() => void run(true)}>{me?.added ? "Update in Steam" : "Add to Steam"}</button>
+            {me?.added ? <button className="btn" disabled={busy || st.running === true} data-testid="steam-remove" onClick={() => void run(false)}>Remove from Steam</button> : null}
+            {st.running === true ? <button className="btn" data-testid="steam-recheck" onClick={() => void load()}>Check again</button> : null}
+          </div>
+          {note ? <div className="hint" role="status" data-testid="steam-note">{note}</div> : null}
+          <div className="hint">Steam will start <code>{st.exe || "this app"}</code>. If you move or update the app to another place, press <b>Update in Steam</b> again.</div>
+        </div>
+      )}
     </div>
   );
 }
