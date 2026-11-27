@@ -46,6 +46,18 @@ Any size of PNG, JPG, WebP or GIF becomes an emoji or sticker: shrunk to fit and
 ### 👤 What belongs to a profile now stays with it
 These used to be shared by everyone on the device and now belong to the profile (or the guest space) that set them: your chats with **Tokenator**, the names, layout and picture frames of the **side bar** (Recent chats, Favorites, Most used), the order of the side bar's pages, room and shelf views, outfits you hid, decoration filters, the Gallery's viewer choices and chats with characters, and the scroll bar size. The old shared settings go to the first profile that opens the app after the update, once (so check your Tokenator history if you use more than one profile).
 
+### 📦 For Flathub and the AUR: a hand-off bundle
+The release now includes **`desktop-college-dorms-packaging-0.17.0.tar.gz`**: the Flatpak manifest and the two AUR packages with this version and the Linux tarball's checksum already filled in, a `.SRCINFO` for the AUR `-bin` package, and a `HANDOFF.md` that walks someone through trying the package and submitting it. The developer doesn't submit to Flathub or the AUR; **anyone is welcome to** (the app is MIT licensed and the owner has given full consent, no need to ask). The Linux tarball now also carries the desktop entry, metadata and icons so these packages need nothing else.
+
+### ⚠️ A warning about what is and isn't tested
+The developer builds and tests this app on Linux. **These are built by the project's automated builds but have never been run by the developer on real devices:**
+- the **Windows** installer and the portable `.exe`,
+- the **Linux AppImage** on machines other than the test one (and on Steam Deck),
+- the **Android** app (Mobile College Dorms), including its new built-in engine and profile export,
+- and the **Flatpak and AUR packages**, which nobody has built yet (they come as a hand-off bundle).
+
+If something doesn't work for you on one of these, that is probably a real problem nobody has seen yet. Please say so on the project's issues page.
+
 ### Not yet
 - A **Send** button for saved prompts (the app can send them, there is just no button yet), sending playbooks and worlds over Wi-Fi, and "refresh my phone" (send only what changed).
 - Gallery folders you make in the app, and the pictures in them, are **not** part of profile backups yet.
