@@ -5,3 +5,6 @@ target/
 src-tauri/binaries/
 src-tauri/gen/schemas/
 *.log
+
+# scratch output of local test runs
+/tmp/
