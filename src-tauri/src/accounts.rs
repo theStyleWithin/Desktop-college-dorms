@@ -992,6 +992,46 @@ pub fn save_export(state: State<'_, Shared>, token: String, path: String) -> R<S
     Ok(SaveOut { size: back.len(), path })
 }
 
+/// The address Android's save dialog gives for the file the person chose: a `content://` address, nothing else.
+pub fn check_content_uri(uri: &str) -> R<reqwest::Url> {
+    let u = reqwest::Url::parse(uri.trim()).map_err(|_| "That isn't a place the file can be saved to.".to_string())?;
+    if u.scheme() != "content" { return Err("This location needs the other save method.".into()); }
+    Ok(u)
+}
+
+/// Android: write the export to the `content://` address the save dialog gave, from here, then read it back from that address and compare every byte.
+/// (The web view used to carry the file there, but a big file between the web view and the app is not reliable on Android: see the profile import, which brings
+/// a file in small pieces for the same reason. Here nothing but the address crosses.)
+#[tauri::command]
+pub fn save_export_to_uri(state: State<'_, Shared>, token: String, uri: String) -> R<SaveOut> {
+    use std::io::{Read, Write};
+    use tauri_plugin_fs::{FilePath, FsExt, OpenOptions};
+    let url = check_content_uri(&uri)?;
+    let mut g = state.pending_export.lock().unwrap();
+    let p = match g.as_mut() {
+        Some(p) if p.token == token => p,
+        _ => return Err("That export is no longer available. Start again.".into()),
+    };
+    let fs = state.app.fs();
+    let mut w = OpenOptions::new();
+    w.write(true).truncate(true).create(true);
+    let mut f = fs.open(FilePath::Url(url.clone()), w).map_err(|err| format!("Could not open the file to save into: {err}"))?;
+    f.write_all(&p.bytes).and_then(|_| f.flush()).map_err(|err| format!("Could not save the file: {err}"))?;
+    let _ = f.sync_all();
+    drop(f);
+    let mut r = OpenOptions::new();
+    r.read(true);
+    let mut back = Vec::with_capacity(p.bytes.len());
+    fs.open(FilePath::Url(url), r)
+        .and_then(|mut f| f.read_to_end(&mut back))
+        .map_err(|err| format!("The file was written, but it could not be read back to check it ({err}), so it isn't counted as saved. Try another location."))?;
+    if Sha256::digest(&back) != Sha256::digest(&p.bytes) {
+        return Err(format!("The saved file didn't match what was meant to be saved ({} bytes were found, {} expected), so it isn't counted as saved. Try another location.", back.len(), p.bytes.len()));
+    }
+    p.saved = true;
+    Ok(SaveOut { size: back.len(), path: uri })
+}
+
 /// The web view saved the file itself (Android) and checked its size; record that.
 #[tauri::command]
 pub fn confirm_export_saved(state: State<'_, Shared>, token: String, size: usize) -> R<()> {
@@ -1609,9 +1649,10 @@ pub fn stage_chunk(state: State<'_, Shared>, token: String, data: String) -> R<u
 #[tauri::command]
 pub fn stage_clear(state: State<'_, Shared>) {
     *state.staged.lock().unwrap() = None;
+    crate::transfer::clear_receive(&state);   // what had arrived over Wi-Fi is thrown away with it
 }
 
-fn staged_bytes(st: &AppState, token: &str) -> R<Arc<Vec<u8>>> {
+pub(crate) fn staged_bytes(st: &AppState, token: &str) -> R<Arc<Vec<u8>>> {
     match &*st.staged.lock().unwrap() {
         Some((t, b)) if t == token && !b.is_empty() => Ok(b.clone()),
         _ => Err("The file isn't here any more. Choose it again.".into()),
@@ -1690,6 +1731,12 @@ async fn profile_op(st: Shared, bytes: Arc<Vec<u8>>, mode: &str, handle: String,
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_a_content_address_is_saved_to_from_android() {
+        assert!(check_content_uri("content://com.android.providers.downloads.documents/document/msf%3A12").is_ok());
+        for bad in ["", "file:///sdcard/a.dorms", "/sdcard/a.dorms", "https://example.com/a", "javascript:alert(1)", "content"] { assert!(check_content_uri(bad).is_err(), "{bad:?}"); }
+    }
+
     use super::*;
 
     fn zip_with(files: &[(&str, &[u8])]) -> Vec<u8> {
