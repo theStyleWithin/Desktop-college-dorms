@@ -2918,6 +2918,14 @@ try:
     check("and the new picture shows in the sub folder at once", "%d pictures" % (n_gal_ + 1) in d.execute_script("const b=document.querySelector('[data-gallery-sub=gallery]'); return b ? b.textContent : ''"))
     set_value("[data-testid=gallery-folder-link-input]", "http://127.0.0.1:18997/page"); d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-folder-link-use]").click(); time.sleep(1.5)
     check("a link to a web page adds nothing", len(invoke("get_character", {"id": art_["id"]}).get("gallery", [])) == n_gal_ + 1)
+    # the Add files button in a character's folder in the Gallery
+    check("a character's folder has Add files and Link files buttons", d.execute_script("return !!document.querySelector('[data-testid=gallery-add-files]') && !!document.querySelector('[data-testid=gallery-link-files]')"))
+    inp2_ = d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-folder-files]"); d.execute_script("arguments[0].hidden=false;arguments[0].style.display='block';", inp2_)
+    n_before_files_ = len(invoke("get_character", {"id": art_["id"]}).get("gallery", []))
+    inp2_.send_keys(os.path.join(FIX, "avatar.gif")); time.sleep(2.5)
+    got_ = invoke("get_character", {"id": art_["id"]}).get("gallery", [])
+    check("files chosen there are added to the character's gallery (copied)", len(got_) == n_before_files_ + 1 and not got_[-1].get("link") and got_[-1]["kind"] == "gif", str(got_[-1:]))
+    for g_ in got_[n_before_files_:]: invoke("remove_gallery_item", {"id": art_["id"], "itemId": g_["id"]})
     # a file can be linked in place instead of copied
     clip_ = os.path.realpath(os.path.join(FIX, "clip.mp4"))
     lk_ = invoke("link_gallery_file", {"id": art_["id"], "path": clip_})

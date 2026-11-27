@@ -1,7 +1,7 @@
 import { sget, sset } from "../lib/scoped";
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { open as pickFolder } from "@tauri-apps/plugin-dialog";
+import { open as pickFolder, open as pickFiles } from "@tauri-apps/plugin-dialog";
 import { api, displayName, mediaUrl, type Character, type ViewDir, type ViewFolder } from "../api";
 import { useStore } from "../store";
 import { errText } from "../lib/util";
@@ -9,6 +9,7 @@ import { Modal, useToast } from "../components/ui";
 import PictureComments from "../components/PictureComments";
 import PictureLinkBox, { pastedPicture } from "../components/PictureLinkBox";
 import GalleryStage from "../components/GalleryStage";
+import { useLinkFiles } from "../lib/galleryLink";
 import PictureChat from "../components/PictureChat";
 
 /**
@@ -226,6 +227,24 @@ function GalleryPage() {
     catch (e) { toast(`${f.name}: ${errText(e)}`, "err"); }
   };
 
+  /** Adds files from the computer to a character's own gallery: copies them in, or (Settings → Customization → Gallery files, desktop) remembers where they are. */
+  const [linkOn] = useLinkFiles();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const addFileList = async (c: Character, files: FileList | File[] | null) => {
+    if (!files || !files.length) return;
+    let n = 0;
+    for (const f of Array.from(files)) { try { await api.addGalleryImage(c.id, f); n++; } catch (e) { toast(`${f.name}: ${errText(e)}`, "err"); } }
+    if (n) { await refresh(); toast(`Added ${plural(n, "file")} to ${displayName(c)}'s gallery.`, "ok"); }
+  };
+  const linkFileList = async (c: Character) => {
+    try {
+      const p = await pickFiles({ multiple: true, directory: false, title: "Choose pictures or videos to link (they are not copied)", filters: [{ name: "Pictures and videos", extensions: ["png", "jpg", "jpeg", "webp", "avif", "bmp", "gif", "mp4", "webm", "mov", "m4v", "ogv"] }] });
+      const list = !p ? [] : Array.isArray(p) ? p : [p];
+      let n = 0;
+      for (const path of list) { try { await api.linkGalleryFile(c.id, path); n++; } catch (e) { toast(`${path.split(/[\\/]/).pop() ?? path}: ${errText(e)}`, "err"); } }
+      if (n) { await refresh(); toast(`Linked ${plural(n, "file")} in ${displayName(c)}'s gallery (not copied).`, "ok"); }
+    } catch (e) { toast(errText(e), "err"); }
+  };
   const scan = useCallback(async (f: ViewFolder) => {
     if (!f.exists) { setScans((s) => ({ ...s, [f.id]: "error" })); return; }
     try { const r = await api.scanViewFolder(f.id); setScans((s) => ({ ...s, [f.id]: r })); } catch { setScans((s) => ({ ...s, [f.id]: "error" })); }
@@ -365,7 +384,14 @@ function GalleryPage() {
           <div className="row"><button className="btn" onClick={() => go({ page: "editor", id: who.id })}>Open character</button></div>
         </div>
         <div style={{ maxWidth: 520, marginBottom: 14 }} data-testid="gallery-add-here">
-          <PictureLinkBox testid="gallery-folder-link" onFile={(f) => addToGallery(who, f)} placeholder="Add a picture to their gallery: paste a link (https://…)" />
+          <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+            <button type="button" className="btn primary" data-testid="gallery-add-files" onClick={() => (linkOn && canAddFolders ? void linkFileList(who) : fileInput.current?.click())}>{linkOn && canAddFolders ? "＋ Link files…" : "＋ Add files…"}</button>
+            {canAddFolders ? (linkOn
+              ? <button type="button" className="btn" data-testid="gallery-copy-files" onClick={() => fileInput.current?.click()}>Copy files in instead…</button>
+              : <button type="button" className="btn" data-testid="gallery-link-files" onClick={() => void linkFileList(who)}>🔗 Link files…</button>) : null}
+            <input ref={fileInput} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime" aria-label="Add files to their gallery" data-testid="gallery-folder-files" onChange={(e) => { void addFileList(who, e.target.files); e.target.value = ""; }} />
+          </div>
+          <PictureLinkBox testid="gallery-folder-link" onFile={(f) => addToGallery(who, f)} placeholder="…or add a picture to their gallery: paste a link (https://…)" />
         </div>
         {at.sub ? tileGrid(gal) : (
           <>
