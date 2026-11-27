@@ -97,8 +97,26 @@ pub fn hardware() -> Hardware {
 }
 
 pub fn engine_supported() -> bool {
-    !cfg!(any(target_os = "android", target_os = "ios"))
+    if cfg!(target_os = "ios") { return false; }
+    if cfg!(target_os = "android") { return android_engine().is_some(); }
+    true
 }
+
+/// On a phone the engine is packaged as a "native library" (`libdorms_engine.so`, really the llama.cpp server program): Android only lets an
+/// app start a program from the folder it unpacks its native libraries to, and that folder is the one the app's own library sits in.
+/// `maps` is the text of `/proc/self/maps`; `exists` says whether a file is there.
+pub fn engine_beside_app_library(maps: &str, exists: impl Fn(&Path) -> bool) -> Option<PathBuf> {
+    maps.lines().filter_map(|l| l.split_whitespace().last()).filter(|p| p.starts_with('/') && p.ends_with("/libdorms_lib.so"))
+        .filter_map(|p| Path::new(p).parent().map(|d| d.join("libdorms_engine.so"))).find(|c| exists(c))
+}
+
+#[cfg(target_os = "android")]
+pub fn android_engine() -> Option<PathBuf> {
+    let maps = std::fs::read_to_string("/proc/self/maps").ok()?;
+    engine_beside_app_library(&maps, |p| p.is_file())
+}
+#[cfg(not(target_os = "android"))]
+pub fn android_engine() -> Option<PathBuf> { None }
 
 #[derive(Serialize)]
 pub struct ModelFile {
@@ -265,6 +283,7 @@ fn find_in_path(name: &str) -> Option<PathBuf> {
 /// Look next to the app (where Tauri puts sidecars), then the embedded copy,
 /// then `$PATH` so a system llama.cpp `llama-server` works as a last resort.
 fn find_server(data: &Path, vulkan: bool) -> Option<PathBuf> {
+    if cfg!(target_os = "android") { return if vulkan { None } else { android_engine() }; }
     let base = if vulkan { "dorms-engine-vulkan" } else { "dorms-engine" };
     let name = exe_name(base);
     if let Some(p) = std::env::var_os("DORMS_LLAMA_SERVER").filter(|_| !vulkan) {
@@ -395,6 +414,11 @@ pub async fn ensure_running(st: &AppState, model_file: &str, ctx: usize, gpu: bo
         let log = std::fs::File::create(st.data_dir.join("llama.log")).map_err(|e| e.to_string())?;
         let log2 = log.try_clone().map_err(|e| e.to_string())?;
         let mut cmd = Command::new(&bin);
+        // a phone's cores are not all the same: leaving the slow ones out is faster than using every one
+        if cfg!(target_os = "android") {
+            let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+            cmd.args(["-t", &cores.saturating_sub(2).max(2).to_string()]);
+        }
         cmd.arg("-m").arg(&model_path)
             .args(["--host", "127.0.0.1", "--port", &port.to_string()])
             .args(["-c", &ctx.to_string()])
@@ -433,4 +457,21 @@ pub async fn ensure_running(st: &AppState, model_file: &str, ctx: usize, gpu: bo
         }
     }
     Err(format!("The local engine could not start: {last_err}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_phone_engine_is_found_beside_the_apps_own_library() {
+        let maps = "7a00000000-7a00100000 r--p 00000000 fd:00 1 /system/lib64/libc.so\n7b00000000-7b00200000 r-xp 00000000 fd:00 2 /data/app/~~x/io.github.app-y/lib/arm64/libdorms_lib.so\n";
+        let there = |p: &Path| p == Path::new("/data/app/~~x/io.github.app-y/lib/arm64/libdorms_engine.so");
+        assert_eq!(engine_beside_app_library(maps, there), Some(PathBuf::from("/data/app/~~x/io.github.app-y/lib/arm64/libdorms_engine.so")));
+        assert_eq!(engine_beside_app_library(maps, |_| false), None, "no engine file, no engine");
+        assert_eq!(engine_beside_app_library("7a-7b r--p 0 fd:00 1 /system/lib64/libc.so\n", |_| true), None, "the app's library isn't loaded here");
+        assert_eq!(engine_beside_app_library("", |_| true), None);
+        // a desktop build never looks for a phone engine
+        if !cfg!(target_os = "android") { assert!(android_engine().is_none()); }
+    }
 }
