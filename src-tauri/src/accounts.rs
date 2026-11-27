@@ -550,6 +550,9 @@ struct Data {
     /// The person's own decorations (nameplates, banners, wreaths brought in from files).
     #[serde(default)]
     deco_custom: Vec<db::CustomDeco>,
+    /// The person's comments under Gallery pictures.
+    #[serde(default)]
+    gallery_comments: Vec<db::GalleryComment>,
     /// The profile's own picture (file name inside the archive's media folder) and its framing.
     #[serde(default)]
     profile_avatar: Option<(String, Option<db::Frame>)>,
@@ -894,7 +897,8 @@ pub(crate) fn build_export(st: &AppState, o: &Owner) -> R<(Vec<u8>, ExportInfo, 
         (pbs, rows)
     };
     let deco_custom = db::list_custom_deco(&st.db.lock().unwrap(), o).map_err(e)?;
-    let data = Data { deco_custom, settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, emoji, worlds, playbooks, chat_playbooks, shelf_folders, shelf_items, profile_avatar };
+    let gallery_comments = db::all_gallery_comments(&st.db.lock().unwrap(), o).map_err(e)?;
+    let data = Data { gallery_comments, deco_custom, settings: exported_settings, characters: media_chars, dorms, chats, messages, rooms, mechanics, chat_mechanics, notes, folders, lorebooks, personas, decor, prompts, char_deco, emoji, worlds, playbooks, chat_playbooks, shelf_folders, shelf_items, profile_avatar };
     zip.start_file("manifest.json", deflated).map_err(e)?;
     zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(e)?).map_err(e)?;
     zip.start_file("data.json", deflated).map_err(e)?;
@@ -1297,6 +1301,24 @@ fn perform_import(st: &AppState, parsed: Parsed, handle: String, display: String
                 let Some(d) = crate::deco::clean_custom(d.clone()) else { continue };
                 if !have.contains(&d.did) { if n >= db::MAX_CUSTOM_DECO { break; } n += 1; }
                 db::save_custom_deco(&db, &d, &o).map_err(e)?;
+            }
+        }
+        // comments under Gallery pictures: a character's pictures are named by the character's new id (a picture's own id stays), and every
+        // comment gets a new id so it can't clash with the profile it was backed up from (answers are pointed at the new ids)
+        {
+            let mut new_ids: HashMap<String, String> = HashMap::new();
+            for g in &parsed.data.gallery_comments { new_ids.insert(g.id.clone(), uid()); }
+            for g in &parsed.data.gallery_comments {
+                let key = match g.pic_key.strip_prefix("char:").map(|r| r.split_once(':')) {
+                    Some(Some((cid, rest))) => match char_map.get(cid) { Some(n) => format!("char:{n}:{rest}"), None => continue },
+                    Some(None) => continue,
+                    None => g.pic_key.clone(),
+                };
+                let Ok(body) = crate::gallerycomments::clean_body(&g.body) else { continue };
+                if !crate::gallerycomments::pic_key_ok(&key) { continue; }
+                let parent_id = g.parent_id.as_ref().and_then(|p| new_ids.get(p).cloned());
+                let c = db::GalleryComment { id: new_ids[&g.id].clone(), pic_key: key, parent_id, author: g.author.chars().filter(|c| !c.is_control()).take(60).collect(), body, created_at: g.created_at, edited_at: g.edited_at };
+                db::insert_gallery_comment(&db, &o, &c).map_err(e)?;
             }
         }
         // worlds first, so each room can be put in its own (their lorebooks are the new copies)

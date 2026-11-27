@@ -2,10 +2,12 @@ mod accounts;
 mod commands;
 mod db;
 mod extras;
+mod gallerycomments;
 mod guide;
 mod handoff;
 mod llama;
 mod llm;
+mod netpic;
 mod novel;
 mod phone;
 mod shelf;
@@ -239,10 +241,16 @@ pub fn run() {
             presence::list_statuses,
             presence::set_status,
             presence::generate_status,
+            gallerycomments::gallery_comments,
+            gallerycomments::gallery_comment_counts,
+            gallerycomments::add_gallery_comment,
+            gallerycomments::edit_gallery_comment,
+            gallerycomments::delete_gallery_comment,
             viewfolders::list_view_folders,
             viewfolders::add_view_folder,
             viewfolders::remove_view_folder,
             viewfolders::scan_view_folder,
+            netpic::fetch_picture,
             deco::list_char_deco,
             deco::list_custom_deco,
             deco::save_custom_deco,

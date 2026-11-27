@@ -640,6 +640,10 @@ pub fn open(path: &std::path::Path) -> R<Connection> {
          CREATE TABLE IF NOT EXISTS deco_custom(
             did TEXT NOT NULL, profile_id TEXT, data TEXT NOT NULL, created_at INTEGER NOT NULL);
          CREATE INDEX IF NOT EXISTS deco_custom_owner ON deco_custom(profile_id);
+         CREATE TABLE IF NOT EXISTS gallery_comments(
+            id TEXT PRIMARY KEY, profile_id TEXT, pic_key TEXT NOT NULL, parent_id TEXT, author TEXT NOT NULL DEFAULT '',
+            body TEXT NOT NULL, created_at INTEGER NOT NULL, edited_at INTEGER);
+         CREATE INDEX IF NOT EXISTS gallery_comments_pic ON gallery_comments(profile_id, pic_key);
          CREATE TABLE IF NOT EXISTS view_folders(
             id TEXT PRIMARY KEY, profile_id TEXT, path TEXT NOT NULL, added_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS lorebooks(
@@ -747,6 +751,7 @@ pub fn list_characters(c: &Connection, owner: &Owner) -> R<Vec<Character>> {
 }
 
 pub fn delete_character(c: &Connection, id: &str, owner: &Owner) -> R<()> {
+    let _ = delete_gallery_comments_under(c, owner, &format!("char:{id}:"));
     c.execute("DELETE FROM characters WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     c.execute("DELETE FROM char_status WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
     c.execute("DELETE FROM char_deco WHERE id=?1 AND profile_id IS ?2", params![id, owner])?;
@@ -1356,6 +1361,86 @@ pub fn delete_custom_deco(c: &Connection, did: &str, owner: &Owner) -> R<()> {
     Ok(())
 }
 
+/// A comment the person wrote under a picture in the Gallery, kept only on this device. Comments can answer other comments (a thread, like a
+/// forum): `parent_id` is the comment being answered. A picture is named by its `pic_key`: `char:<character id>:profile` or
+/// `char:<character id>:<gallery item id>` for a character's pictures, `disk:<full path>` for a picture from a folder on the computer.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+pub struct GalleryComment {
+    pub id: String,
+    pub pic_key: String,
+    pub parent_id: Option<String>,
+    pub author: String,
+    pub body: String,
+    pub created_at: i64,
+    pub edited_at: Option<i64>,
+}
+
+/// The longest one comment can be. There is no limit on how many comments a picture can have.
+pub const MAX_COMMENT_CHARS: usize = 20_000;
+
+fn row_comment(r: &rusqlite::Row) -> rusqlite::Result<GalleryComment> {
+    Ok(GalleryComment { id: r.get(0)?, pic_key: r.get(1)?, parent_id: r.get(2)?, author: r.get(3)?, body: r.get(4)?, created_at: r.get(5)?, edited_at: r.get(6)? })
+}
+const COMMENT_COLS: &str = "id,pic_key,parent_id,author,body,created_at,edited_at";
+
+/// Every comment under one picture, oldest first.
+pub fn list_gallery_comments(c: &Connection, owner: &Owner, pic_key: &str) -> R<Vec<GalleryComment>> {
+    let mut s = c.prepare(&format!("SELECT {COMMENT_COLS} FROM gallery_comments WHERE profile_id IS ?1 AND pic_key=?2 ORDER BY created_at, rowid"))?;
+    let rows = s.query_map(params![owner, pic_key], row_comment)?.filter_map(|r| r.ok()).collect();
+    Ok(rows)
+}
+
+/// All of a profile's comments (for a backup).
+pub fn all_gallery_comments(c: &Connection, owner: &Owner) -> R<Vec<GalleryComment>> {
+    let mut s = c.prepare(&format!("SELECT {COMMENT_COLS} FROM gallery_comments WHERE profile_id IS ?1 ORDER BY created_at, rowid"))?;
+    let rows = s.query_map([owner], row_comment)?.filter_map(|r| r.ok()).collect();
+    Ok(rows)
+}
+
+/// How many comments each picture has (replies included), for the little count on a picture.
+pub fn gallery_comment_counts(c: &Connection, owner: &Owner) -> R<HashMap<String, i64>> {
+    let mut s = c.prepare("SELECT pic_key, COUNT(*) FROM gallery_comments WHERE profile_id IS ?1 GROUP BY pic_key")?;
+    let rows = s.query_map([owner], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?.filter_map(|r| r.ok()).collect();
+    Ok(rows)
+}
+
+pub fn get_gallery_comment(c: &Connection, owner: &Owner, id: &str) -> R<Option<GalleryComment>> {
+    Ok(c.query_row(&format!("SELECT {COMMENT_COLS} FROM gallery_comments WHERE id=?1 AND profile_id IS ?2"), params![id, owner], row_comment).optional()?)
+}
+
+pub fn insert_gallery_comment(c: &Connection, owner: &Owner, g: &GalleryComment) -> R<()> {
+    c.execute("INSERT INTO gallery_comments(id,profile_id,pic_key,parent_id,author,body,created_at,edited_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+        params![g.id, owner, g.pic_key, g.parent_id, g.author, g.body, g.created_at, g.edited_at])?;
+    Ok(())
+}
+
+pub fn edit_gallery_comment(c: &Connection, owner: &Owner, id: &str, body: &str) -> R<()> {
+    c.execute("UPDATE gallery_comments SET body=?3, edited_at=?4 WHERE id=?1 AND profile_id IS ?2", params![id, owner, body, now()])?;
+    Ok(())
+}
+
+/// Deletes a comment and every reply under it (and replies to those). Returns how many went.
+pub fn delete_gallery_comment(c: &Connection, owner: &Owner, id: &str) -> R<usize> {
+    let mut gone = vec![id.to_string()];
+    let mut i = 0;
+    while i < gone.len() {
+        let mut s = c.prepare("SELECT id FROM gallery_comments WHERE profile_id IS ?1 AND parent_id=?2")?;
+        let kids: Vec<String> = s.query_map(params![owner, gone[i]], |r| r.get(0))?.filter_map(|r| r.ok()).collect();
+        gone.extend(kids);
+        i += 1;
+    }
+    let mut n = 0;
+    for g in &gone { n += c.execute("DELETE FROM gallery_comments WHERE id=?1 AND profile_id IS ?2", params![g, owner])?; }
+    Ok(n)
+}
+
+/// Drops every comment under pictures whose key starts with this (a deleted character's pictures, or one removed picture).
+pub fn delete_gallery_comments_under(c: &Connection, owner: &Owner, key_prefix: &str) -> R<()> {
+    let like = format!("{}%", key_prefix.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"));
+    c.execute("DELETE FROM gallery_comments WHERE profile_id IS ?1 AND pic_key LIKE ?2 ESCAPE '\\'", params![owner, like])?;
+    Ok(())
+}
+
 /// A folder on the computer that the person added to the Gallery, only to look at (nothing in it is ever copied, changed or deleted).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewFolder {
@@ -1775,6 +1860,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
     c.execute("DELETE FROM char_status WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM char_deco WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM view_folders WHERE profile_id IS ?1", [owner])?;
+    c.execute("DELETE FROM gallery_comments WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM deco_custom WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM emoji_items WHERE profile_id IS ?1", [owner])?;
     c.execute("DELETE FROM playbooks WHERE profile_id IS ?1", [owner])?;
@@ -1798,7 +1884,7 @@ pub fn wipe_owner(c: &Connection, owner: &Owner) -> R<()> {
 
 /// Turn the guest space into a named profile: its data moves over and the guest space starts fresh.
 pub fn claim_guest(c: &Connection, new_id: &str) -> R<()> {
-    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "view_folders", "deco_custom", "emoji_items", "worlds", "playbooks", "shelf_folders", "shelf_items"] {
+    for t in ["characters", "dorms", "chats", "rooms", "mechanics", "notes", "folders", "lorebooks", "personas", "decor", "prompts", "char_status", "char_deco", "view_folders", "gallery_comments", "deco_custom", "emoji_items", "worlds", "playbooks", "shelf_folders", "shelf_items"] {
         c.execute(&format!("UPDATE {t} SET profile_id=?1 WHERE profile_id IS NULL"), [new_id])?;
     }
     let guest = settings_key(&None);

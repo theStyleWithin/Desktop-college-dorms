@@ -5,6 +5,8 @@ import { api, displayName, mediaUrl, type Character, type ViewDir, type ViewFold
 import { useStore } from "../store";
 import { errText } from "../lib/util";
 import { useToast } from "../components/ui";
+import PictureComments from "../components/PictureComments";
+import PictureLinkBox, { pastedPicture } from "../components/PictureLinkBox";
 
 /**
  * Gallery: a quick look at pictures, for when you just want to look at the art and not chat. Every character is an art folder holding
@@ -12,20 +14,20 @@ import { useToast } from "../components/ui";
  * which have nothing to do with any character, only to look at. Nothing here changes anything: a folder from your computer is never
  * copied, changed or deleted (taking it off the list only forgets it).
  */
-type Tile = { id: string; url: string; kind: "image" | "gif" | "video"; title: string; note?: string; who?: Character };
+type Tile = { id: string; key: string; url: string; kind: "image" | "gif" | "video"; title: string; note?: string; who?: Character };
 
 const profileTile = (c: Character): Tile | null => {
   const url = mediaUrl(c);
   if (!url || !c.media || c.media.kind === "vrm") return null;
-  return { id: `${c.id}:profile`, url, kind: c.media.kind, title: displayName(c), note: "Profile picture", who: c };
+  return { id: `${c.id}:profile`, key: `char:${c.id}:profile`, url, kind: c.media.kind, title: displayName(c), note: "Profile picture", who: c };
 };
 const galleryTiles = (c: Character): Tile[] =>
   (c.gallery ?? []).flatMap((g) => {
     const p = c.gallery_paths?.find((x) => x.id === g.id)?.path;
-    return p ? [{ id: `${c.id}:${g.id}`, url: convertFileSrc(p), kind: g.kind, title: displayName(c), note: g.moods.length ? g.moods.join(", ") : "Gallery", who: c } as Tile] : [];
+    return p ? [{ id: `${c.id}:${g.id}`, key: `char:${c.id}:${g.id}`, url: convertFileSrc(p), kind: g.kind, title: displayName(c), note: g.moods.length ? g.moods.join(", ") : "Gallery", who: c } as Tile] : [];
   });
 const picCount = (c: Character) => (profileTile(c) ? 1 : 0) + galleryTiles(c).length;
-const diskTiles = (d: ViewDir): Tile[] => d.files.map((f) => ({ id: f.path, url: convertFileSrc(f.path), kind: f.kind, title: f.name, note: d.name }));
+const diskTiles = (d: ViewDir): Tile[] => d.files.map((f) => ({ id: f.path, key: `disk:${f.path}`, url: convertFileSrc(f.path), kind: f.kind, title: f.name, note: d.name }));
 const firstPic = (d: ViewDir): Tile | null => (d.files[0] ? diskTiles(d)[0] : d.dirs.map(firstPic).find(Boolean) ?? null);
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
@@ -41,7 +43,7 @@ function Pic({ t, fit = "cover", big }: { t: Tile; fit?: "cover" | "contain"; bi
 type Where = { kind: "char"; id: string; sub: boolean } | { kind: "disk"; id: string; path: string[] } | null;
 
 export default function Gallery() {
-  const { characters, go, info } = useStore();
+  const { characters, go, info, me, refresh } = useStore();
   const toast = useToast();
   const [q, setQ] = useState("");
   const [onlyGalleries, setOnlyGalleries] = useState(false);
@@ -51,11 +53,21 @@ export default function Gallery() {
   const [disk, setDisk] = useState<ViewFolder[]>([]);
   const [scans, setScans] = useState<Record<string, { root: ViewDir; truncated: boolean } | "error">>({});
   const canAddFolders = info?.platform !== "android";
+  // how many comments each picture has (shown as a count on the picture)
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  useEffect(() => { api.galleryCommentCounts().then(setCounts).catch(() => {}); }, []);
+  const setCount = useCallback((key: string, n: number) => setCounts((c) => (c[key] === n ? c : { ...c, [key]: n })), []);
 
   const sorted = useMemo(() => [...characters].sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || displayName(a).localeCompare(displayName(b))), [characters]);
   const shown = sorted.filter((c) => (!onlyGalleries || (c.gallery?.length ?? 0) > 0)
     && (!q.trim() || `${displayName(c)} ${c.card.tags.join(" ")}`.toLowerCase().includes(q.trim().toLowerCase())));
   const total = characters.reduce((n, c) => n + picCount(c), 0);
+
+  /** Adds a picture (from a link or the clipboard) to a character's own gallery, the same as adding it in the character's editor. */
+  const addToGallery = async (c: Character, f: File) => {
+    try { await api.addGalleryImage(c.id, f); await refresh(); toast(`Added to ${displayName(c)}'s gallery.`, "ok"); }
+    catch (e) { toast(`${f.name}: ${errText(e)}`, "err"); }
+  };
 
   const scan = useCallback(async (f: ViewFolder) => {
     if (!f.exists) { setScans((s) => ({ ...s, [f.id]: "error" })); return; }
@@ -87,6 +99,7 @@ export default function Gallery() {
     if (!view) return;
     const k = (e: KeyboardEvent) => {
       const v = viewRef.current; if (!v) return;
+      if ((e.target as HTMLElement | null)?.closest?.("input, textarea")) return;   // typing a comment: the keys are for the text
       if (e.key === "Escape") setView(null);
       else if (e.key === "ArrowRight") setView({ ...v, at: (v.at + 1) % v.list.length });
       else if (e.key === "ArrowLeft") setView({ ...v, at: (v.at - 1 + v.list.length) % v.list.length });
@@ -101,6 +114,7 @@ export default function Gallery() {
         <button key={t.id} type="button" className="gal-tile" data-gallery-tile={t.id} title={t.kind === "video" || !t.who ? t.title : t.note} onClick={() => setView({ list, at: i })}>
           <Pic t={t} />
           {t.kind === "video" ? <span className="gal-badge">▶ clip</span> : t.kind === "gif" ? <span className="gal-badge">GIF</span> : null}
+          {counts[t.key] ? <span className="gal-badge left" data-testid="comment-count">💬 {counts[t.key]}</span> : null}
           {!t.who ? <span className="gal-cap">{t.title}</span> : null}
         </button>
       ))}
@@ -118,10 +132,13 @@ export default function Gallery() {
             <button className="btn sm" data-testid="gallery-close" onClick={() => setView(null)} aria-label="Close">✕</button>
           </span>
         </div>
+        <div className="gal-vbody">
         <div className="gal-vmain">
           {v.list.length > 1 && <button className="gal-nav left" aria-label="Previous picture" data-testid="gallery-prev" onClick={() => setView({ ...v, at: (v.at - 1 + v.list.length) % v.list.length })}>‹</button>}
           <div className="gal-vpic" data-testid="gallery-big"><Pic key={t.id} t={t} fit="contain" big /></div>
           {v.list.length > 1 && <button className="gal-nav right" aria-label="Next picture" data-testid="gallery-next" onClick={() => setView({ ...v, at: (v.at + 1) % v.list.length })}>›</button>}
+        </div>
+        <aside className="gal-comments" aria-label="Comments on this picture"><PictureComments picKey={t.key} author={me.name} onCount={(n) => setCount(t.key, n)} /></aside>
         </div>
       </div>
     );
@@ -143,7 +160,7 @@ export default function Gallery() {
   if (at?.kind === "char" && who) {
     const prof = profileTile(who), gal = galleryTiles(who);
     return (
-      <div className="page" data-testid="gallery-folder">
+      <div className="page" data-testid="gallery-folder" onPaste={(e) => { if ((e.target as HTMLElement).closest("input, textarea")) return; const f = pastedPicture(e); if (f) { e.preventDefault(); void addToGallery(who, f); } }}>
         <div className="page-head">
           <div>
             {crumbs([{ label: "🖼️ Gallery", go: () => setAt(null) }, at.sub ? { label: `📁 ${displayName(who)}`, go: () => setAt({ ...at, sub: false }) } : { label: `📁 ${displayName(who)}` }, ...(at.sub ? [{ label: "Gallery" }] : [])])}
@@ -152,12 +169,16 @@ export default function Gallery() {
           </div>
           <div className="row"><button className="btn" onClick={() => go({ page: "editor", id: who.id })}>Open character</button></div>
         </div>
+        <div style={{ maxWidth: 520, marginBottom: 14 }} data-testid="gallery-add-here">
+          <PictureLinkBox testid="gallery-folder-link" onFile={(f) => addToGallery(who, f)} placeholder="Add a picture to their gallery: paste a link (https://…)" />
+        </div>
         {at.sub ? tileGrid(gal) : (
           <>
             <div className="gal-grid" data-testid="gallery-contents">
               {prof ? (
                 <button type="button" className="gal-tile" data-gallery-tile={prof.id} onClick={() => setView({ list: [prof, ...gal], at: 0 })}>
                   <Pic t={prof} />
+                  {counts[prof.key] ? <span className="gal-badge left" data-testid="comment-count">💬 {counts[prof.key]}</span> : null}
                   <span className="gal-cap">Profile picture</span>
                 </button>
               ) : null}

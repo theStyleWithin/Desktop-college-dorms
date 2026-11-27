@@ -437,6 +437,7 @@ pub fn remove_gallery_item(state: State<'_, Shared>, id: String, item_id: String
     let mut c = db::get_character(&db, &id, &o).map_err(e)?.ok_or("Character not found")?;
     if let Some(i) = c.gallery.iter().position(|g| g.id == item_id) {
         let gone = c.gallery.remove(i);
+        let _ = db::delete_gallery_comments_under(&db, &o, &format!("char:{id}:{}", gone.id));
         let _ = std::fs::remove_file(state.data_dir.join(&gone.file));
         c.updated_at = db::now();
         db::save_character(&db, &c, &o).map_err(e)?;

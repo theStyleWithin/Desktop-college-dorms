@@ -112,6 +112,21 @@ export default function Editor({ id }: { id: string | null }) {
     await applyMedia(f, kind, null);
   };
 
+  const [link, setLink] = useState(""), [fetching, setFetching] = useState(false);
+  /** Uses a picture from a web address instead of a file: it is fetched, then treated exactly like an upload. */
+  const useLink = async () => {
+    if (fetching || !link.trim()) return;
+    setFetching(true);
+    try { const f = await api.fetchPicture(link); setLink(""); await pickMedia(f); }
+    catch (e) { toast(errText(e), "err"); }
+    finally { setFetching(false); }
+  };
+  /** A picture copied from the internet (Copy image) and pasted anywhere in the Avatar section is used as the avatar. */
+  const pasteMedia = (e: React.ClipboardEvent) => {
+    const f = [...(e.clipboardData?.files ?? [])].find((x) => x.type.startsWith("image/"));
+    if (f) { e.preventDefault(); void pickMedia(f.name && /\.\w+$/.test(f.name) ? f : new File([f], `pasted.${f.type.split("/")[1] || "png"}`, { type: f.type })); }
+  };
+
   const applyMedia = async (f: File, kind: MediaKind, frame: Frame | null) => {
     if (char) {
       try {
@@ -199,8 +214,8 @@ export default function Editor({ id }: { id: string | null }) {
 
       <h2>Character Info <span className="sub" style={{ fontSize: ".9rem", fontFamily: "var(--sans)" }}>(how they look in your library)</span></h2>
       <Field label="Name" req><input type="text" value={name} placeholder="Name" onChange={(e) => { setName(e.target.value); setDirty(true); }} /></Field>
-      <Field label="Avatar" plain hint="JPG, PNG, WebP, GIF, MP4/WebM video, or a VRM / VRoid model (.vrm). Choose Upload, or drop a file onto the picture. Videos and GIFs animate; VRM models stand in a 3D room you can look around.">
-        <div className="row" style={{ alignItems: "flex-start" }}>
+      <Field label="Avatar" plain hint="JPG, PNG, WebP, GIF, MP4/WebM video, or a VRM / VRoid model (.vrm). Choose Upload, drop a file onto the picture, paste a picture link, or paste a copied picture. Videos and GIFs animate; VRM models stand in a 3D room you can look around.">
+        <div className="row" style={{ alignItems: "flex-start" }} onPaste={pasteMedia} data-testid="avatar-section">
           <div className="editor-media" title="Drop an image, GIF, video or .vrm model here"
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); pickMedia(e.dataTransfer.files?.[0]); }}>
@@ -208,6 +223,12 @@ export default function Editor({ id }: { id: string | null }) {
           </div>
           <div style={{ display: "grid", gap: 8 }}>
             <button type="button" className="btn" onClick={() => fileRef.current?.click()}>⇪ Upload</button>
+            <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+              <input type="text" inputMode="url" value={link} placeholder="…or paste a picture link (https://…)" aria-label="Picture link" data-testid="avatar-link" maxLength={2000} style={{ minWidth: 0, flex: 1 }}
+                onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void useLink(); } }} />
+              <button type="button" className="btn" disabled={fetching || !link.trim()} data-testid="avatar-link-use" onClick={() => void useLink()}>{fetching ? "Fetching…" : "Use link"}</button>
+            </div>
+            <small className="muted" style={{ maxWidth: 420 }}>On a web page, right-click a picture and choose Copy image address, then paste it here. Or copy the picture itself and paste it anywhere in this section.</small>
             {previewUrl && (previewKind === "image" || previewKind === "gif") && (
               <button type="button" className="btn" onClick={() => setFraming({ url: previewUrl, kind: previewKind, initial: pending ? pending.frame : char?.frame })}>⤧ Position</button>
             )}

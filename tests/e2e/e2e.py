@@ -194,6 +194,18 @@ try:
     check("edits persist", saved["card"]["scenario"] == "Edited scenario text")
     check("edit keeps unknown extensions", saved["card"]["extensions"].get("unknown_ext") == {"keep": [1, 2, 3]} and saved["card"].get("future_field") == {"hello": "world"})
 
+    import base64 as _b64
+    PNG_ = _b64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+    class Pic(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_GET(self):
+            if self.path.startswith("/cat.png"): body, ct = PNG_, "application/octet-stream"      # a wrong label: the first bytes decide
+            elif self.path.startswith("/page"): body, ct = b"<!doctype html><html><body>not a picture</body></html>", "text/html"
+            elif self.path.startswith("/redir"):
+                self.send_response(302); self.send_header("Location", "/cat.png"); self.end_headers(); return
+            else: self.send_response(404); self.end_headers(); return
+            self.send_response(200); self.send_header("Content-Type", ct); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+    picsrv = HTTPServer(("127.0.0.1", 18997), Pic); threading.Thread(target=picsrv.serve_forever, daemon=True).start()
     # ---- media: gif / video / vrm ------------------------------------------------
     def set_media_ipc(char_id, path):
         b64 = base64.b64encode(open(path, "rb").read()).decode()
@@ -238,6 +250,15 @@ try:
             check("a framing is always kept within sane limits", fr == {"x": 1.0, "y": 0.0, "zoom": 5.0}, str(fr))
             invoke("set_frame", {"id": mira["id"], "frame": None})
             check("GIF renders in the editor", d.execute_script("const i=document.querySelector('.editor-media img');return !!i&&i.complete&&i.naturalWidth>0"))
+            # a picture link does the same as an upload: it is fetched, positioned, then saved
+            frame_before_ = invoke("get_character", {"id": mira["id"]}).get("frame")
+            set_value("[data-testid=avatar-link]", "http://127.0.0.1:18997/cat.png"); time.sleep(0.3)
+            d.find_element(By.CSS_SELECTOR, "[data-testid=avatar-link-use]").click(); time.sleep(2.0)
+            check("using a picture link opens the same positioning window as an upload", d.execute_script("return !!document.querySelector('[data-testid=frame-main] img')"))
+            click_text(".modal button", "Save"); time.sleep(2.2)
+            check("and the picture from the link becomes the avatar", ((invoke("get_character", {"id": mira["id"]})["media"]) or {}).get("kind") == "image")
+            set_media_ipc(mira["id"], os.path.join(FIX, fname))   # the GIF goes back, for what follows
+            invoke("set_frame", {"id": mira["id"], "frame": frame_before_})   # and so does the framing that was chosen above
         if kind == "video":
             ok = False
             for _ in range(30):
@@ -2671,6 +2692,8 @@ try:
     invoke("save_character", {"character": dict(rt, playbook=rtpb["id"])})
     rtchat = invoke("create_chat", {"dormId": None, "name": "pb round trip", "kind": "dm", "characterIds": [rt["id"]]})
     invoke("set_chat_playbook", {"chatId": rtchat["id"], "mode": "set", "playbookId": rtpb["id"], "scenario": "Friends"})
+    rt_cm_ = invoke("add_gallery_comment", {"picKey": f"char:{rt['id']}:{rt_items[0]}", "parentId": None, "author": "Me", "body": "A comment that travels."})
+    invoke("add_gallery_comment", {"picKey": f"char:{rt['id']}:{rt_items[0]}", "parentId": rt_cm_["id"], "author": "Me", "body": "And its answer."})
     invoke("save_custom_deco", {"items": [{"did": "cw_0a1b2c3d4e", "dkind": "wreath", "mode": "svg", "name": "Backup ring", "art": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><circle cx="72" cy="72" r="66" fill="none" stroke="gold" stroke-width="6"/></svg>'}]})
     info = invoke("prepare_export")
     check("the export names the decoration that isn't shareable and leaves it out", info["withheld_items"] == ["Fern"], str(info))
@@ -2680,6 +2703,9 @@ try:
     check("eject removes both decoration files from the device", len([f for f in os.listdir(media_dir) if f.startswith("decor-")]) == n_glb - 2)
     invoke_file("import_profile", xp, {"x-mode": "import", "x-handle": "Roomer3", "x-passcode": ""})
     back = invoke("list_decor")
+    back_rt_ = next((c_ for c_ in invoke("list_characters") if c_["card"]["name"] == rt["card"]["name"]), None)   # (the profile was ejected first, so it may even have the same id)
+    back_cm_ = invoke("gallery_comments", {"picKey": f"char:{back_rt_['id']}:{rt_items[0]}"}) if back_rt_ else []
+    check("comments under a character's pictures come back with a backup, answers still under their comments", len(back_cm_) == 2 and [c_["body"] for c_ in back_cm_] == ["A comment that travels.", "And its answer."] and back_cm_[1]["parent_id"] == back_cm_[0]["id"], str((back_rt_ and back_rt_["id"], rt["id"], back_cm_))[:400])
     check("a person's own decorations come back with a backup", any(x["did"] == "cw_0a1b2c3d4e" and x["name"] == "Backup ring" for x in invoke("list_custom_deco")), str(invoke("list_custom_deco"))[:200])
     gt = [c_ for c_ in invoke("list_characters") if c_["card"]["name"] == "Gallery Trip"]
     check("a character's gallery comes back with a backup (pictures, moods and mode)", len(gt) == 1 and len(gt[0]["gallery"]) == 2 and gt[0]["gallery"][0]["moods"] == ["happy", "smug"] and gt[0]["gallery_mode"] == "mood" and all(os.path.exists(x["path"]) for x in gt[0]["gallery_paths"]), str(gt)[:300])
@@ -2717,6 +2743,56 @@ try:
     check("Escape closes the viewer", len(d.find_elements(By.CSS_SELECTOR, "[data-testid=gallery-viewer]")) == 0)
     d.execute_script("[...document.querySelectorAll('[data-testid=gallery-crumbs] button')].find(b=>b.textContent.includes('Gallery')).click()"); time.sleep(0.5)
     check("the crumbs lead back to all the folders", len(d.find_elements(By.CSS_SELECTOR, "[data-testid=gallery-folders]")) == 1)
+    # comments under a picture: like a forum thread, kept on the device
+    d.execute_script("document.querySelector('[data-gallery-folder=\"Art Folder\"]').click()"); time.sleep(0.5)
+    d.execute_script("document.querySelector('[data-gallery-sub=gallery]').click()"); time.sleep(0.5)
+    first_tile_ = d.execute_script("return document.querySelector('[data-testid=gallery-tiles] [data-gallery-tile]').dataset.galleryTile")
+    pkey_ = "char:" + first_tile_
+    d.execute_script("document.querySelector('[data-testid=gallery-tiles] [data-gallery-tile]').click()"); time.sleep(0.6)
+    check("the viewer has a comment section that starts empty", len(d.find_elements(By.CSS_SELECTOR, "[data-testid=picture-comments]")) == 1 and len(d.find_elements(By.CSS_SELECTOR, "[data-testid=comments-empty]")) == 1)
+    set_value("[data-testid=comment-text]", "Lovely light in this one."); d.find_element(By.CSS_SELECTOR, "[data-testid=comment-post]").click(); time.sleep(0.8)
+    set_value("[data-testid=comment-text]", "Second thought:\nthe colours again."); d.find_element(By.CSS_SELECTOR, "[data-testid=comment-post]").click(); time.sleep(0.8)
+    cm_ = invoke("gallery_comments", {"picKey": pkey_})
+    check("comments are posted and kept, line breaks included, in order", [c_["body"] for c_ in cm_] == ["Lovely light in this one.", "Second thought:\nthe colours again."] and all(c_["parent_id"] is None and c_["author"] for c_ in cm_), str(cm_)[:300])
+    d.execute_script("document.querySelector('[data-comment] [data-testid=comment-reply]').click()"); time.sleep(0.4)
+    set_value("[data-testid=reply-text]", "Agreed, the light is the best part."); d.find_element(By.CSS_SELECTOR, "[data-testid=reply-post]").click(); time.sleep(0.8)
+    cm_ = invoke("gallery_comments", {"picKey": pkey_}); rep_ = [c_ for c_ in cm_ if c_["parent_id"]]
+    check("a comment can be answered, and the answer sits under it (indented)", len(rep_) == 1 and rep_[0]["parent_id"] == cm_[0]["id"] and d.execute_script("return document.querySelectorAll('[data-comment][data-depth=\"1\"]').length") == 1)
+    d.execute_script("document.querySelector('[data-comment=\"%s\"] [data-testid=comment-reply]').click()" % rep_[0]["id"]); time.sleep(0.4)
+    set_value("[data-testid=reply-text]", "And an answer to the answer."); d.find_element(By.CSS_SELECTOR, "[data-testid=reply-post]").click(); time.sleep(0.8)
+    check("answers can be answered too", d.execute_script("return document.querySelectorAll('[data-comment][data-depth=\"2\"]').length") == 1)
+    d.execute_script("document.querySelector('[data-comment=\"%s\"] [data-testid=comment-edit]').click()" % cm_[1]["id"]); time.sleep(0.3)
+    set_value("[data-testid=comment-edit-text]", "Second thought, edited."); d.find_element(By.CSS_SELECTOR, "[data-testid=comment-edit-save]").click(); time.sleep(0.8)
+    ed_ = next(c_ for c_ in invoke("gallery_comments", {"picKey": pkey_}) if c_["id"] == cm_[1]["id"])
+    check("a comment can be edited, and says it was", ed_["body"] == "Second thought, edited." and ed_["edited_at"] and "edited" in d.execute_script("return document.querySelector('[data-comment=\"%s\"] .pc-head').textContent" % ed_["id"]))
+    d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-next]").click(); time.sleep(0.5)
+    check("each picture has its own comments (the next one has none)", len(d.find_elements(By.CSS_SELECTOR, "[data-testid=comments-empty]")) == 1)
+    set_value("[data-testid=comment-text]", "x"); d.find_element(By.CSS_SELECTOR, "[data-testid=comment-text]").send_keys(Keys.ARROW_LEFT); time.sleep(0.3)
+    check("typing in the comment box doesn't flip the picture", len(d.find_elements(By.CSS_SELECTOR, "[data-testid=comments-empty]")) == 1)
+    for i_ in range(60): invoke("add_gallery_comment", {"picKey": pkey_, "parentId": None, "author": "Me", "body": f"note {i_}"})
+    check("there is no limit to how many comments a picture can have", len(invoke("gallery_comments", {"picKey": pkey_})) == 4 + 60)
+    check("the comment is limited only in length", "too long" in (inv_err("add_gallery_comment", {"picKey": pkey_, "parentId": None, "author": "Me", "body": "x" * 20001}) or "") and "Write something" in (inv_err("add_gallery_comment", {"picKey": pkey_, "parentId": None, "author": "Me", "body": "   "}) or ""))
+    check("a comment can't answer one under another picture or one that isn't there", all(inv_err("add_gallery_comment", {"picKey": "char:" + first_tile_.replace(first_tile_.split(":")[1], "zzz"), "parentId": cm_[0]["id"], "author": "Me", "body": "hi"}) is not None for _ in [0]) and inv_err("add_gallery_comment", {"picKey": pkey_, "parentId": "nope", "author": "Me", "body": "hi"}) is not None)
+    d.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE); time.sleep(0.4)
+    d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-close]").click() if d.find_elements(By.CSS_SELECTOR, "[data-testid=gallery-close]") else None
+    time.sleep(0.4)
+    check("a picture with comments shows how many on its tile", d.execute_script("const t=document.querySelector('[data-testid=gallery-tiles] [data-gallery-tile]'); const b=t&&t.querySelector('[data-testid=comment-count]'); return !!b && /💬\\s*\\d+/.test(b.textContent)"))
+    n_before_ = len(invoke("gallery_comments", {"picKey": pkey_}))
+    d.execute_script("window.confirm=()=>true"); d.execute_script("document.querySelector('[data-testid=gallery-tiles] [data-gallery-tile]').click()"); time.sleep(0.6)
+    d.execute_script("document.querySelector('[data-comment=\"%s\"] [data-testid=comment-delete]').click()" % cm_[0]["id"]); time.sleep(0.9)
+    check("deleting a comment takes the answers under it with it", len(invoke("gallery_comments", {"picKey": pkey_})) == n_before_ - 3)
+    d.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE); time.sleep(0.3)
+    nav("Characters"); nav("Gallery"); time.sleep(0.6)
+    # adding to a character's gallery from a picture link (right in the Gallery)
+    n_gal_ = len(invoke("get_character", {"id": art_["id"]}).get("gallery", []))
+    d.execute_script("document.querySelector('[data-gallery-folder=\"Art Folder\"]').click()"); time.sleep(0.6)
+    set_value("[data-testid=gallery-folder-link-input]", "http://127.0.0.1:18997/cat.png"); time.sleep(0.3)
+    d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-folder-link-use]").click(); time.sleep(2.5)
+    check("a picture link adds a picture to the character's own gallery", len(invoke("get_character", {"id": art_["id"]}).get("gallery", [])) == n_gal_ + 1)
+    check("and the new picture shows in the sub folder at once", "%d pictures" % (n_gal_ + 1) in d.execute_script("const b=document.querySelector('[data-gallery-sub=gallery]'); return b ? b.textContent : ''"))
+    set_value("[data-testid=gallery-folder-link-input]", "http://127.0.0.1:18997/page"); d.find_element(By.CSS_SELECTOR, "[data-testid=gallery-folder-link-use]").click(); time.sleep(1.5)
+    check("a link to a web page adds nothing", len(invoke("get_character", {"id": art_["id"]}).get("gallery", [])) == n_gal_ + 1)
+    d.execute_script("[...document.querySelectorAll('[data-testid=gallery-crumbs] button')].find(b=>b.textContent.includes('Gallery')).click()"); time.sleep(0.5)
     # folders from the computer: only to look at, nothing to do with any character
     vroot_ = os.path.join(WORK, "view-art")
     for sub_ in ("sub", ".hidden", "empty"): os.makedirs(os.path.join(vroot_, sub_), exist_ok=True)
@@ -2744,6 +2820,13 @@ try:
     check("taking a folder off the Gallery forgets it", invoke("list_view_folders") == [] and d.execute_script("return !document.querySelector('[data-gallery-disk-folder]')"))
     check("and nothing on the computer is touched", all(os.path.exists(os.path.join(vroot_, r_)) for r_ in ("a.png", "b.png", "sub/c.png", "notes.txt")))
     nav("Characters"); time.sleep(0.4)
+    # a picture from a web address instead of an upload (the server for it is started before the media section)
+    got_ = invoke("fetch_picture", {"url": "http://127.0.0.1:18997/cat.png?w=1"})
+    check("a picture link is fetched and named from its address (the first bytes decide what it is, not the server's label)", got_["name"] == "cat.png" and got_["mime"] == "image/png" and _b64.b64decode(got_["data"]) == PNG_, str(got_)[:200])
+    check("a link that redirects is followed", invoke("fetch_picture", {"url": "http://127.0.0.1:18997/redir"})["name"].endswith(".png"))
+    check("a web page is refused with what to do instead", "web page" in (inv_err("fetch_picture", {"url": "http://127.0.0.1:18997/page"}) or "") and "Copy image" in (inv_err("fetch_picture", {"url": "http://127.0.0.1:18997/page"}) or ""))
+    check("a missing picture says so", "404" in (inv_err("fetch_picture", {"url": "http://127.0.0.1:18997/nope.png"}) or ""))
+    check("only web addresses are used", all(inv_err("fetch_picture", {"url": u}) for u in ["file:///etc/passwd", "ftp://example.com/a.png", "not a link", ""]))
 
 finally:
     try: d.quit()

@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { api, galleryUrl, type Character, type GalleryMode } from "../api";
 import { MOODS, detectMood } from "../lib/mood";
 import { errText } from "../lib/util";
+import PictureLinkBox, { pastedPicture } from "./PictureLinkBox";
 import { useToast } from "./ui";
 
 const MODES: { id: GalleryMode; label: string; hint: string }[] = [
@@ -39,7 +40,7 @@ export default function GalleryEditor({ char, onChanged }: { char: Character | n
   const seenMood = MOODS.find((m) => m.id === seen);
 
   return (
-    <div className="gallery" data-testid="gallery" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); void addFiles(e.dataTransfer.files); }}>
+    <div className="gallery" data-testid="gallery" onPaste={(e) => { const f = pastedPicture(e); if (f) { e.preventDefault(); void addFiles([f]); } }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); void addFiles(e.dataTransfer.files); }}>
       <div className="chips" role="radiogroup" aria-label="How the gallery is used in a chat">
         {MODES.map((m) => (
           <button key={m.id} type="button" role="radio" aria-checked={mode === m.id} data-mode={m.id} className={`chip big ${mode === m.id ? "on" : ""}`} onClick={() => void run("Saving…", api.setGalleryMode(char.id, m.id))}>{m.label}</button>
@@ -69,6 +70,7 @@ export default function GalleryEditor({ char, onChanged }: { char: Character | n
         })}
         <button type="button" className="gal-add" disabled={!!busy} onClick={() => file.current?.click()}>＋<span>Add pictures</span></button>
       </div>
+      <PictureLinkBox testid="gallery-link" busy={!!busy} onFile={(f) => addFiles([f])} placeholder="…or paste a picture link to add it (https://…)" />
       <input ref={file} type="file" hidden multiple aria-label="Add gallery pictures" onChange={(e) => { void addFiles(e.target.files); e.target.value = ""; }} />
       {busy && <div className="hint" role="status">{busy}</div>}
       {items.length === 0 && !busy && <div className="hint">Add pictures, GIFs or short videos of {char.card.name || "the character"} (drop them here too). With lots of expressions, tag each with its mood and pick “Match the mood of the reply”.</div>}

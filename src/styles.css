@@ -842,7 +842,7 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .gal-stack > span { position: absolute; inset: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--panel2); }
 .gal-stack > span:nth-child(1) { transform: rotate(-5deg) translate(-6%, 2%); } .gal-stack > span:nth-child(2) { transform: rotate(3deg) translate(5%, 0); } .gal-stack > span:nth-child(3) { transform: none; }
 .gal-crumbs { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; color: var(--muted); }
-.gal-viewer { position: fixed; inset: 0; z-index: 90; display: flex; flex-direction: column; background: rgba(8,8,14,.94); }
+.gal-viewer { position: fixed; inset: 0; z-index: 90; display: flex; flex-direction: column; background: #08080e; }
 .gal-vbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 16px; color: #fff; }
 .gal-vmain { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 8px 16px; }
 .gal-vpic { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; justify-content: center; }
@@ -853,3 +853,18 @@ html[data-deco-paused] *, html[data-deco-paused] *::before, html[data-deco-pause
 .gal-folder-wrap { position: relative; } .gal-folder-wrap > .gal-folder { width: 100%; } .gal-folder:disabled { opacity: .55; cursor: default; }
 .gal-remove { position: absolute; right: 8px; top: 8px; background: rgba(0,0,0,.55); color: #fff; border-radius: 999px; }
 .gal-remove:hover, .gal-remove:focus-visible { background: rgba(190,40,40,.85); }
+
+/* ---- comments under a Gallery picture (components/PictureComments.tsx) ---- */
+.gal-vbody { flex: 1; min-height: 0; display: flex; }
+.gal-vbody .gal-vmain { flex: 1; min-width: 0; }
+.gal-comments { flex: 0 0 360px; max-width: 42vw; overflow: auto; background: var(--panel); border-left: 1px solid var(--line); padding: 14px; color: var(--text); }
+.gal-badge.left { right: auto; left: 8px; }
+.pc-title { margin: 0 0 8px; font-size: 1rem; } .pc-title small { color: var(--muted); font-weight: 400; }
+.pc-composer { display: grid; gap: 6px; margin-bottom: 10px; } .pc-composer textarea { min-height: 54px; resize: vertical; }
+.pc-list { display: grid; gap: 6px; }
+.pc-node { border-left: 2px solid var(--line); padding-left: 8px; } .pc-node[data-depth="0"] { border-left: 0; padding-left: 0; }
+.pc-comment { padding: 6px 8px; border-radius: 10px; background: color-mix(in srgb, var(--text) 6%, transparent); }
+.pc-head { display: flex; gap: 8px; align-items: baseline; } .pc-head small { color: var(--muted); }
+.pc-body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 2px 0 4px; }
+.pc-acts { display: flex; gap: 2px; margin-left: -6px; }
+@media (max-width: 800px) { .gal-vbody { flex-direction: column; } .gal-comments { flex: 0 0 42%; max-width: none; border-left: 0; border-top: 1px solid var(--line); } }
