@@ -391,3 +391,15 @@ Ported from Anti-Social, the same file format, so packs made for one (or in Sudo
 - **Export**: **My decorations → Export all as a pack** writes the library as a `.asdeco`.
 - **Not built**: a "Send to Dorms" hand-over from Sudo Make Art (cards have one; decorations don't yet), and decorations in a character card file.
 - **Tested**: `node tests/deco-pack-check.mjs` (in CI; Anti-Social's own checks for the importer: good files, wrong shapes, pictures, video, unsafe parts, ids), Rust unit tests (`clean_custom`, ids in the right place only, ownership, replacing the same one), and the app's tests (importing a pack, wearing one, adding the same pack twice, deleting, a made-up id refused, and a backup carrying them). Not tested: choosing a file with the real file dialog, a real video being turned into frames, a GIF's still frame (the importer checks cover the file side only), and how they look on every screen.
+
+
+## Avatar from a web address or the clipboard
+
+In the character editor's Avatar section, next to **Upload**: a **picture link** box with **Use link**, and pasting a copied picture anywhere in the section.
+
+- **Link**: only `http` and `https` addresses with a website in them (no `file:`, `ftp:`, `data:` or addresses with a name and password). The app itself fetches it (`fetch_picture`, `src-tauri/src/netpic.rs`), not the web view, so sites that don't allow other pages to read their pictures still work. Redirects are followed (never from https down to http), a site gets 60 seconds, and a file is 40 MB at most.
+- **What it must be**: a JPG, PNG, WebP, GIF, MP4 or WebM. The file's first bytes decide this, not the server's label (which is often wrong). A web page is refused with what to do instead (Copy image address); anything else is refused plainly.
+- **After that it is an ordinary upload**: the bytes become a file named after the address (`cat.png`) and go through the same positioning window, saving and checks as a chosen file; for a new character it waits with the rest of the card until it is saved.
+- **Clipboard**: a picture copied from the internet (Copy image) and pasted in the Avatar section is used the same way. Text pasted into the link box is just text.
+- **Privacy and safety**: a fetch starts only when the person presses Use link (nothing in a card or a chat can start one). A link to a device on the home network is allowed, because the person typed it; the result is only ever used as a picture.
+- **Tested**: Rust unit tests (file types from their first bytes, which addresses are accepted, file names from addresses, no panic on odd escapes) and the app's tests against a small local web server (a wrongly labelled picture, a redirect, a web page, a missing file, refused addresses, and a link going through the positioning window to become the avatar). Not tested: the clipboard paste with a real browser copy, and real sites (some sites refuse downloads that don't come from a browser).

@@ -194,6 +194,18 @@ try:
     check("edits persist", saved["card"]["scenario"] == "Edited scenario text")
     check("edit keeps unknown extensions", saved["card"]["extensions"].get("unknown_ext") == {"keep": [1, 2, 3]} and saved["card"].get("future_field") == {"hello": "world"})
 
+    import base64 as _b64
+    PNG_ = _b64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+    class Pic(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_GET(self):
+            if self.path.startswith("/cat.png"): body, ct = PNG_, "application/octet-stream"      # a wrong label: the first bytes decide
+            elif self.path.startswith("/page"): body, ct = b"<!doctype html><html><body>not a picture</body></html>", "text/html"
+            elif self.path.startswith("/redir"):
+                self.send_response(302); self.send_header("Location", "/cat.png"); self.end_headers(); return
+            else: self.send_response(404); self.end_headers(); return
+            self.send_response(200); self.send_header("Content-Type", ct); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+    picsrv = HTTPServer(("127.0.0.1", 18997), Pic); threading.Thread(target=picsrv.serve_forever, daemon=True).start()
     # ---- media: gif / video / vrm ------------------------------------------------
     def set_media_ipc(char_id, path):
         b64 = base64.b64encode(open(path, "rb").read()).decode()
@@ -230,6 +242,13 @@ try:
         if kind == "gif":
             check("the chosen position and zoom are saved with the character", c.get("frame") and abs(c["frame"]["zoom"] - 2.5) < 0.01 and (abs(c["frame"]["x"] - 0.5) > 0.005 or abs(c["frame"]["y"] - 0.5) > 0.005), str(c.get("frame")))
             check("the picture in the editor uses that framing", d.execute_script("const i=document.querySelector('.editor-media img');return !!i&&i.style.transform==='scale(2.5)'"))
+            # a picture link does the same as an upload: it is fetched, positioned, then saved
+            set_value("[data-testid=avatar-link]", "http://127.0.0.1:18997/cat.png"); time.sleep(0.3)
+            d.find_element(By.CSS_SELECTOR, "[data-testid=avatar-link-use]").click(); time.sleep(2.0)
+            check("using a picture link opens the same positioning window as an upload", d.execute_script("return !!document.querySelector('[data-testid=frame-main] img')"))
+            click_text(".modal button", "Save"); time.sleep(2.2)
+            check("and the picture from the link becomes the avatar", ((invoke("get_character", {"id": mira["id"]})["media"]) or {}).get("kind") == "image")
+            set_media_ipc(mira["id"], os.path.join(FIX, fname))   # the GIF goes back, for what follows
             check("a ⤧ Position button reopens the window with the saved framing", click_text("button", "Position") and d.execute_script("return document.querySelector('input[aria-label=Zoom]').value") == "2.5")
             click_text(".modal button", "Reset"); click_text(".modal button", "Save"); time.sleep(1.2)
             check("Reset puts the picture back to its default framing", invoke("get_character", {"id": mira["id"]}).get("frame") is None)
@@ -2691,6 +2710,14 @@ try:
     check("playbooks come back with a backup: the playbook, the character that comes with it, and where a chat's story stood", len(back_pb) == 1 and back_gt and back_gt[0].get("playbook") == back_pb[0]["id"] and back_cp and back_cp["mode"] == "set" and back_cp["active"]["id"] == back_pb[0]["id"] and back_cp["values"][0]["value"] == 8, str((back_pb, back_cp))[:400])
     check("saved prompts come back with a backup (title, label and text)", [(x["title"], x["tag"], x["body"]) for x in rp] == [("Round trip", "Style", "[OOC: it came back.]")], str(rp))
     check("the profile came back with only the shareable decoration, still marked shareable", [(i["name"], i["share"]) for i in back] == [("Lamp", True)] and os.path.exists(back[0]["path"]), str(back))
+
+    # a picture from a web address instead of an upload (the server for it is started before the media section)
+    got_ = invoke("fetch_picture", {"url": "http://127.0.0.1:18997/cat.png?w=1"})
+    check("a picture link is fetched and named from its address (the first bytes decide what it is, not the server's label)", got_["name"] == "cat.png" and got_["mime"] == "image/png" and _b64.b64decode(got_["data"]) == PNG_, str(got_)[:200])
+    check("a link that redirects is followed", invoke("fetch_picture", {"url": "http://127.0.0.1:18997/redir"})["name"].endswith(".png"))
+    check("a web page is refused with what to do instead", "web page" in (inv_err("fetch_picture", {"url": "http://127.0.0.1:18997/page"}) or "") and "Copy image" in (inv_err("fetch_picture", {"url": "http://127.0.0.1:18997/page"}) or ""))
+    check("a missing picture says so", "404" in (inv_err("fetch_picture", {"url": "http://127.0.0.1:18997/nope.png"}) or ""))
+    check("only web addresses are used", all(inv_err("fetch_picture", {"url": u}) for u in ["file:///etc/passwd", "ftp://example.com/a.png", "not a link", ""]))
 
 finally:
     try: d.quit()

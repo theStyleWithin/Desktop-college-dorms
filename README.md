@@ -60,7 +60,7 @@ Also new: **emoji and stickers** (everywhere or per room, and the characters use
 
 ## Features
 
-- **Characters** with JPG / PNG / WebP / GIF / MP4 / WebM avatars and **VRM / VRoid 3D models** (VRM 0.x and 1.0)
+- **Characters** with JPG / PNG / WebP / GIF / MP4 / WebM avatars and **VRM / VRoid 3D models** (VRM 0.x and 1.0). The avatar can come from a file (**Upload**, or drop one on the picture), from a **picture link** (paste a web address into the box under Upload and press Use link: on a web page, right-click a picture and choose Copy image address), or from a picture you copied from the internet and pasted into the Avatar section. A picture from a link or the clipboard is positioned and saved exactly like an upload
 - **A real 3D viewer**: the character stands in a furnished dorm room (night window, rug, bed, desk, string lights) with soft shadows.
   Drag to turn, scroll or pinch to zoom, double-click to reset, and open the **big viewer** for the whole room.
   The big viewer is a real window: drag its title bar to move it, pull any edge or corner to resize it (it remembers its size), or use **theatre mode** (T) or **full screen** (F). Esc steps back one level.

@@ -6,6 +6,7 @@ mod guide;
 mod handoff;
 mod llama;
 mod llm;
+mod netpic;
 mod novel;
 mod phone;
 mod shelf;
@@ -238,6 +239,7 @@ pub fn run() {
             presence::list_statuses,
             presence::set_status,
             presence::generate_status,
+            netpic::fetch_picture,
             deco::list_char_deco,
             deco::list_custom_deco,
             deco::save_custom_deco,
