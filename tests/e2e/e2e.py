@@ -1380,9 +1380,12 @@ try:
         invoke("sign_in", {"profileId": sc_id_[0], "passcode": None}); invoke("delete_profile", {"confirm": "scoped"}); invoke("sign_in", {"profileId": None}); reload_ui(); time.sleep(0.8)
     # scroll bars: the handle thickens when the pointer is near it
     nav("Settings"); time.sleep(1.0)
-    box_ = d.execute_script("""const c=[...document.querySelectorAll('*')].filter(e=>{const s=getComputedStyle(e);return /(auto|scroll)/.test(s.overflowY)&&e.scrollHeight>e.clientHeight+50&&e.clientWidth>300&&e.clientHeight>200});
-      c.sort((a,b)=>b.clientHeight*b.clientWidth-a.clientHeight*a.clientWidth); const e=c[0]; if(!e) return null; const r=e.getBoundingClientRect(); return {right:r.right,top:r.top,left:r.left,h:r.height};""")
-    check("there is a long page to scroll", box_ is not None)
+    # (a scrolling box of our own, so the check does not depend on which pages happen to be long)
+    box_ = d.execute_script("""document.getElementById('sb-test')?.remove();
+      const b=document.createElement('div'); b.id='sb-test'; b.style.cssText='position:fixed;right:40px;top:80px;width:420px;height:260px;overflow:auto;z-index:99999;background:#222';
+      const t=document.createElement('div'); t.style.height='1200px'; t.textContent='scroll test'; b.appendChild(t); document.body.appendChild(b);
+      const r=b.getBoundingClientRect(); return {right:r.right,top:r.top,left:r.left,h:r.height};""")
+    check("there is a scrolling box to test with", box_ is not None)
     if box_:
         move_ = lambda x, y: d.execute_script("window.dispatchEvent(new MouseEvent('mousemove',{clientX:arguments[0],clientY:arguments[1],bubbles:true}))", x, y)
         near_ = lambda: d.execute_script("return document.querySelectorAll('.sb-near').length")
@@ -1390,10 +1393,10 @@ try:
         check("moving the pointer near a scroll bar marks it so its handle can thicken", near_() == 1)
         move_(box_["left"] + 60, box_["top"] + box_["h"] / 2); time.sleep(0.4)
         check("and moving away unmarks it", near_() == 0)
-        check("the scroll bar strip is wide enough to hit (about 16 px)", 14 <= d.execute_script("const e=[...document.querySelectorAll('*')].find(x=>x.scrollHeight>x.clientHeight+50&&/(auto|scroll)/.test(getComputedStyle(x).overflowY)&&x.clientWidth>300); return e ? e.offsetWidth - e.clientWidth : -1") <= 24)
+        check("the scroll bar strip is wide enough to hit (about 16 px)", 14 <= d.execute_script("const e=document.getElementById('sb-test'); return e.offsetWidth - e.clientWidth") <= 24)
     # the setting that brings back the thinner scroll bars
     d.execute_script("[...document.querySelectorAll('.tab')].find(b=>b.textContent==='Customization').click()"); time.sleep(0.8)
-    width_ = lambda: d.execute_script("const e=[...document.querySelectorAll('*')].find(x=>x.scrollHeight>x.clientHeight+50&&/(auto|scroll)/.test(getComputedStyle(x).overflowY)&&x.clientWidth>300); return e ? e.offsetWidth - e.clientWidth : -1")
+    width_ = lambda: d.execute_script("const e=document.getElementById('sb-test'); return e ? e.offsetWidth - e.clientWidth : -1")
     check("Customization has a Wider scroll bars switch, on by default", d.execute_script("const c=document.querySelector('[data-testid=scroll-wide]');return !!c && c.checked") and d.execute_script("return document.documentElement.dataset.scrollbar") == "wide")
     d.execute_script("document.querySelector('[data-testid=scroll-wide]').click()"); time.sleep(0.5)
     check("turning it off brings back the thinner size (and it is remembered)", d.execute_script("return document.documentElement.dataset.scrollbar") == "slim" and d.execute_script("return localStorage.getItem('dorms.scrollbar.size.guest')") == "slim" and 0 < width_() <= 12, str(width_()))
