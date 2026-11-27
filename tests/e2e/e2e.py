@@ -1085,9 +1085,12 @@ try:
     check("choosing a backdrop shows the shelf of scenes", click_text("button", "Choose a backdrop") and d.execute_script("return document.querySelectorAll('.preset').length") >= 6)
     d.execute_script("document.querySelector('.preset').click()"); time.sleep(0.3)
     check("a picked backdrop previews in the form", d.execute_script("return getComputedStyle(document.querySelector('.room-preview')).backgroundImage.includes('gradient')"))
+    set_value("[data-testid=room-backdrop-link-input]", "http://127.0.0.1:18997/cat.png"); d.execute_script("document.querySelector('[data-testid=room-backdrop-link-use]').click()"); time.sleep(2.5)
+    check("a backdrop can also come from a picture link (it previews like an upload)", d.execute_script("return getComputedStyle(document.querySelector('.room-preview')).backgroundImage.includes('blob:')"))
     shot("room-form")
     check("Create & enter makes the room and drops you into a chat set in it", click_text("button", "Create & enter") and text_present("Rooftop hangout") and wait(15).until(lambda x: x.execute_script("return !!document.querySelector('.chatmain .room-bg')")))
     rr = [r for r in invoke("list_rooms") if r["name"] == "Rooftop hangout"]
+    check("the room made with a backdrop from a link keeps the picture as its own file", rr and str(rr[0]["backdrop"]).startswith("file:"), str(rr[0]["backdrop"]) if rr else "")
     check("the room, a dorm in it and a first chat now exist", len(rr) == 1 and any(dd["room_id"] == rr[0]["id"] for dd in invoke("list_dorms")) and rr[0]["owner_kind"] == "character" and rr[0]["character_id"])
     check("the chat header shows which room it is in", d.execute_script("return !!document.querySelector('.chathead .linklike')") and "Rooftop hangout" in d.execute_script("return document.querySelector('.chathead .linklike').textContent"))
     d.execute_script("document.querySelector('.chatopts')?.classList.add('open')")

@@ -12,6 +12,7 @@ import RoomModelField, { type ModelDraft } from "../components/RoomModelField";
 import { Modal, useToast } from "../components/ui";
 import { PRESETS, ROOM_KINDS, kindLabel, roomBackground, isInside, pathName, MAX_EXITS, connectedRooms } from "../lib/rooms";
 import { errText } from "../lib/util";
+import PictureLinkBox from "../components/PictureLinkBox";
 import { useStore } from "../store";
 
 const blank = (): Omit<Room, "id" | "created_at"> => ({ name: "", kind: "living_room", description: "", owner_kind: "self", character_id: null, backdrop: "", parent_id: null, links: [], deco: { plate: "none", bg: "", wreath: "", tag: "", tag_color: "#5865f2", tag_glyph: "" } });
@@ -257,6 +258,7 @@ function RoomForm({ id, world }: { id: number | null; world: number | null }) {
           <input ref={fileRef} type="file" hidden accept="image/*" aria-label="Upload a backdrop"
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) { setPendingFile(f); setPreview(URL.createObjectURL(f)); setPick(false); } }} />
         </div>
+        <PictureLinkBox testid="room-backdrop-link" placeholder="…or paste a picture link for the backdrop (https://…)" onFile={(f) => { setPendingFile(f); setPreview(URL.createObjectURL(f)); setPick(false); }} />
         {pick && (
           <div className="preset-grid">
             {shelf.map((p) => (
