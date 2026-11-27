@@ -391,3 +391,15 @@ Ported from Anti-Social, the same file format, so packs made for one (or in Sudo
 - **Export**: **My decorations → Export all as a pack** writes the library as a `.asdeco`.
 - **Not built**: a "Send to Dorms" hand-over from Sudo Make Art (cards have one; decorations don't yet), and decorations in a character card file.
 - **Tested**: `node tests/deco-pack-check.mjs` (in CI; Anti-Social's own checks for the importer: good files, wrong shapes, pictures, video, unsafe parts, ids), Rust unit tests (`clean_custom`, ids in the right place only, ownership, replacing the same one), and the app's tests (importing a pack, wearing one, adding the same pack twice, deleting, a made-up id refused, and a backup carrying them). Not tested: choosing a file with the real file dialog, a real video being turned into frames, a GIF's still frame (the importer checks cover the file side only), and how they look on every screen.
+
+
+## Gallery
+
+A side bar page, right after Characters, for looking at the art without chatting (`src/pages/Gallery.tsx`). It only reads what is already there: no backend, no new data, nothing changed.
+
+- **Folders**: one art folder per character, in the character list's own order ("my order", then name). The cover is the profile picture; the line under it says how many pictures it holds and, if there is one, "gallery of N". A search (names and tags) and an "only characters with a gallery" switch narrow the list.
+- **Inside a folder**: the profile picture, and the character's own gallery as a sub folder (a small fanned stack of its first pictures). A folder with no flat picture says so (a 3D VRM model is marked as one, with a note that there is no flat picture to show). Crumbs (Gallery › Name › Gallery) lead back.
+- **Pictures** are images, GIFs and short clips. A clip shows its first frame and plays while the pointer is on it. Click one to see it big: left and right arrows (the keys or the buttons) move through the folder's pictures, Escape or the close button leaves, and **Open character** goes to its editor.
+- **Side bar**: "Gallery" is placed after Characters by default. For someone with an order of their own it is slotted in after Characters once; it can then be dragged anywhere like any item.
+- **Not built**: a slideshow, looking at the outfits of a 3D character, sorting or filtering the pictures by mood, and showing the profile pictures of rooms or your own profile.
+- **Tested**: the app's tests (the side bar position, the folder list and its counts, the gallery-only switch, opening a folder and its sub folder, the big viewer with its arrows and Escape, the crumbs) with generated pictures. Not tested: video clips in the viewer, and a very large library.

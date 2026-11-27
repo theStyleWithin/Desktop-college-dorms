@@ -61,6 +61,7 @@ Also new: **emoji and stickers** (everywhere or per room, and the characters use
 ## Features
 
 - **Characters** with JPG / PNG / WebP / GIF / MP4 / WebM avatars and **VRM / VRoid 3D models** (VRM 0.x and 1.0)
+- **Gallery**: a quick look at all the art, for when you aren't chatting. Every character is an art folder holding their profile picture; a character with a gallery of their own has it as a sub folder inside. Click a picture to see it big (arrow keys or the arrow buttons move between the folder's pictures, Escape closes), with **Open character** to jump to its editor. It has a search, an "only characters with a gallery" switch, and follows your character order. It is only for looking: nothing in it changes anything. A 3D (VRM) model has no flat picture, so it is marked as a 3D model. It sits right after Characters in the side bar (for people who arranged theirs, it is slotted in after Characters once, and can be dragged anywhere like the rest).
 - **A real 3D viewer**: the character stands in a furnished dorm room (night window, rug, bed, desk, string lights) with soft shadows.
   Drag to turn, scroll or pinch to zoom, double-click to reset, and open the **big viewer** for the whole room.
   The big viewer is a real window: drag its title bar to move it, pull any edge or corner to resize it (it remembers its size), or use **theatre mode** (T) or **full screen** (F). Esc steps back one level.
